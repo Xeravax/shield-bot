@@ -1663,7 +1663,14 @@ export class SettingsRoleTrackingCommands {
         return;
       }
 
-      const role = await guild.roles.fetch(roleId);
+      // Fetch all guild members to populate the cache
+      // This ensures role.members contains all members with the role, not just cached ones
+      await cmdInteraction.editReply({
+        content: `⏳ Fetching guild members... This may take a moment for large servers.`,
+      });
+      await guild.members.fetch();
+
+      const role = guild.roles.cache.get(roleId);
       if (!role) {
         await cmdInteraction.editReply({
           content: `❌ Role not found. Please make sure the role exists and is configured for tracking.`,
@@ -1671,7 +1678,7 @@ export class SettingsRoleTrackingCommands {
         return;
       }
 
-      // Fetch all members with this role
+      // Fetch all members with this role (now that cache is populated)
       const membersWithRole = role.members;
       if (membersWithRole.size === 0) {
         await cmdInteraction.editReply({
