@@ -325,11 +325,11 @@ export class SettingsRoleTrackingCommands {
     role: Role,
     @SlashOption({
       name: "deadline",
-      description: "Deadline duration (e.g., '1 month', '3 months', '90 days')",
+      description: "Deadline duration (e.g., '1 month', '3 months', '90 days') - optional when updating existing role",
       type: ApplicationCommandOptionType.String,
-      required: true,
+      required: false,
     })
-    deadline: string,
+    deadline: string | null,
     @SlashOption({
       name: "conditions",
       description: "Conditions to check: PATROL, TIME, or both (optional, comma-separated)",
@@ -352,6 +352,20 @@ export class SettingsRoleTrackingCommands {
       required: false,
     })
     staffChannel: GuildBasedChannel | null,
+    @SlashOption({
+      name: "staff_ping_channel",
+      description: "Channel for staff pings (optional, falls back to staff_channel or guild setting)",
+      type: ApplicationCommandOptionType.Channel,
+      required: false,
+    })
+    staffPingChannel: GuildBasedChannel | null,
+    @SlashOption({
+      name: "staff_ping_roles",
+      description: "Roles to ping for staff notifications (optional, comma-separated role IDs or mentions, falls back to guild staff roles)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    staffPingRolesInput: string | null,
     interaction: BaseInteraction,
   ): Promise<void> {
     // Handle autocomplete for conditions
@@ -373,8 +387,31 @@ export class SettingsRoleTrackingCommands {
     }
 
     try {
-      // Validate deadline
-      if (!isValidDuration(deadline)) {
+      // Get current settings first to check if role exists
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId: cmdInteraction.guildId },
+      });
+
+      const currentConfig = (settings?.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
+
+      const isUpdating = !!currentConfig[role.id];
+      const existingConfig = currentConfig[role.id];
+
+      // If updating and no deadline provided, use existing deadline
+      // If not updating, deadline is required
+      const deadlineToUse = deadline || existingConfig?.deadlineDuration;
+      if (!deadlineToUse) {
+        await cmdInteraction.reply({
+          content: isUpdating 
+            ? `❌ Deadline is required when updating. Provide a deadline or the role must already have one configured.`
+            : `❌ Deadline is required when adding a new role.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // Validate deadline if provided (deadlineToUse is guaranteed to be string at this point)
+      if (deadline && !isValidDuration(deadline)) {
         await cmdInteraction.reply({
           content: `❌ Invalid deadline format: "${deadline}". Use formats like "1 week", "2 months", "90 days", etc.`,
           flags: MessageFlags.Ephemeral,
@@ -420,31 +457,33 @@ export class SettingsRoleTrackingCommands {
         }
       }
 
-      // Get current settings
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId: cmdInteraction.guildId },
-      });
-
-      const currentConfig = (settings?.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
-
-      // Check if role already exists
-      if (currentConfig[role.id]) {
-        await cmdInteraction.reply({
-          content: `❌ Role <@&${role.id}> is already configured for tracking. Use \`/settings role-tracking remove-role\` first to reconfigure it.`,
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
+      // Start with existing config if updating, otherwise create default
+      let roleConfig: RoleTrackingConfig;
+      if (isUpdating && existingConfig) {
+        // Merge with existing config - preserve existing values
+        roleConfig = { ...existingConfig };
+        // Update role name in case it changed
+        roleConfig.roleName = role.name;
+        // Only update deadline if provided
+        if (deadline) {
+          roleConfig.deadlineDuration = deadline;
+          // If deadline changed, regenerate warnings based on new deadline
+          const newDefaultConfig = this.getDefaultConfig(role.name, deadline, role.id);
+          roleConfig.warnings = newDefaultConfig.warnings;
+          roleConfig.staffPingOffset = newDefaultConfig.staffPingOffset;
+          roleConfig.staffPingMessage = newDefaultConfig.staffPingMessage;
+        }
+      } else {
+        // Create default configuration for new role
+        roleConfig = this.getDefaultConfig(role.name, deadlineToUse, role.id);
       }
-
-      // Create default configuration
-      const roleConfig = this.getDefaultConfig(role.name, deadline, role.id);
       
-      // Set patrol threshold first if provided
+      // Update patrol threshold if provided
       if (patrolThresholdHours !== null) {
         roleConfig.patrolTimeThresholdHours = patrolThresholdHours;
       }
       
-      // Set conditions if specified, otherwise keep empty array
+      // Update conditions if specified
       if (conditions.length > 0) {
         roleConfig.conditions = conditions;
         // If PATROL is in conditions but no threshold is set, remove PATROL from conditions
@@ -454,8 +493,8 @@ export class SettingsRoleTrackingCommands {
             roleConfig.conditions = [];
           }
         }
-      } else if (patrolThresholdHours !== null) {
-        // If patrol threshold is provided but no conditions specified, add PATROL and TIME
+      } else if (patrolThresholdHours !== null && (!isUpdating || !roleConfig.conditions || roleConfig.conditions.length === 0)) {
+        // If patrol threshold is provided but no conditions specified (and not updating with existing conditions), add PATROL and TIME
         roleConfig.conditions = ["PATROL", "TIME"];
       }
 
@@ -499,6 +538,48 @@ export class SettingsRoleTrackingCommands {
         updateData.roleTrackingStaffChannelId = staffChannel.id;
       }
 
+      // Parse staff ping roles if provided
+      let staffPingRoleIds: string[] | null = null;
+      if (staffPingRolesInput) {
+        // Extract role IDs from mentions or use as-is if they're already IDs
+        const roleIdPattern = /<@&(\d+)>|(\d+)/g;
+        const matches = staffPingRolesInput.matchAll(roleIdPattern);
+        staffPingRoleIds = [];
+        for (const match of matches) {
+          const roleId = match[1] || match[2];
+          if (roleId) {
+            staffPingRoleIds.push(roleId);
+          }
+        }
+        if (staffPingRoleIds.length === 0) {
+          await cmdInteraction.reply({
+            content: "❌ Invalid staff ping roles format. Use role mentions or role IDs (comma-separated).",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+      }
+
+      // Update staff ping channel if provided
+      if (staffPingChannel) {
+        if (
+          staffPingChannel.type !== ChannelType.GuildText &&
+          staffPingChannel.type !== ChannelType.GuildAnnouncement
+        ) {
+          await cmdInteraction.reply({
+            content: "❌ The staff ping channel must be a text or announcement channel.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        roleConfig.staffPingChannelId = staffPingChannel.id;
+      }
+      
+      // Update staff ping roles if provided
+      if (staffPingRoleIds && staffPingRoleIds.length > 0) {
+        roleConfig.staffPingRoleIds = staffPingRoleIds;
+      }
+
       await prisma.guildSettings.upsert({
         where: { guildId: cmdInteraction.guildId },
         update: updateData,
@@ -508,28 +589,48 @@ export class SettingsRoleTrackingCommands {
         },
       });
 
+      const embedFields = [
+        { name: "Role", value: `<@&${role.id}>`, inline: true },
+        { name: "Deadline", value: deadlineToUse, inline: true },
+        {
+          name: "Conditions",
+          value: conditions.length > 0 ? conditions.join(", ") : "None (no tracking)",
+          inline: true,
+        },
+        {
+          name: "Patrol Threshold",
+          value: patrolThresholdHours !== null ? `${patrolThresholdHours} hours` : "Not set",
+          inline: true,
+        },
+        {
+          name: "Warnings",
+          value: `${roleConfig.warnings.length} warning(s) configured`,
+          inline: true,
+        },
+      ];
+
+      if (staffPingChannel) {
+        embedFields.push({
+          name: "Staff Ping Channel",
+          value: `<#${staffPingChannel.id}>`,
+          inline: true,
+        });
+      }
+
+      if (staffPingRoleIds && staffPingRoleIds.length > 0) {
+        embedFields.push({
+          name: "Staff Ping Roles",
+          value: staffPingRoleIds.map((id) => `<@&${id}>`).join(", "),
+          inline: false,
+        });
+      }
+
       const embed = new EmbedBuilder()
-        .setTitle("✅ Role Added to Tracking")
-        .setDescription(`Role <@&${role.id}> has been added to role tracking.`)
-        .addFields(
-          { name: "Role", value: `<@&${role.id}>`, inline: true },
-          { name: "Deadline", value: deadline, inline: true },
-          {
-            name: "Conditions",
-            value: conditions.length > 0 ? conditions.join(", ") : "None (no tracking)",
-            inline: true,
-          },
-          {
-            name: "Patrol Threshold",
-            value: patrolThresholdHours !== null ? `${patrolThresholdHours} hours` : "Not set",
-            inline: true,
-          },
-          {
-            name: "Warnings",
-            value: `${roleConfig.warnings.length} warning(s) configured`,
-            inline: true,
-          },
-        )
+        .setTitle(isUpdating ? "✅ Role Tracking Updated" : "✅ Role Added to Tracking")
+        .setDescription(isUpdating 
+          ? `Role <@&${role.id}> tracking configuration has been updated.`
+          : `Role <@&${role.id}> has been added to role tracking.`)
+        .addFields(embedFields)
         .setColor(Colors.Green)
         .setTimestamp();
 

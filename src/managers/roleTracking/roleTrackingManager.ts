@@ -29,6 +29,8 @@ export interface RoleTrackingConfig {
   staffPingMessage: string | CustomMessageData; // Can be string template or embed structure
   customStaffPingMessage?: CustomMessageData;
   staffChannelId?: string | null; // Optional per-role staff channel, falls back to guild setting if not set
+  staffPingChannelId?: string | null; // Optional per-role channel for staff pings, falls back to staffChannelId or guild setting
+  staffPingRoleIds?: string[] | null; // Optional per-role roles to ping, falls back to guild staff roles if not set
 }
 
 export interface RoleTrackingConfigMap {
@@ -753,12 +755,14 @@ export class RoleTrackingManager {
    * @param embed - Embed to send
    * @param shouldPing - Whether to ping staff roles
    * @param roleChannelId - Optional role-specific channel ID. If not provided, falls back to guild setting.
+   * @param rolePingRoleIds - Optional role-specific roles to ping. If not provided, falls back to guild staff roles.
    */
   async logToStaffChannel(
     guildId: string,
     embed: EmbedBuilder,
     shouldPing: boolean,
     roleChannelId?: string | null,
+    rolePingRoleIds?: string[] | null,
   ): Promise<void> {
     try {
       const settings = await prisma.guildSettings.findUnique({
@@ -787,23 +791,21 @@ export class RoleTrackingManager {
         return;
       }
 
+      // Use role-specific ping roles if provided, otherwise fall back to guild staff roles
+      const pingRoleIds = rolePingRoleIds || (Array.isArray(settings?.staffRoleIds) ? (settings.staffRoleIds as string[]) : []);
+
       // Build content with staff ping if needed
       let content = "";
-      if (shouldPing && settings?.staffRoleIds) {
-        const staffRoleIds = Array.isArray(settings.staffRoleIds)
-          ? (settings.staffRoleIds as string[])
-          : [];
-        if (staffRoleIds.length > 0) {
-          const roleMentions = staffRoleIds.map((id) => `<@&${id}>`).join(" ");
-          content = `${roleMentions}\n`;
-        } else {
-          content = "@here\n";
-        }
+      if (shouldPing && pingRoleIds.length > 0) {
+        const roleMentions = pingRoleIds.map((id) => `<@&${id}>`).join(" ");
+        content = `${roleMentions}\n`;
+      } else if (shouldPing) {
+        content = "@here\n";
       }
 
       // Send full embed with proper structure (title, description, fields, etc.)
-      const allowedMentions = shouldPing && settings?.staffRoleIds 
-        ? { roles: Array.isArray(settings.staffRoleIds) ? (settings.staffRoleIds as string[]) : [] }
+      const allowedMentions = shouldPing && pingRoleIds.length > 0
+        ? { roles: pingRoleIds }
         : { roles: [] };
 
       await channel.send({
@@ -829,12 +831,14 @@ export class RoleTrackingManager {
    * @param message - Custom message data (embeds/components) or string
    * @param shouldPing - Whether to ping staff roles
    * @param roleChannelId - Optional role-specific channel ID. If not provided, falls back to guild setting.
+   * @param rolePingRoleIds - Optional role-specific roles to ping. If not provided, falls back to guild staff roles.
    */
   async sendCustomMessageToStaffChannel(
     guildId: string,
     message: string | CustomMessageData,
     shouldPing: boolean,
     roleChannelId?: string | null,
+    rolePingRoleIds?: string[] | null,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const settings = await prisma.guildSettings.findUnique({
@@ -863,22 +867,20 @@ export class RoleTrackingManager {
         return { success: false, error: "Invalid channel" };
       }
 
+      // Use role-specific ping roles if provided, otherwise fall back to guild staff roles
+      const pingRoleIds = rolePingRoleIds || (Array.isArray(settings?.staffRoleIds) ? (settings.staffRoleIds as string[]) : []);
+
       // Build content with staff ping if needed
       let content = "";
-      if (shouldPing && settings?.staffRoleIds) {
-        const staffRoleIds = Array.isArray(settings.staffRoleIds)
-          ? (settings.staffRoleIds as string[])
-          : [];
-        if (staffRoleIds.length > 0) {
-          const roleMentions = staffRoleIds.map((id) => `<@&${id}>`).join(" ");
-          content = `${roleMentions}\n`;
-        } else {
-          content = "@here\n";
-        }
+      if (shouldPing && pingRoleIds.length > 0) {
+        const roleMentions = pingRoleIds.map((id) => `<@&${id}>`).join(" ");
+        content = `${roleMentions}\n`;
+      } else if (shouldPing) {
+        content = "@here\n";
       }
 
-      const allowedMentions = shouldPing && settings?.staffRoleIds 
-        ? { roles: Array.isArray(settings.staffRoleIds) ? (settings.staffRoleIds as string[]) : [] }
+      const allowedMentions = shouldPing && pingRoleIds.length > 0
+        ? { roles: pingRoleIds }
         : { roles: [] };
 
       // If message is an object with embeds/components, send as message payload
@@ -1182,7 +1184,20 @@ export class RoleTrackingManager {
               `[RoleTracking] Assignment tracking ID for user ${member.id}: ${assignmentTracking?.id || "none"}`,
             );
 
-            // Check all conditions - if ALL pass, remove warnings and skip
+            // If no conditions are configured, skip tracking entirely
+            const activeConditions = roleConfig.conditions || [];
+            if (activeConditions.length === 0) {
+              loggers.bot.debug(
+                `[RoleTracking] No conditions configured for user ${member.id}, skipping role tracking`,
+              );
+              continue;
+            }
+
+            // Check all conditions - but don't skip warnings based on condition status
+            // Warnings should be sent at their scheduled intervals regardless of condition status
+            // Conditions are only used to determine:
+            // 1. Whether to remove warnings (when requirements are met, like patrol threshold)
+            // 2. Whether to send staff ping (when deadline exceeded)
             const conditionCheck = await this.checkAllConditions(
               guildId,
               member.id,
@@ -1195,19 +1210,11 @@ export class RoleTrackingManager {
               `[RoleTracking] Condition check for user ${member.id}: allPassed=${conditionCheck.allPassed}, failedConditions=[${conditionCheck.failedConditions.join(", ")}]`,
             );
 
-            if (conditionCheck.allPassed) {
-              loggers.bot.debug(
-                `[RoleTracking] All conditions passed for user ${member.id}, removing warnings and skipping`,
-              );
-              // Remove warnings for this assignment period so user starts back at warning 1
-              await this.removeWarningsForUser(
-                guildId,
-                member.id,
-                roleId,
-                assignmentTracking?.id,
-              );
-              continue;
-            }
+            // Note: We don't skip warning processing here even if allPassed is true
+            // TIME condition "passing" just means deadline not exceeded - warnings should still be sent at intervals
+            // Warnings will be processed below, and condition status will be used later for:
+            // - Removing warnings if patrol threshold is met
+            // - Sending staff ping if deadline is exceeded
 
             // Get patrol time in period
             const now = new Date();
@@ -1247,6 +1254,7 @@ export class RoleTrackingManager {
             // Only check patrol threshold if PATROL is an active condition
             // If only TIME is active, PATROL cannot be satisfied, so warnings shouldn't be removed
             let patrolThresholdMet = false;
+            let skipWarningsDueToThreshold = false;
             if (hasPatrolCondition) {
               patrolThresholdMet = await this.checkPatrolTimeThreshold(
                 guildId,
@@ -1271,6 +1279,8 @@ export class RoleTrackingManager {
                   roleId,
                   assignmentTracking?.id,
                 );
+                // Skip sending warnings since threshold is met
+                skipWarningsDueToThreshold = true;
                 // Skip staff ping if threshold is met (will be checked later)
               }
             } else {
@@ -1280,7 +1290,13 @@ export class RoleTrackingManager {
             }
 
             // Check each warning to see if it should be sent
-            for (const warning of roleConfig.warnings) {
+            // Skip if patrol threshold is met (warnings were already removed)
+            if (skipWarningsDueToThreshold) {
+              loggers.bot.debug(
+                `[RoleTracking] Skipping warning checks for user ${member.id} - patrol threshold met`,
+              );
+            } else {
+              for (const warning of roleConfig.warnings) {
               const warningOffsetMs = parseDurationToMs(warning.offset);
               if (!warningOffsetMs) {
                 loggers.bot.debug(
@@ -1419,6 +1435,7 @@ export class RoleTrackingManager {
                 }
               }
             }
+            } // End of else block for warning processing
 
             // Check if staff ping should be sent (skip if PATROL condition is active and threshold is met)
             // If PATROL is not active, always check staff ping regardless of patrol time
@@ -1524,11 +1541,14 @@ export class RoleTrackingManager {
 
                 // Send custom message to staff channel (not to user)
                 const shouldPing = process.env.NODE_ENV === "production";
+                // Use role-specific ping channel if set, otherwise fall back to staffChannelId or guild setting
+                const pingChannelId = roleConfig.staffPingChannelId || roleConfig.staffChannelId;
                 const staffChannelResult = await this.sendCustomMessageToStaffChannel(
                   guildId,
                   messageToSend,
                   shouldPing,
-                  roleConfig.staffChannelId,
+                  pingChannelId,
+                  roleConfig.staffPingRoleIds || undefined,
                 );
 
                 // Record staff ping
@@ -1573,7 +1593,9 @@ export class RoleTrackingManager {
                     .setColor(Colors.Red)
                     .setTimestamp();
 
-                  await this.logToStaffChannel(guildId, logEmbed, shouldPing, roleConfig.staffChannelId);
+                  // Use role-specific ping channel and roles if set
+                  const pingChannelId = roleConfig.staffPingChannelId || roleConfig.staffChannelId;
+                  await this.logToStaffChannel(guildId, logEmbed, shouldPing, pingChannelId, roleConfig.staffPingRoleIds || undefined);
                 }
               } else {
                 loggers.bot.debug(
