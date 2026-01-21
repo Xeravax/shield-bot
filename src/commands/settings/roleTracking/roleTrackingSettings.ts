@@ -1663,7 +1663,7 @@ export class SettingsRoleTrackingCommands {
         return;
       }
 
-      const role = guild.roles.cache.get(roleId);
+      const role = await guild.roles.fetch(roleId);
       if (!role) {
         await cmdInteraction.editReply({
           content: `❌ Role not found. Please make sure the role exists and is configured for tracking.`,
