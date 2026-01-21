@@ -40,6 +40,10 @@ model GuildSettings {
   loaNotificationChannelId  String? // Channel ID for LOA patrol notifications
   leaveOfAbsenceCooldownDays Int?    @default(14) // Cooldown period in days after ending LOA early
   minimumRequestTimeDays     Int?    @default(30) // Minimum LOA duration in days (default: 1 month)
+  // Role tracking settings
+  roleTrackingConfig         Json? // Map of role IDs to role tracking configurations
+  roleTrackingStaffChannelId String? // Channel ID for role tracking staff notifications
+  roleTrackingInitializedAt  DateTime? // Timestamp when role tracking was first enabled for this guild
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 }

@@ -12,6 +12,7 @@ import bodyParser from "@koa/bodyparser";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { PatrolTimerManager } from "./managers/patrol/patrolTimerManager.js";
 import { LOAManager } from "./managers/loa/loaManager.js";
+import { RoleTrackingManager } from "./managers/roleTracking/roleTrackingManager.js";
 import {
   isLoggedInAndVerified,
   loginAndGetCurrentUser,
@@ -33,6 +34,7 @@ import { BOT_INTENTS, BOT_CONFIG } from "./config/discord.js";
 
 // Validate environment variables at startup
 let env;
+let normalizedLogLevel: string;
 try {
   env = validateEnv();
   
@@ -45,6 +47,8 @@ try {
   };
   const logLevel = logLevelMap[env.LOG_LEVEL] ?? LogLevel.INFO;
   logger.setLevel(logLevel);
+  // Store normalized log level string for banner display
+  normalizedLogLevel = (env.LOG_LEVEL || "INFO").toUpperCase();
 } catch (error) {
   loggers.startup.error("Failed to validate environment variables", error);
   process.exit(1);
@@ -54,9 +58,14 @@ const databaseUrl = env.DATABASE_URL;
 const adapter = new PrismaMariaDb(databaseUrl);
 export const prisma = new PrismaClient({ adapter });
 
+// Get environment to check if we're in development
+const isDevelopmentForBot = env.ENV === "development";
+const devGuildIdForBot = "1241178553111019522";
+
 export const bot = new Client({
   intents: BOT_INTENTS,
   silent: BOT_CONFIG.silent,
+  botGuilds: isDevelopmentForBot ? [devGuildIdForBot] : undefined,
 });
 
 // Global patrol timer manager singleton
@@ -64,6 +73,9 @@ export const patrolTimer = new PatrolTimerManager(bot);
 
 // Global LOA manager singleton
 export const loaManager = new LOAManager(bot);
+
+// Global role tracking manager singleton
+export const roleTrackingManager = new RoleTrackingManager(bot, patrolTimer);
 
 bot.rest.on("rateLimited", (info) => {
   loggers.bot.warn("Rate limit hit!", {
@@ -75,11 +87,29 @@ bot.rest.on("rateLimited", (info) => {
 
 bot.once("clientReady", async () => {
   try {
-    await bot.initApplicationCommands();
+
+    if (isDevelopmentForBot) {
+      // In development: register commands to specific guild and delete global commands
+      loggers.bot.info("Development mode detected - registering commands to guild and clearing global commands");
+            
+      // Register commands to the development guild
+      // botGuilds is set in Client constructor, so initApplicationCommands will register to guild
+      await bot.initApplicationCommands();
+      
+      loggers.bot.info(`Commands registered to development guild: ${devGuildIdForBot}`);
+    } else {
+      // In production: register commands globally
+      await bot.initApplicationCommands();
+    }
+
+    const mode = isDevelopmentForBot ? "DEVELOPMENT" : "PROD";
+    const logLevel = normalizedLogLevel;
+    const left = `Mode: ${mode}`, right = `Log: ${logLevel}`;
+    const modeLogLine = `|${" ".repeat(Math.floor((24 - left.length - 2) / 2))}${left}${" ".repeat(Math.ceil((24 - left.length - 2) / 2))}|${" ".repeat(Math.floor((27 - right.length - 1) / 2))}${right}${" ".repeat(Math.ceil((27 - right.length - 1) / 2))}|`;
+    
     loggers.bot.info("###################################################");
-    loggers.bot.info("|                      |                          |");
+    loggers.bot.info(modeLogLine);
     loggers.bot.info("|                      |     S.H.I.E.L.D. Bot     |");
-    loggers.bot.info("|                      |                          |");
     loggers.bot.info("|                      |                          |");
     loggers.bot.info("|                      | stefano@stefanocoding.me |");
     loggers.bot.info("|                      |         Xeravax          |");

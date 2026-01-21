@@ -1,0 +1,41 @@
+model RoleAssignmentTracking {
+  id        Int      @id @default(autoincrement())
+  guildId   String
+  userId    Int      // Link to User model
+  roleId    String   // Discord Role ID
+  assignedAt DateTime // When user got the role
+  assignedBy String? // Discord ID of who assigned, if available from audit logs
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warnings  RoleTrackingWarning[]
+
+  @@unique([guildId, userId, roleId], map: "RoleAssignmentTracking_guild_user_role_unique")
+  @@index([guildId], map: "RoleAssignmentTracking_guild_idx")
+  @@index([userId], map: "RoleAssignmentTracking_user_idx")
+  @@index([roleId], map: "RoleAssignmentTracking_role_idx")
+  @@index([guildId, userId], map: "RoleAssignmentTracking_guild_user_idx")
+}
+
+model RoleTrackingWarning {
+  id                  Int      @id @default(autoincrement())
+  guildId             String
+  userId              Int      // Link to User model
+  roleId              String   // Discord Role ID
+  warningType         String   // "warning" | "staff_ping"
+  warningIndex        Int      // Which warning number (0-based)
+  sentAt              DateTime // When the warning was sent
+  roleAssignedAt      DateTime // When user got the role (from RoleAssignmentTracking)
+  assignmentTrackingId Int?    // Foreign key to RoleAssignmentTracking
+  createdAt           DateTime @default(now())
+
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignmentTracking RoleAssignmentTracking? @relation(fields: [assignmentTrackingId], references: [id], onDelete: Cascade)
+
+  @@index([guildId], map: "RoleTrackingWarning_guild_idx")
+  @@index([userId], map: "RoleTrackingWarning_user_idx")
+  @@index([roleId], map: "RoleTrackingWarning_role_idx")
+  @@index([guildId, userId, roleId], map: "RoleTrackingWarning_guild_user_role_idx")
+  @@unique([guildId, userId, roleId, warningIndex, roleAssignedAt], map: "RoleTrackingWarning_duplicate_prevention_unique")
+}

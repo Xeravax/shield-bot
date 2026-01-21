@@ -12,6 +12,8 @@ model User {
   voicePatrolMonthly     VoicePatrolMonthlyTime[]
   userPreferences        UserPreferences?
   leaveOfAbsences        LeaveOfAbsence[]
+  roleAssignmentTracking RoleAssignmentTracking[]
+  roleTrackingWarnings   RoleTrackingWarning[]
 }
 
 model VRChatAccount {
