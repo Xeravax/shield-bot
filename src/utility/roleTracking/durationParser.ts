@@ -49,29 +49,51 @@ export function isValidDuration(durationString: string): boolean {
 /**
  * Convert milliseconds to a human-readable duration string
  * @param ms - Milliseconds
- * @returns Human-readable string (e.g., "2 weeks", "30 days")
+ * @returns Human-readable string (e.g., "1 week 1 day", "2 months 5 days")
  */
 export function msToDurationString(ms: number): string {
   if (ms < 0) {
     return "0 days";
   }
 
-  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
-  const weeks = Math.floor(days / 7);
-  const months = Math.floor(days / 30);
-  const years = Math.floor(days / 365);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const msPerWeek = 7 * msPerDay;
+  const msPerMonth = 30 * msPerDay;
+  const msPerYear = 365 * msPerDay;
 
+  let remaining = ms;
+  const parts: string[] = [];
+
+  // Years
+  const years = Math.floor(remaining / msPerYear);
   if (years > 0) {
-    return `${years} ${years === 1 ? "year" : "years"}`;
+    parts.push(`${years} ${years === 1 ? "year" : "years"}`);
+    remaining = remaining % msPerYear;
   }
+
+  // Months
+  const months = Math.floor(remaining / msPerMonth);
   if (months > 0) {
-    return `${months} ${months === 1 ? "month" : "months"}`;
+    parts.push(`${months} ${months === 1 ? "month" : "months"}`);
+    remaining = remaining % msPerMonth;
   }
+
+  // Weeks
+  const weeks = Math.floor(remaining / msPerWeek);
   if (weeks > 0) {
-    return `${weeks} ${weeks === 1 ? "week" : "weeks"}`;
+    parts.push(`${weeks} ${weeks === 1 ? "week" : "weeks"}`);
+    remaining = remaining % msPerWeek;
   }
+
+  // Days
+  const days = Math.floor(remaining / msPerDay);
   if (days > 0) {
-    return `${days} ${days === 1 ? "day" : "days"}`;
+    parts.push(`${days} ${days === 1 ? "day" : "days"}`);
   }
-  return "0 days";
+
+  if (parts.length === 0) {
+    return "0 days";
+  }
+
+  return parts.join(" ");
 }

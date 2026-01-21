@@ -53,9 +53,11 @@ export function initializeRoleTrackingSchedule(client: Client): cron.ScheduledTa
   loggers.schedules.info("Initializing role tracking schedule...");
 
   // Schedule to run daily at 8 PM UTC
-  const job = cron.schedule("0 21 * * *", async () => {
+  const job = cron.schedule("0 20 * * *", async () => {
     loggers.schedules.info("Cron job triggered: Role tracking check");
     await checkRoleTracking(client);
+  }, {
+    timezone: "UTC",
   });
 
   loggers.schedules.info("Role tracking schedule initialized. Will run daily at 8 PM UTC.");

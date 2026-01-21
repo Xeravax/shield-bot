@@ -56,8 +56,7 @@ const adapter = new PrismaMariaDb(databaseUrl);
 export const prisma = new PrismaClient({ adapter });
 
 // Get environment to check if we're in development
-const envForBot = validateEnv();
-const isDevelopmentForBot = envForBot.ENV === "development";
+const isDevelopmentForBot = env.ENV === "development";
 const devGuildIdForBot = "1241178553111019522";
 
 export const bot = new Client({

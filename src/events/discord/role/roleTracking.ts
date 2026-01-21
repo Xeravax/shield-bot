@@ -1,7 +1,6 @@
 import { ArgsOf, Discord, On } from "discordx";
-import { prisma } from "../../../main.js";
+import { prisma, roleTrackingManager } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
-import { roleTrackingManager } from "../../../main.js";
 
 @Discord()
 export class RoleTrackingEvents {

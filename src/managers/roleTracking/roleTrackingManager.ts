@@ -285,15 +285,30 @@ export class RoleTrackingManager {
         where: {
           guildId,
           userId,
-          OR: [
-            // Records that fall entirely within the period
+          AND: [
+            // Left bound: year > startYear OR (year === startYear AND month >= startMonth)
             {
-              year: { gte: startYear },
-              month: { gte: startMonth },
+              OR: [
+                { year: { gt: startYear } },
+                {
+                  AND: [
+                    { year: startYear },
+                    { month: { gte: startMonth } },
+                  ],
+                },
+              ],
             },
+            // Right bound: year < endYear OR (year === endYear AND month <= endMonth)
             {
-              year: { lte: endYear },
-              month: { lte: endMonth },
+              OR: [
+                { year: { lt: endYear } },
+                {
+                  AND: [
+                    { year: endYear },
+                    { month: { lte: endMonth } },
+                  ],
+                },
+              ],
             },
           ],
         },
@@ -1549,17 +1564,6 @@ export class RoleTrackingManager {
                   roleConfig.staffPingRoleIds || undefined,
                 );
 
-                // Record staff ping
-                await this.recordWarningSent(
-                  guildId,
-                  member.id,
-                  roleId,
-                  "staff_ping",
-                  -1,
-                  assignmentDate,
-                  assignmentTracking?.id,
-                );
-
                 // Log to staff channel WITH ping (fallback embed if custom message failed)
                 if (!staffChannelResult.success) {
                   const logEmbedFields = [
@@ -1594,6 +1598,18 @@ export class RoleTrackingManager {
                   // Use role-specific ping channel and roles if set
                   const pingChannelId = roleConfig.staffPingChannelId || roleConfig.staffChannelId;
                   await this.logToStaffChannel(guildId, logEmbed, shouldPing, pingChannelId, roleConfig.staffPingRoleIds || undefined);
+                  // Don't record warning if primary delivery failed (fallback was used)
+                } else {
+                  // Record staff ping only if primary delivery succeeded
+                  await this.recordWarningSent(
+                    guildId,
+                    member.id,
+                    roleId,
+                    "staff_ping",
+                    -1,
+                    assignmentDate,
+                    assignmentTracking?.id,
+                  );
                 }
               } else {
                 loggers.bot.debug(

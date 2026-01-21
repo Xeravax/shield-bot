@@ -37,5 +37,5 @@ model RoleTrackingWarning {
   @@index([userId], map: "RoleTrackingWarning_user_idx")
   @@index([roleId], map: "RoleTrackingWarning_role_idx")
   @@index([guildId, userId, roleId], map: "RoleTrackingWarning_guild_user_role_idx")
-  @@index([guildId, userId, roleId, warningIndex, roleAssignedAt], map: "RoleTrackingWarning_duplicate_prevention_idx")
+  @@unique([guildId, userId, roleId, warningIndex, roleAssignedAt], map: "RoleTrackingWarning_duplicate_prevention_unique")
 }

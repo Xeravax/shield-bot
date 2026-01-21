@@ -254,11 +254,21 @@ export class SettingsRoleTrackingCommands {
       
       const warnings = [];
       for (let i = 2; i <= months; i++) {
+        // Compute ordinal suffix
+        const getOrdinalSuffix = (n: number): string => {
+          const j = n % 10;
+          const k = n % 100;
+          if (j === 1 && k !== 11) return "st";
+          if (j === 2 && k !== 12) return "nd";
+          if (j === 3 && k !== 13) return "rd";
+          return "th";
+        };
+        const suffix = getOrdinalSuffix(i);
         warnings.push({
           index: i - 2,
           offset: `${i} months`,
           type: "warning",
-          message: `Hello! This is your ${i === months ? `${i}rd` : `${i}nd`} month reminder for the {roleName} role. You have ${months - i + 1} month${months - i + 1 > 1 ? "s" : ""} remaining. Keep up with your patrol time! If you need extended time off from S.H.I.E.L.D., please request a Leave of Absence (LOA).`,
+          message: `Hello! This is your ${i}${suffix} month reminder for the {roleName} role. You have ${months - i + 1} month${months - i + 1 > 1 ? "s" : ""} remaining. Keep up with your patrol time! If you need extended time off from S.H.I.E.L.D., please request a Leave of Absence (LOA).`,
         });
       }
 
@@ -1496,6 +1506,15 @@ export class SettingsRoleTrackingCommands {
 
     const role = roleId ? cmdInteraction.guild?.roles.cache.get(roleId) : null;
 
+    // Check if roleId is provided but role is not found
+    if (roleId && !role) {
+      await cmdInteraction.reply({
+        content: "❌ Role not found.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     try {
       const now = new Date();
 
@@ -1908,6 +1927,9 @@ export class SettingsRoleTrackingCommands {
         return;
       }
 
+      // Defer reply before long-running operations
+      await cmdInteraction.deferReply({ ephemeral: true });
+
       // Parse custom message data if provided
       let customMessageData: CustomMessageData | null = null;
       if (messageFile) {
@@ -1916,9 +1938,8 @@ export class SettingsRoleTrackingCommands {
           customMessageData = JSON.parse(fileContent);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          await cmdInteraction.reply({
+          await cmdInteraction.editReply({
             content: `❌ Failed to parse JSON from file attachment: ${errorMessage}`,
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -1927,9 +1948,8 @@ export class SettingsRoleTrackingCommands {
           customMessageData = JSON.parse(messageJson);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          await cmdInteraction.reply({
+          await cmdInteraction.editReply({
             content: `❌ Failed to parse JSON: ${errorMessage}`,
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -1938,23 +1958,20 @@ export class SettingsRoleTrackingCommands {
       // Validate JSON structure if custom message data is provided
       if (customMessageData) {
         if (!customMessageData.embeds && !customMessageData.components) {
-          await cmdInteraction.reply({
+          await cmdInteraction.editReply({
             content: "❌ JSON must contain at least 'embeds' or 'components'",
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
         if (customMessageData.embeds && !Array.isArray(customMessageData.embeds)) {
-          await cmdInteraction.reply({
+          await cmdInteraction.editReply({
             content: "❌ 'embeds' must be an array",
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
         if (customMessageData.components && !Array.isArray(customMessageData.components)) {
-          await cmdInteraction.reply({
+          await cmdInteraction.editReply({
             content: "❌ 'components' must be an array",
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -1967,9 +1984,8 @@ export class SettingsRoleTrackingCommands {
       const currentConfig = (settings?.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
 
       if (!currentConfig[role.id]) {
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: `❌ Role <@&${role.id}> is not configured for tracking. Use \`/settings role-tracking add-role\` first.`,
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -1979,17 +1995,15 @@ export class SettingsRoleTrackingCommands {
       const offsetMs = parseDurationToMs(offset);
 
       if (!deadlineMs || !offsetMs) {
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: "❌ Failed to parse durations.",
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
       if (offsetMs > deadlineMs) {
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: `❌ Warning offset "${offset}" exceeds deadline "${roleConfig.deadlineDuration}".`,
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -2042,9 +2056,8 @@ export class SettingsRoleTrackingCommands {
       // Validate configuration
       const validation = roleTrackingManager.validateRoleTrackingConfig(newConfig[role.id]);
       if (!validation.valid) {
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: `❌ Configuration validation failed:\n${validation.errors.map((e) => `• ${e}`).join("\n")}`,
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -2055,16 +2068,21 @@ export class SettingsRoleTrackingCommands {
       });
 
       const action = existingIndex >= 0 ? "updated" : "added";
-      await cmdInteraction.reply({
+      await cmdInteraction.editReply({
         content: `✅ Warning #${finalWarningNumber} ${action} for <@&${role.id}> at offset ${offset}.`,
-        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       loggers.bot.error("Error configuring warning", error);
-      await cmdInteraction.reply({
-        content: `❌ Failed to configure warning: ${error instanceof Error ? error.message : "Unknown error"}`,
-        flags: MessageFlags.Ephemeral,
-      });
+      if (cmdInteraction.deferred) {
+        await cmdInteraction.editReply({
+          content: `❌ Failed to configure warning: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      } else {
+        await cmdInteraction.reply({
+          content: `❌ Failed to configure warning: ${error instanceof Error ? error.message : "Unknown error"}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
     }
   }
 
@@ -2159,6 +2177,9 @@ export class SettingsRoleTrackingCommands {
         return;
       }
 
+      // Defer reply before long-running operations
+      await interaction.deferReply({ ephemeral: true });
+
       // Parse custom message data
       let customMessageData: CustomMessageData | null = null;
       if (messageFile) {
@@ -2167,9 +2188,8 @@ export class SettingsRoleTrackingCommands {
           customMessageData = JSON.parse(fileContent);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Failed to parse JSON from file attachment: ${errorMessage}`,
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -2178,9 +2198,8 @@ export class SettingsRoleTrackingCommands {
           customMessageData = JSON.parse(messageJson);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          await interaction.reply({
+          await interaction.editReply({
             content: `❌ Failed to parse JSON: ${errorMessage}`,
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -2189,23 +2208,20 @@ export class SettingsRoleTrackingCommands {
       // Validate JSON structure
       if (customMessageData) {
         if (!customMessageData.embeds && !customMessageData.components) {
-          await interaction.reply({
+          await interaction.editReply({
             content: "❌ JSON must contain at least 'embeds' or 'components'",
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
         if (customMessageData.embeds && !Array.isArray(customMessageData.embeds)) {
-          await interaction.reply({
+          await interaction.editReply({
             content: "❌ 'embeds' must be an array",
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
         if (customMessageData.components && !Array.isArray(customMessageData.components)) {
-          await interaction.reply({
+          await interaction.editReply({
             content: "❌ 'components' must be an array",
-            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -2224,16 +2240,21 @@ export class SettingsRoleTrackingCommands {
         data: { roleTrackingConfig: newConfig as any },
       });
 
-      await interaction.reply({
+      await interaction.editReply({
         content: `✅ Custom staff ping message configured for <@&${role.id}>.`,
-        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       loggers.bot.error("Error configuring staff ping", error);
-      await interaction.reply({
-        content: `❌ Failed to configure staff ping: ${error instanceof Error ? error.message : "Unknown error"}`,
-        flags: MessageFlags.Ephemeral,
-      });
+      if (interaction.deferred) {
+        await interaction.editReply({
+          content: `❌ Failed to configure staff ping: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      } else {
+        await interaction.reply({
+          content: `❌ Failed to configure staff ping: ${error instanceof Error ? error.message : "Unknown error"}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
     }
   }
 
