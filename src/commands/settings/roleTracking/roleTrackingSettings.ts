@@ -1899,36 +1899,33 @@ export class SettingsRoleTrackingCommands {
       return;
     }
 
+    // Defer reply as soon as we know it's not autocomplete and it's in a guild
+    await cmdInteraction.deferReply({ ephemeral: true });
+
     const warningNumber = warningNumberStr !== null ? parseInt(warningNumberStr, 10) : null;
 
     try {
       if (warningNumber !== null && (isNaN(warningNumber) || warningNumber < 0)) {
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: "❌ Warning number must be 0 or greater.",
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
       if (!isValidDuration(offset)) {
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: `❌ Invalid offset format: "${offset}". Use formats like "1 week", "2 months", etc.`,
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
       // Validate that either message or message_json/message_file is provided
       if (!message && !messageJson && !messageFile) {
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: "❌ Either 'message', 'message_json', or 'message_file' must be provided.",
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
-
-      // Defer reply before long-running operations
-      await cmdInteraction.deferReply({ ephemeral: true });
 
       // Parse custom message data if provided
       let customMessageData: CustomMessageData | null = null;

@@ -34,6 +34,7 @@ import { BOT_INTENTS, BOT_CONFIG } from "./config/discord.js";
 
 // Validate environment variables at startup
 let env;
+let normalizedLogLevel: string;
 try {
   env = validateEnv();
   
@@ -46,6 +47,8 @@ try {
   };
   const logLevel = logLevelMap[env.LOG_LEVEL] ?? LogLevel.INFO;
   logger.setLevel(logLevel);
+  // Store normalized log level string for banner display
+  normalizedLogLevel = (env.LOG_LEVEL || "INFO").toUpperCase();
 } catch (error) {
   loggers.startup.error("Failed to validate environment variables", error);
   process.exit(1);
@@ -100,7 +103,7 @@ bot.once("clientReady", async () => {
     }
 
     const mode = isDevelopmentForBot ? "DEVELOPMENT" : "PROD";
-    const logLevel = process.env.LOG_LEVEL?.toUpperCase() || "INFO";
+    const logLevel = normalizedLogLevel;
     const left = `Mode: ${mode}`, right = `Log: ${logLevel}`;
     const modeLogLine = `|${" ".repeat(Math.floor((24 - left.length - 2) / 2))}${left}${" ".repeat(Math.ceil((24 - left.length - 2) / 2))}|${" ".repeat(Math.floor((27 - right.length - 1) / 2))}${right}${" ".repeat(Math.ceil((27 - right.length - 1) / 2))}|`;
     

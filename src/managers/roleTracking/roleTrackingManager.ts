@@ -595,25 +595,33 @@ export class RoleTrackingManager {
           try {
             await guild.members.fetch(user.discordId);
             // User exists, skip
-          } catch {
-            // User doesn't exist or has left - clean up their records
-            await prisma.roleTrackingWarning.deleteMany({
-              where: { guildId, userId },
-            });
-            await prisma.roleAssignmentTracking.deleteMany({
-              where: { guildId, userId },
-            });
-            cleanupCount++;
+          } catch (error: any) {
+            // Only delete if error code is 10007 (Unknown Member)
+            // Other errors (network, rate-limit, etc.) should not trigger deletion
+            const errorCode = error?.code;
+            if (errorCode === 10007) {
+              // User doesn't exist or has left - clean up their records
+              await prisma.roleTrackingWarning.deleteMany({
+                where: { guildId, userId },
+              });
+              await prisma.roleAssignmentTracking.deleteMany({
+                where: { guildId, userId },
+              });
+              cleanupCount++;
+            } else {
+              // Log other errors and skip deletion
+              loggers.bot.warn(
+                `Failed to fetch member for cleanup check (userId: ${userId}, discordId: ${user.discordId}, errorCode: ${errorCode})`,
+                error,
+              );
+            }
           }
-        } catch {
-          // Error fetching user or member - clean up
-          await prisma.roleTrackingWarning.deleteMany({
-            where: { guildId, userId },
-          });
-          await prisma.roleAssignmentTracking.deleteMany({
-            where: { guildId, userId },
-          });
-          cleanupCount++;
+        } catch (error) {
+          // Error fetching user from database - log and skip (don't delete on DB errors)
+          loggers.bot.error(
+            `Failed to fetch user for cleanup check (userId: ${userId})`,
+            error,
+          );
         }
       }
 
