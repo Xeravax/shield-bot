@@ -2,33 +2,42 @@ import {
   Client,
   EmbedBuilder,
   Colors,
-  TextDisplayBuilder,
-  ContainerBuilder,
-  MessageFlags,
   TextChannel,
+  MessageCreateOptions,
 } from "discord.js";
 import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
 import { parseDurationToMs, isValidDuration, msToDurationString } from "../../utility/roleTracking/durationParser.js";
 import { patrolTimer } from "../../main.js";
 
+export type ConditionType = "PATROL" | "TIME";
+
 export interface RoleTrackingConfig {
   enabled: boolean;
   roleName: string;
   deadlineDuration: string;
+  conditions?: ConditionType[]; // Conditions to check (PATROL, TIME, or both). Defaults to empty array if not set.
   patrolTimeThresholdHours?: number | null;
   warnings: Array<{
     index: number;
     offset: string;
     type: string;
     message: string;
+    customMessage?: CustomMessageData;
   }>;
   staffPingOffset: string;
-  staffPingMessage: string;
+  staffPingMessage: string | CustomMessageData; // Can be string template or embed structure
+  customStaffPingMessage?: CustomMessageData;
+  staffChannelId?: string | null; // Optional per-role staff channel, falls back to guild setting if not set
 }
 
 export interface RoleTrackingConfigMap {
   [roleId: string]: RoleTrackingConfig;
+}
+
+export interface CustomMessageData {
+  embeds?: Array<Record<string, unknown>>;
+  components?: Array<Record<string, unknown>>;
 }
 
 export interface ValidationResult {
@@ -114,14 +123,41 @@ export class RoleTrackingManager {
 
   /**
    * Track when a tracked role is removed
+   * Removes role assignment tracking and all warnings - user is fully reset
+   * Uses cascade delete for warnings linked to assignment tracking
    */
-  async trackRoleRemoval(_guildId: string, _userId: string, _roleId: string): Promise<void> {
-    // Keep assignment record for historical purposes
-    // The system will check if user still has the role before sending warnings
+  async trackRoleRemoval(guildId: string, discordId: string, roleId: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdFromDiscordId(discordId);
+      if (!userId) {
+        loggers.bot.error(`Failed to get User ID for Discord ID ${discordId}`);
+        return;
+      }
+
+      // Remove role assignment tracking record (cascade delete will remove linked warnings)
+      await prisma.roleAssignmentTracking.deleteMany({
+        where: {
+          guildId,
+          userId,
+          roleId,
+        },
+      });
+
+
+      loggers.bot.info(
+        `Removed role tracking assignment and all warnings for user ${discordId}, role ${roleId} in guild ${guildId} - user fully reset`,
+      );
+    } catch (error) {
+      loggers.bot.error(
+        `Failed to remove role tracking data for user ${discordId}, role ${roleId} in guild ${guildId}`,
+        error,
+      );
+    }
   }
 
   /**
    * Handle LOA role removal - reset all timers for this user
+   * Also removes all warnings so user starts fresh
    */
   async handleLOARoleRemoval(guildId: string, discordId: string): Promise<void> {
     try {
@@ -130,6 +166,14 @@ export class RoleTrackingManager {
         loggers.bot.error(`Failed to get User ID for Discord ID ${discordId}`);
         return;
       }
+
+      // Remove all warnings for this user (they'll start fresh after LOA)
+      await prisma.roleTrackingWarning.deleteMany({
+        where: {
+          guildId,
+          userId,
+        },
+      });
 
       const now = new Date();
       await prisma.roleAssignmentTracking.updateMany({
@@ -312,6 +356,9 @@ export class RoleTrackingManager {
   ): Promise<boolean> {
     // If no threshold is set, return false (warn only if patrol time is zero)
     if (!roleConfig.patrolTimeThresholdHours) {
+      loggers.bot.debug(
+        `[RoleTracking] No patrol threshold set for user ${userId} in guild ${guildId}`,
+      );
       return false;
     }
 
@@ -324,7 +371,98 @@ export class RoleTrackingManager {
     );
 
     const patrolTimeHours = patrolTimeMs / (1000 * 60 * 60);
-    return patrolTimeHours >= roleConfig.patrolTimeThresholdHours;
+    const thresholdMet = patrolTimeHours >= roleConfig.patrolTimeThresholdHours;
+    
+    loggers.bot.debug(
+      `[RoleTracking] Threshold check for user ${userId}: ${patrolTimeHours.toFixed(2)}/${roleConfig.patrolTimeThresholdHours} hours, met=${thresholdMet}`,
+    );
+    
+    return thresholdMet;
+  }
+
+  /**
+   * Check all conditions for a role assignment
+   * Returns true if ALL conditions pass, false if ANY condition fails
+   */
+  async checkAllConditions(
+    guildId: string,
+    userId: string,
+    roleId: string,
+    roleConfig: RoleTrackingConfig,
+    assignmentDate: Date,
+  ): Promise<{ allPassed: boolean; failedConditions: ConditionType[] }> {
+    const conditions = roleConfig.conditions || [];
+    
+    // If no conditions specified, all conditions pass (no tracking)
+    if (conditions.length === 0) {
+      loggers.bot.debug(
+        `[RoleTracking] No conditions specified for user ${userId}, role ${roleId} - all conditions pass`,
+      );
+      return {
+        allPassed: true,
+        failedConditions: [],
+      };
+    }
+    
+    const conditionsToCheck = conditions;
+    
+    loggers.bot.debug(
+      `[RoleTracking] Checking conditions for user ${userId}, role ${roleId}: [${conditionsToCheck.join(", ")}]`,
+    );
+    
+    const failedConditions: ConditionType[] = [];
+    
+    // Check PATROL condition
+    if (conditionsToCheck.includes("PATROL")) {
+      const patrolThresholdMet = await this.checkPatrolTimeThreshold(
+        guildId,
+        userId,
+        roleId,
+        roleConfig,
+        assignmentDate,
+      );
+      
+      if (!patrolThresholdMet) {
+        failedConditions.push("PATROL");
+        loggers.bot.debug(
+          `[RoleTracking] PATROL condition failed for user ${userId}`,
+        );
+      } else {
+        loggers.bot.debug(
+          `[RoleTracking] PATROL condition passed for user ${userId}`,
+        );
+      }
+    }
+    
+    // Check TIME condition
+    if (conditionsToCheck.includes("TIME")) {
+      const now = new Date();
+      const deadlineMs = parseDurationToMs(roleConfig.deadlineDuration);
+      
+      if (deadlineMs) {
+        const timeSinceAssignment = now.getTime() - assignmentDate.getTime();
+        // TIME condition passes if we haven't exceeded the deadline
+        if (timeSinceAssignment >= deadlineMs) {
+          failedConditions.push("TIME");
+          loggers.bot.debug(
+            `[RoleTracking] TIME condition failed for user ${userId} (time since: ${msToDurationString(timeSinceAssignment)}, deadline: ${msToDurationString(deadlineMs)})`,
+          );
+        } else {
+          loggers.bot.debug(
+            `[RoleTracking] TIME condition passed for user ${userId} (time since: ${msToDurationString(timeSinceAssignment)}, deadline: ${msToDurationString(deadlineMs)})`,
+          );
+        }
+      }
+    }
+    
+    loggers.bot.debug(
+      `[RoleTracking] Condition check result for user ${userId}: allPassed=${failedConditions.length === 0}, failedConditions=[${failedConditions.join(", ")}]`,
+    );
+    
+    return {
+      allPassed: failedConditions.length === 0,
+      failedConditions,
+    };
   }
 
   /**
@@ -339,6 +477,9 @@ export class RoleTrackingManager {
     try {
       const userId = await this.getUserIdFromDiscordId(discordId);
       if (!userId) {
+        loggers.bot.debug(
+          `[RoleTracking] Cannot remove warnings for user ${discordId} - user ID not found`,
+        );
         return;
       }
 
@@ -355,11 +496,22 @@ export class RoleTrackingManager {
 
       if (assignmentTrackingId) {
         where.assignmentTrackingId = assignmentTrackingId;
+        loggers.bot.debug(
+          `[RoleTracking] Removing warnings for user ${discordId}, role ${roleId}, assignmentTrackingId ${assignmentTrackingId}`,
+        );
+      } else {
+        loggers.bot.debug(
+          `[RoleTracking] Removing all warnings for user ${discordId}, role ${roleId}`,
+        );
       }
 
-      await prisma.roleTrackingWarning.deleteMany({
+      const deletedCount = await prisma.roleTrackingWarning.deleteMany({
         where,
       });
+
+      loggers.bot.debug(
+        `[RoleTracking] Removed ${deletedCount.count} warning(s) for user ${discordId}, role ${roleId}`,
+      );
     } catch (error) {
       loggers.bot.error(
         `Failed to remove warnings for user ${discordId}, role ${roleId} in guild ${guildId}`,
@@ -466,6 +618,7 @@ export class RoleTrackingManager {
 
   /**
    * Check if user has received a specific warning
+   * Checks by assignmentTrackingId if available to prevent duplicates when assignment date changes
    */
   async hasReceivedWarning(
     guildId: string,
@@ -473,13 +626,37 @@ export class RoleTrackingManager {
     roleId: string,
     warningIndex: number,
     roleAssignedAt: Date,
+    assignmentTrackingId?: number,
   ): Promise<boolean> {
     try {
       const userId = await this.getUserIdFromDiscordId(discordId);
       if (!userId) {
+        loggers.bot.debug(
+          `[RoleTracking] Cannot check warning for user ${discordId} - user ID not found`,
+        );
         return false;
       }
 
+      // If assignmentTrackingId is provided, check by that to prevent duplicates
+      // when assignment date changes (e.g., LOA reset)
+      if (assignmentTrackingId) {
+        const warning = await prisma.roleTrackingWarning.findFirst({
+          where: {
+            guildId,
+            userId,
+            roleId,
+            warningIndex,
+            assignmentTrackingId,
+          },
+        });
+        const hasReceived = !!warning;
+        loggers.bot.debug(
+          `[RoleTracking] Warning check for user ${discordId}, warningIndex ${warningIndex}, assignmentTrackingId ${assignmentTrackingId}: ${hasReceived ? "found" : "not found"}`,
+        );
+        return hasReceived;
+      }
+
+      // Fallback to checking by roleAssignedAt for backward compatibility
       const warning = await prisma.roleTrackingWarning.findFirst({
         where: {
           guildId,
@@ -490,7 +667,11 @@ export class RoleTrackingManager {
         },
       });
 
-      return !!warning;
+      const hasReceived = !!warning;
+      loggers.bot.debug(
+        `[RoleTracking] Warning check for user ${discordId}, warningIndex ${warningIndex}, roleAssignedAt ${roleAssignedAt.toISOString()}: ${hasReceived ? "found" : "not found"}`,
+      );
+      return hasReceived;
     } catch (error) {
       loggers.bot.error(
         `Failed to check warning for user ${discordId}, role ${roleId} in guild ${guildId}`,
@@ -542,10 +723,22 @@ export class RoleTrackingManager {
   /**
    * Send warning DM to user
    */
-  async sendWarningDM(userId: string, message: string): Promise<{ success: boolean; error?: string }> {
+  async sendWarningDM(
+    userId: string,
+    message: string | CustomMessageData,
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       const user = await this.client.users.fetch(userId);
-      await user.send(message);
+      
+      // If message is an object with embeds/components, send as message payload
+      if (typeof message === "object" && (message.embeds || message.components)) {
+        // Cast to MessageCreateOptions - Discord.js will validate at runtime
+        await user.send(message as unknown as MessageCreateOptions);
+      } else {
+        // Otherwise send as plain text
+        await user.send(message as string);
+      }
+      
       return { success: true };
     } catch (error) {
       const errorMessage =
@@ -556,11 +749,16 @@ export class RoleTrackingManager {
 
   /**
    * Log to staff channel with optional ping
+   * @param guildId - Guild ID
+   * @param embed - Embed to send
+   * @param shouldPing - Whether to ping staff roles
+   * @param roleChannelId - Optional role-specific channel ID. If not provided, falls back to guild setting.
    */
   async logToStaffChannel(
     guildId: string,
     embed: EmbedBuilder,
     shouldPing: boolean,
+    roleChannelId?: string | null,
   ): Promise<void> {
     try {
       const settings = await prisma.guildSettings.findUnique({
@@ -568,7 +766,10 @@ export class RoleTrackingManager {
         select: { roleTrackingStaffChannelId: true, staffRoleIds: true },
       });
 
-      if (!settings?.roleTrackingStaffChannelId) {
+      // Use role-specific channel if provided, otherwise fall back to guild setting
+      const channelId = roleChannelId || settings?.roleTrackingStaffChannelId;
+
+      if (!channelId) {
         loggers.bot.debug(
           `No role tracking staff channel configured for guild ${guildId}`,
         );
@@ -576,19 +777,19 @@ export class RoleTrackingManager {
       }
 
       const channel = (await this.client.channels.fetch(
-        settings.roleTrackingStaffChannelId,
+        channelId,
       )) as TextChannel;
 
       if (!channel || !channel.isTextBased()) {
         loggers.bot.warn(
-          `Invalid role tracking staff channel ${settings.roleTrackingStaffChannelId} for guild ${guildId}`,
+          `Invalid role tracking staff channel ${channelId} for guild ${guildId}`,
         );
         return;
       }
 
       // Build content with staff ping if needed
       let content = "";
-      if (shouldPing && settings.staffRoleIds) {
+      if (shouldPing && settings?.staffRoleIds) {
         const staffRoleIds = Array.isArray(settings.staffRoleIds)
           ? (settings.staffRoleIds as string[])
           : [];
@@ -600,18 +801,15 @@ export class RoleTrackingManager {
         }
       }
 
-      // Use ComponentsV2 format similar to whitelist logger
-      const textDisplay = new TextDisplayBuilder()
-        .setContent(content + embed.data.description || "");
-
-      const container = new ContainerBuilder()
-        .setAccentColor(embed.data.color || Colors.Orange)
-        .addTextDisplayComponents([textDisplay]);
+      // Send full embed with proper structure (title, description, fields, etc.)
+      const allowedMentions = shouldPing && settings?.staffRoleIds 
+        ? { roles: Array.isArray(settings.staffRoleIds) ? (settings.staffRoleIds as string[]) : [] }
+        : { roles: [] };
 
       await channel.send({
-        components: [container],
-        flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { roles: shouldPing && settings.staffRoleIds ? (Array.isArray(settings.staffRoleIds) ? (settings.staffRoleIds as string[]) : []) : [] },
+        content: content || undefined,
+        embeds: [embed],
+        allowedMentions,
       });
 
       loggers.bot.info(
@@ -626,10 +824,122 @@ export class RoleTrackingManager {
   }
 
   /**
+   * Send custom message to staff channel with optional ping
+   * @param guildId - Guild ID
+   * @param message - Custom message data (embeds/components) or string
+   * @param shouldPing - Whether to ping staff roles
+   * @param roleChannelId - Optional role-specific channel ID. If not provided, falls back to guild setting.
+   */
+  async sendCustomMessageToStaffChannel(
+    guildId: string,
+    message: string | CustomMessageData,
+    shouldPing: boolean,
+    roleChannelId?: string | null,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId },
+        select: { roleTrackingStaffChannelId: true, staffRoleIds: true },
+      });
+
+      // Use role-specific channel if provided, otherwise fall back to guild setting
+      const channelId = roleChannelId || settings?.roleTrackingStaffChannelId;
+
+      if (!channelId) {
+        loggers.bot.debug(
+          `No role tracking staff channel configured for guild ${guildId}`,
+        );
+        return { success: false, error: "No staff channel configured" };
+      }
+
+      const channel = (await this.client.channels.fetch(
+        channelId,
+      )) as TextChannel;
+
+      if (!channel || !channel.isTextBased()) {
+        loggers.bot.warn(
+          `Invalid role tracking staff channel ${channelId} for guild ${guildId}`,
+        );
+        return { success: false, error: "Invalid channel" };
+      }
+
+      // Build content with staff ping if needed
+      let content = "";
+      if (shouldPing && settings?.staffRoleIds) {
+        const staffRoleIds = Array.isArray(settings.staffRoleIds)
+          ? (settings.staffRoleIds as string[])
+          : [];
+        if (staffRoleIds.length > 0) {
+          const roleMentions = staffRoleIds.map((id) => `<@&${id}>`).join(" ");
+          content = `${roleMentions}\n`;
+        } else {
+          content = "@here\n";
+        }
+      }
+
+      const allowedMentions = shouldPing && settings?.staffRoleIds 
+        ? { roles: Array.isArray(settings.staffRoleIds) ? (settings.staffRoleIds as string[]) : [] }
+        : { roles: [] };
+
+      // If message is an object with embeds/components, send as message payload
+      if (typeof message === "object" && (message.embeds || message.components)) {
+        // Prepend ping content if needed
+        const messagePayload: MessageCreateOptions = {
+          ...(message as MessageCreateOptions),
+          content: content + ((message as MessageCreateOptions).content || ""),
+          allowedMentions,
+        };
+        await channel.send(messagePayload);
+      } else {
+        // Otherwise send as plain text with ping
+        await channel.send({
+          content: content + (message as string),
+          allowedMentions,
+        });
+      }
+
+      loggers.bot.info(
+        `Sent custom message to staff channel for guild ${guildId}`,
+      );
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      loggers.bot.error(
+        `Failed to send custom message to staff channel for guild ${guildId}`,
+        error,
+      );
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
    * Validate role tracking configuration
    */
   validateRoleTrackingConfig(roleConfig: RoleTrackingConfig): ValidationResult {
     const errors: string[] = [];
+
+    // Validate conditions (optional - empty array means no conditions/tracking)
+    if (roleConfig.conditions !== undefined) {
+      if (!Array.isArray(roleConfig.conditions)) {
+        errors.push("conditions must be an array");
+      } else if (roleConfig.conditions.length > 0) {
+        const validConditions: ConditionType[] = ["PATROL", "TIME"];
+        for (const condition of roleConfig.conditions) {
+          if (!validConditions.includes(condition)) {
+            errors.push(`Invalid condition: "${condition}". Must be one of: ${validConditions.join(", ")}`);
+          }
+        }
+        
+        // If PATROL condition is used, patrolTimeThresholdHours must be set
+        if (roleConfig.conditions.includes("PATROL")) {
+          if (roleConfig.patrolTimeThresholdHours === null || roleConfig.patrolTimeThresholdHours === undefined) {
+            errors.push("patrolTimeThresholdHours must be set when using PATROL condition");
+          }
+        }
+      }
+      // Empty array is valid - means no conditions/tracking
+    }
 
     // Validate deadline duration
     if (!isValidDuration(roleConfig.deadlineDuration)) {
@@ -720,11 +1030,50 @@ export class RoleTrackingManager {
     let result = template;
 
     for (const [key, value] of Object.entries(variables)) {
-      const placeholder = `{${key}}`;
-      result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), String(value));
+      // Escape special regex characters in the key (but not curly braces)
+      const escapedKey = key.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+      // Create placeholder pattern: {key} - escape curly braces for regex literal match
+      const placeholder = `\\{${escapedKey}\\}`;
+      // Replace all occurrences of {key} with the value
+      result = result.replace(new RegExp(placeholder, "g"), String(value));
     }
 
     return result;
+  }
+
+  /**
+   * Parse embed template with placeholders (recursively processes all string values)
+   */
+  parseEmbedTemplate(
+    template: CustomMessageData,
+    variables: Record<string, string | number>,
+  ): CustomMessageData {
+    const parseString = (str: string): string => {
+      let result = str;
+      for (const [key, value] of Object.entries(variables)) {
+        const escapedKey = key.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+        const placeholder = `\\{${escapedKey}\\}`;
+        result = result.replace(new RegExp(placeholder, "g"), String(value));
+      }
+      return result;
+    };
+
+    const parseObject = (obj: unknown): unknown => {
+      if (typeof obj === "string") {
+        return parseString(obj);
+      } else if (Array.isArray(obj)) {
+        return obj.map(parseObject);
+      } else if (obj !== null && typeof obj === "object") {
+        const result: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj)) {
+          result[key] = parseObject(value);
+        }
+        return result;
+      }
+      return obj;
+    };
+
+    return parseObject(template) as CustomMessageData;
   }
 
   /**
@@ -732,43 +1081,71 @@ export class RoleTrackingManager {
    */
   async checkAndSendWarnings(guildId: string): Promise<void> {
     try {
+      loggers.bot.debug(`[RoleTracking] Starting check for guild ${guildId}`);
+
       const settings = await prisma.guildSettings.findUnique({
         where: { guildId },
       });
 
       if (!settings || !settings.roleTrackingConfig) {
+        loggers.bot.debug(
+          `[RoleTracking] No role tracking config found for guild ${guildId}`,
+        );
         return;
       }
 
       const config = (settings?.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
       const systemInitDate = settings?.roleTrackingInitializedAt || new Date();
 
+      const enabledRoles = Object.entries(config).filter(([_, roleConfig]) => roleConfig.enabled);
+      loggers.bot.debug(
+        `[RoleTracking] Found ${enabledRoles.length} enabled role(s) to check in guild ${guildId}`,
+      );
+
       const guild = this.client.guilds.cache.get(guildId);
       if (!guild) {
+        loggers.bot.debug(`[RoleTracking] Guild ${guildId} not found in cache`);
         return;
       }
 
       // First, cleanup warnings for users who have left
+      loggers.bot.debug(`[RoleTracking] Cleaning up warnings for users who have left guild ${guildId}`);
       await this.cleanupWarningsForMissingUsers(guildId);
 
       // Process each configured role
       for (const [roleId, roleConfig] of Object.entries(config)) {
         if (!roleConfig.enabled) {
+          loggers.bot.debug(`[RoleTracking] Skipping disabled role ${roleId}`);
           continue;
         }
+
+        loggers.bot.debug(
+          `[RoleTracking] Processing role ${roleId} (${roleConfig.roleName})`,
+        );
 
         // Get all members with this role
         const role = guild.roles.cache.get(roleId);
         if (!role) {
+          loggers.bot.debug(`[RoleTracking] Role ${roleId} not found in guild`);
           continue;
         }
 
         const members = role.members;
+        loggers.bot.debug(
+          `[RoleTracking] Found ${members.size} member(s) with role ${roleId}`,
+        );
 
         for (const member of members.values()) {
           try {
+            loggers.bot.debug(
+              `[RoleTracking] Processing user ${member.id} for role ${roleId} in guild ${guildId}`,
+            );
+
             // Check if user has LOA role - if true, skip entirely
             if (await this.hasLOARole(guildId, member.id)) {
+              loggers.bot.debug(
+                `[RoleTracking] User ${member.id} has LOA role, skipping role tracking`,
+              );
               continue;
             }
 
@@ -780,42 +1157,11 @@ export class RoleTrackingManager {
               systemInitDate,
             );
 
-            // Check patrol time threshold - if met, remove warnings and skip
-            const thresholdMet = await this.checkPatrolTimeThreshold(
-              guildId,
-              member.id,
-              roleId,
-              roleConfig,
-              assignmentDate,
+            loggers.bot.debug(
+              `[RoleTracking] User ${member.id} role ${roleId} assigned at: ${assignmentDate.toISOString()}`,
             );
 
-            if (thresholdMet) {
-              await this.removeWarningsForUser(guildId, member.id, roleId);
-              continue;
-            }
-
-            // Get patrol time in period
-            const now = new Date();
-            const patrolTimeMs = await this.getUserPatrolTimeInPeriod(
-              guildId,
-              member.id,
-              assignmentDate,
-              now,
-            );
-
-            const patrolTimeHours = patrolTimeMs / (1000 * 60 * 60);
-
-            // Calculate time since role assignment
-            const timeSinceAssignment = now.getTime() - assignmentDate.getTime();
-            const deadlineMs = parseDurationToMs(roleConfig.deadlineDuration);
-            if (!deadlineMs) {
-              loggers.bot.warn(
-                `Invalid deadline duration for role ${roleId} in guild ${guildId}`,
-              );
-              continue;
-            }
-
-            // Get assignment tracking record
+            // Get assignment tracking record (needed for warning removal and tracking)
             const userId = await this.getUserIdFromDiscordId(member.id);
             if (!userId) {
               loggers.bot.warn(`Failed to get User ID for member ${member.id} in guild ${guildId}`);
@@ -832,15 +1178,123 @@ export class RoleTrackingManager {
               },
             });
 
+            loggers.bot.debug(
+              `[RoleTracking] Assignment tracking ID for user ${member.id}: ${assignmentTracking?.id || "none"}`,
+            );
+
+            // Check all conditions - if ALL pass, remove warnings and skip
+            const conditionCheck = await this.checkAllConditions(
+              guildId,
+              member.id,
+              roleId,
+              roleConfig,
+              assignmentDate,
+            );
+
+            loggers.bot.debug(
+              `[RoleTracking] Condition check for user ${member.id}: allPassed=${conditionCheck.allPassed}, failedConditions=[${conditionCheck.failedConditions.join(", ")}]`,
+            );
+
+            if (conditionCheck.allPassed) {
+              loggers.bot.debug(
+                `[RoleTracking] All conditions passed for user ${member.id}, removing warnings and skipping`,
+              );
+              // Remove warnings for this assignment period so user starts back at warning 1
+              await this.removeWarningsForUser(
+                guildId,
+                member.id,
+                roleId,
+                assignmentTracking?.id,
+              );
+              continue;
+            }
+
+            // Get patrol time in period
+            const now = new Date();
+            const patrolTimeMs = await this.getUserPatrolTimeInPeriod(
+              guildId,
+              member.id,
+              assignmentDate,
+              now,
+            );
+
+            const patrolTimeHours = patrolTimeMs / (1000 * 60 * 60);
+
+            loggers.bot.debug(
+              `[RoleTracking] User ${member.id} patrol time: ${patrolTimeHours.toFixed(2)} hours (${msToDurationString(patrolTimeMs)})`,
+            );
+
+            // Calculate time since role assignment
+            const timeSinceAssignment = now.getTime() - assignmentDate.getTime();
+            const deadlineMs = parseDurationToMs(roleConfig.deadlineDuration);
+            if (!deadlineMs) {
+              loggers.bot.warn(
+                `Invalid deadline duration for role ${roleId} in guild ${guildId}`,
+              );
+              continue;
+            }
+
+            const timeSinceAssignmentStr = msToDurationString(timeSinceAssignment);
+            loggers.bot.debug(
+              `[RoleTracking] User ${member.id} time since assignment: ${timeSinceAssignmentStr}, deadline: ${msToDurationString(deadlineMs)}`,
+            );
+
+            // Check which conditions are active
+            const conditions = roleConfig.conditions || [];
+            const conditionsToCheck = conditions;
+            const hasPatrolCondition = conditionsToCheck.includes("PATROL");
+
+            // Only check patrol threshold if PATROL is an active condition
+            // If only TIME is active, PATROL cannot be satisfied, so warnings shouldn't be removed
+            let patrolThresholdMet = false;
+            if (hasPatrolCondition) {
+              patrolThresholdMet = await this.checkPatrolTimeThreshold(
+                guildId,
+                member.id,
+                roleId,
+                roleConfig,
+                assignmentDate,
+              );
+
+              loggers.bot.debug(
+                `[RoleTracking] Patrol threshold check for user ${member.id}: met=${patrolThresholdMet}, threshold=${roleConfig.patrolTimeThresholdHours || "not set"} hours`,
+              );
+
+              if (patrolThresholdMet) {
+                loggers.bot.debug(
+                  `[RoleTracking] Threshold met for user ${member.id}, removing warnings to reset to 0`,
+                );
+                // Threshold met - remove warnings so user starts back at 0
+                await this.removeWarningsForUser(
+                  guildId,
+                  member.id,
+                  roleId,
+                  assignmentTracking?.id,
+                );
+                // Skip staff ping if threshold is met (will be checked later)
+              }
+            } else {
+              loggers.bot.debug(
+                `[RoleTracking] PATROL condition not active for user ${member.id}, skipping patrol threshold check`,
+              );
+            }
+
             // Check each warning to see if it should be sent
             for (const warning of roleConfig.warnings) {
               const warningOffsetMs = parseDurationToMs(warning.offset);
               if (!warningOffsetMs) {
+                loggers.bot.debug(
+                  `[RoleTracking] Invalid warning offset for warning #${warning.index}: ${warning.offset}`,
+                );
                 continue;
               }
 
               // Check if we're past this warning's offset
               if (timeSinceAssignment >= warningOffsetMs) {
+                loggers.bot.debug(
+                  `[RoleTracking] Checking warning #${warning.index} for user ${member.id} (offset: ${msToDurationString(warningOffsetMs)}, time since: ${msToDurationString(timeSinceAssignment)})`,
+                );
+
                 // Check if this warning has already been sent (member.id is discordId)
                 const hasReceived = await this.hasReceivedWarning(
                   guildId,
@@ -848,96 +1302,234 @@ export class RoleTrackingManager {
                   roleId,
                   warning.index,
                   assignmentDate,
+                  assignmentTracking?.id,
+                );
+
+                loggers.bot.debug(
+                  `[RoleTracking] Warning #${warning.index} for user ${member.id}: hasReceived=${hasReceived}`,
                 );
 
                 if (!hasReceived) {
-                  // Send warning
+                  loggers.bot.info(
+                    `[RoleTracking] Sending warning #${warning.index} to user ${member.id} (not previously recorded - will attempt DM)`,
+                  );
+                  // Calculate time remaining for logging (always needed)
                   const timeRemainingMs = deadlineMs - timeSinceAssignment;
                   const timeRemaining = msToDurationString(timeRemainingMs);
 
+                  // Send warning
+                  let messageToSend: string | CustomMessageData;
+                  
+                  // Calculate deadline date for variables
                   const deadlineDate = new Date(
                     assignmentDate.getTime() + deadlineMs,
                   );
+                  const deadlineTimestamp = Math.floor(deadlineDate.getTime() / 1000);
 
-                  const message = this.parseMessageTemplate(warning.message, {
+                  // Prepare variables for template parsing
+                  const warningVariables = {
                     roleName: roleConfig.roleName,
                     timeRemaining,
-                    deadlineDate: deadlineDate.toLocaleDateString(),
+                    deadlineDate: `<t:${deadlineTimestamp}:D>`, // Date only (e.g., "April 20, 2021")
+                    deadlineDateTime: `<t:${deadlineTimestamp}:f>`, // Full date/time (e.g., "Tuesday, April 20, 2021 4:20 PM")
+                    deadlineTimestamp: `<t:${deadlineTimestamp}:R>`, // Relative time (e.g., "in 2 hours")
                     patrolTime: Math.floor(patrolTimeMs),
                     patrolTimeHours: patrolTimeHours.toFixed(1),
                     patrolTimeFormatted: msToDurationString(patrolTimeMs),
-                  });
+                  };
+                  
+                  // Use custom message from warning config if provided, otherwise use template
+                  if (warning.customMessage) {
+                    messageToSend = this.parseEmbedTemplate(warning.customMessage, warningVariables);
+                  } else {
+                    messageToSend = this.parseMessageTemplate(warning.message, warningVariables);
+                  }
 
-                  const dmResult = await this.sendWarningDM(member.id, message);
+                  const dmResult = await this.sendWarningDM(member.id, messageToSend);
 
-                  // Record warning sent
-                  await this.recordWarningSent(
-                    guildId,
-                    member.id,
-                    roleId,
-                    "warning",
-                    warning.index,
-                    assignmentDate,
-                    assignmentTracking?.id,
-                  );
+                  // Only record warning if DM was successfully sent
+                  if (dmResult.success) {
+                    await this.recordWarningSent(
+                      guildId,
+                      member.id,
+                      roleId,
+                      "warning",
+                      warning.index,
+                      assignmentDate,
+                      assignmentTracking?.id,
+                    );
+                    loggers.bot.debug(
+                      `[RoleTracking] Warning #${warning.index} recorded for user ${member.id} - DM sent successfully`,
+                    );
+                  } else {
+                    loggers.bot.warn(
+                      `[RoleTracking] Warning #${warning.index} NOT recorded for user ${member.id} - DM failed: ${dmResult.error}`,
+                    );
+                  }
 
                   // Log to staff channel without ping
+                  const logEmbedFields = [
+                    { name: "User", value: `<@${member.id}>`, inline: true },
+                    { name: "Role", value: roleConfig.roleName, inline: true },
+                    {
+                      name: "Warning",
+                      value: `#${warning.index + 1} (${warning.offset})`,
+                      inline: true,
+                    },
+                  ];
+
+                  // Only add Patrol Time if PATROL condition is active
+                  if (hasPatrolCondition) {
+                    logEmbedFields.push({
+                      name: "Patrol Time",
+                      value: `${patrolTimeHours.toFixed(1)} hours`,
+                      inline: true,
+                    });
+                  }
+
+                  // Always add Time Remaining and DM Status (shown for both TIME and PATROL conditions)
+                  logEmbedFields.push(
+                    {
+                      name: "Time Remaining",
+                      value: timeRemaining,
+                      inline: true,
+                    },
+                    {
+                      name: "DM Status",
+                      value: dmResult.success ? "✅ Sent" : `❌ Failed: ${dmResult.error}`,
+                      inline: true,
+                    },
+                  );
+
+                  const embedTitle = dmResult.success 
+                    ? `⚠️ Role Tracking Warning Sent`
+                    : `⚠️ Role Tracking Warning Failed`;
+                  const embedDescription = dmResult.success
+                    ? `Warning #${warning.index + 1} sent to <@${member.id}> for role **${roleConfig.roleName}**`
+                    : `Warning #${warning.index + 1} failed to send to <@${member.id}> for role **${roleConfig.roleName}** - DM failed: ${dmResult.error}`;
+
                   const logEmbed = new EmbedBuilder()
-                    .setTitle(`⚠️ Role Tracking Warning Sent`)
-                    .setDescription(
-                      `Warning #${warning.index + 1} sent to <@${member.id}> for role **${roleConfig.roleName}**`,
-                    )
-                    .addFields(
-                      { name: "User", value: `<@${member.id}>`, inline: true },
-                      { name: "Role", value: roleConfig.roleName, inline: true },
-                      {
-                        name: "Warning",
-                        value: `#${warning.index + 1} (${warning.offset})`,
-                        inline: true,
-                      },
-                      {
-                        name: "Patrol Time",
-                        value: `${patrolTimeHours.toFixed(1)} hours`,
-                        inline: true,
-                      },
-                      {
-                        name: "Time Remaining",
-                        value: timeRemaining,
-                        inline: true,
-                      },
-                      {
-                        name: "DM Status",
-                        value: dmResult.success ? "✅ Sent" : `❌ Failed: ${dmResult.error}`,
-                        inline: true,
-                      },
-                    )
-                    .setColor(Colors.Orange)
+                    .setTitle(embedTitle)
+                    .setDescription(embedDescription)
+                    .addFields(logEmbedFields)
+                    .setColor(dmResult.success ? Colors.Orange : Colors.Red)
                     .setTimestamp();
 
-                  await this.logToStaffChannel(guildId, logEmbed, false);
+                  await this.logToStaffChannel(guildId, logEmbed, false, roleConfig.staffChannelId);
                 }
               }
             }
 
-            // Check if staff ping should be sent
-            const staffPingOffsetMs = parseDurationToMs(roleConfig.staffPingOffset);
-            if (staffPingOffsetMs && timeSinceAssignment >= staffPingOffsetMs) {
-              const hasReceivedPing = await this.hasReceivedWarning(
-                guildId,
-                member.id,
-                roleId,
-                -1, // Use -1 for staff ping
-                assignmentDate,
+            // Check if staff ping should be sent (skip if PATROL condition is active and threshold is met)
+            // If PATROL is not active, always check staff ping regardless of patrol time
+            if (!hasPatrolCondition || !patrolThresholdMet) {
+              loggers.bot.debug(
+                `[RoleTracking] Checking staff ping for user ${member.id} (threshold not met, checking ping requirement)`,
               );
+              const staffPingOffsetMs = parseDurationToMs(roleConfig.staffPingOffset);
+              if (staffPingOffsetMs && timeSinceAssignment >= staffPingOffsetMs) {
+                loggers.bot.debug(
+                  `[RoleTracking] Staff ping offset reached for user ${member.id} (offset: ${msToDurationString(staffPingOffsetMs)}, time since: ${msToDurationString(timeSinceAssignment)})`,
+                );
+
+                const hasReceivedPing = await this.hasReceivedWarning(
+                  guildId,
+                  member.id,
+                  roleId,
+                  -1, // Use -1 for staff ping
+                  assignmentDate,
+                  assignmentTracking?.id,
+                );
+
+                loggers.bot.debug(
+                  `[RoleTracking] Staff ping check for user ${member.id}: hasReceivedPing=${hasReceivedPing}`,
+                );
 
               if (!hasReceivedPing) {
-                const message = this.parseMessageTemplate(roleConfig.staffPingMessage, {
+                loggers.bot.debug(
+                  `[RoleTracking] Sending staff ping for user ${member.id}`,
+                );
+                let messageToSend: string | CustomMessageData;
+                
+                // Calculate comprehensive user information
+                const timeSinceAssignmentMs = timeSinceAssignment;
+                const timeSinceAssignmentStr = msToDurationString(timeSinceAssignmentMs);
+                const deadlineDate = new Date(assignmentDate.getTime() + deadlineMs);
+                const timeOverdue = timeSinceAssignmentMs - deadlineMs;
+                const timeOverdueStr = timeOverdue > 0 ? msToDurationString(timeOverdue) : "0 seconds";
+                const patrolTimeFormatted = msToDurationString(patrolTimeMs);
+                const thresholdMet = roleConfig.patrolTimeThresholdHours 
+                  ? patrolTimeHours >= roleConfig.patrolTimeThresholdHours 
+                  : null;
+                const thresholdStatus = thresholdMet === null 
+                  ? "N/A" 
+                  : thresholdMet 
+                    ? "✅ Met" 
+                    : "❌ Not Met";
+                const thresholdDisplay = roleConfig.patrolTimeThresholdHours 
+                  ? `${roleConfig.patrolTimeThresholdHours} hours (${thresholdStatus})`
+                  : "Not set";
+                
+                // Calculate inactivity time (time since assignment minus patrol time)
+                // This represents time they haven't been patrolling
+                const inactivityTimeMs = Math.max(0, timeSinceAssignmentMs - patrolTimeMs);
+                const inactivityTimeStr = msToDurationString(inactivityTimeMs);
+                const inactivityPercentage = timeSinceAssignmentMs > 0 
+                  ? ((inactivityTimeMs / timeSinceAssignmentMs) * 100).toFixed(1)
+                  : "0.0";
+                
+                // Prepare all available variables
+                const deadlineTimestamp = Math.floor(deadlineDate.getTime() / 1000);
+                const assignmentTimestamp = Math.floor(assignmentDate.getTime() / 1000);
+                
+                const variables = {
                   userMention: `<@${member.id}>`,
+                  userId: member.id,
+                  userName: member.displayName || member.user.username,
                   roleName: roleConfig.roleName,
-                  patrolTimeHours: patrolTimeHours.toFixed(1),
-                });
+                  roleId: roleId,
+                  patrolTimeHours: patrolTimeHours.toFixed(2),
+                  patrolTimeFormatted: patrolTimeFormatted,
+                  patrolTimeMs: Math.floor(patrolTimeMs).toString(),
+                  timeSinceAssignment: timeSinceAssignmentStr,
+                  timeSinceAssignmentMs: Math.floor(timeSinceAssignmentMs).toString(),
+                  assignmentDate: `<t:${assignmentTimestamp}:D>`, // Date only
+                  assignmentDateTime: `<t:${assignmentTimestamp}:f>`, // Full date/time
+                  assignmentTimestamp: `<t:${assignmentTimestamp}:R>`, // Relative time
+                  deadlineDate: `<t:${deadlineTimestamp}:D>`, // Date only (e.g., "April 20, 2021")
+                  deadlineDateTime: `<t:${deadlineTimestamp}:f>`, // Full date/time (e.g., "Tuesday, April 20, 2021 4:20 PM")
+                  deadlineTimestamp: `<t:${deadlineTimestamp}:R>`, // Relative time (e.g., "in 2 hours")
+                  deadlineDuration: roleConfig.deadlineDuration,
+                  timeOverdue: timeOverdueStr,
+                  timeOverdueMs: Math.floor(Math.max(0, timeOverdue)).toString(),
+                  thresholdHours: roleConfig.patrolTimeThresholdHours?.toString() || "Not set",
+                  thresholdDisplay: thresholdDisplay,
+                  thresholdStatus: thresholdStatus,
+                  inactivityTime: inactivityTimeStr,
+                  inactivityTimeMs: Math.floor(inactivityTimeMs).toString(),
+                  inactivityPercentage: inactivityPercentage,
+                  timestamp: new Date().toISOString(),
+                };
+                
+                // Use custom message from role config if provided, otherwise use template
+                if (roleConfig.customStaffPingMessage) {
+                  messageToSend = this.parseEmbedTemplate(roleConfig.customStaffPingMessage, variables);
+                } else if (typeof roleConfig.staffPingMessage === "string") {
+                  // Legacy string template
+                  messageToSend = this.parseMessageTemplate(roleConfig.staffPingMessage, variables);
+                } else {
+                  // Embed template
+                  messageToSend = this.parseEmbedTemplate(roleConfig.staffPingMessage, variables);
+                }
 
-                const dmResult = await this.sendWarningDM(member.id, message);
+                // Send custom message to staff channel (not to user)
+                const shouldPing = process.env.NODE_ENV === "production";
+                const staffChannelResult = await this.sendCustomMessageToStaffChannel(
+                  guildId,
+                  messageToSend,
+                  shouldPing,
+                  roleConfig.staffChannelId,
+                );
 
                 // Record staff ping
                 await this.recordWarningSent(
@@ -950,31 +1542,57 @@ export class RoleTrackingManager {
                   assignmentTracking?.id,
                 );
 
-                // Log to staff channel WITH ping
-                const logEmbed = new EmbedBuilder()
-                  .setTitle(`🚨 Role Tracking Deadline Reached`)
-                  .setDescription(
-                    `Staff ping: <@${member.id}> has reached the deadline for role **${roleConfig.roleName}**`,
-                  )
-                  .addFields(
+                // Log to staff channel WITH ping (fallback embed if custom message failed)
+                if (!staffChannelResult.success) {
+                  const logEmbedFields = [
                     { name: "User", value: `<@${member.id}>`, inline: true },
                     { name: "Role", value: roleConfig.roleName, inline: true },
-                    {
+                  ];
+
+                  // Only add Patrol Time if PATROL condition is active
+                  if (hasPatrolCondition) {
+                    logEmbedFields.push({
                       name: "Patrol Time",
                       value: `${patrolTimeHours.toFixed(1)} hours`,
                       inline: true,
-                    },
-                    {
-                      name: "DM Status",
-                      value: dmResult.success ? "✅ Sent" : `❌ Failed: ${dmResult.error}`,
-                      inline: true,
-                    },
-                  )
-                  .setColor(Colors.Red)
-                  .setTimestamp();
+                    });
+                  }
 
-                await this.logToStaffChannel(guildId, logEmbed, true);
+                  logEmbedFields.push({
+                    name: "Message Status",
+                    value: staffChannelResult.success ? "✅ Sent" : `❌ Failed: ${staffChannelResult.error}`,
+                    inline: true,
+                  });
+
+                  const logEmbed = new EmbedBuilder()
+                    .setTitle(`🚨 Role Tracking Deadline Reached`)
+                    .setDescription(
+                      `Staff ping: <@${member.id}> has reached the deadline for role **${roleConfig.roleName}**`,
+                    )
+                    .addFields(logEmbedFields)
+                    .setColor(Colors.Red)
+                    .setTimestamp();
+
+                  await this.logToStaffChannel(guildId, logEmbed, shouldPing, roleConfig.staffChannelId);
+                }
+              } else {
+                loggers.bot.debug(
+                  `[RoleTracking] Staff ping already sent for user ${member.id}, skipping`,
+                );
               }
+            } else if (staffPingOffsetMs) {
+              loggers.bot.debug(
+                `[RoleTracking] Staff ping offset not reached for user ${member.id} (offset: ${msToDurationString(staffPingOffsetMs)}, time since: ${msToDurationString(timeSinceAssignment)})`,
+              );
+            } else {
+              loggers.bot.debug(
+                `[RoleTracking] No staff ping offset configured for user ${member.id}`,
+              );
+            }
+            } else {
+              loggers.bot.debug(
+                `[RoleTracking] Skipping staff ping for user ${member.id} - PATROL condition active and threshold met`,
+              );
             }
           } catch (error) {
             loggers.bot.error(
@@ -984,6 +1602,8 @@ export class RoleTrackingManager {
           }
         }
       }
+
+      loggers.bot.debug(`[RoleTracking] Completed check for guild ${guildId}`);
     } catch (error) {
       loggers.bot.error(`Error checking and sending warnings for guild ${guildId}`, error);
     }
