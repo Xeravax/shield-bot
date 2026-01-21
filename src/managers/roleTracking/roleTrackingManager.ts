@@ -827,9 +827,12 @@ export class RoleTrackingManager {
       }
 
       // Send full embed with proper structure (title, description, fields, etc.)
+      // Allow @here/@everyone when shouldPing is true and no role IDs, otherwise use roles
       const allowedMentions = shouldPing && pingRoleIds.length > 0
         ? { roles: pingRoleIds }
-        : { roles: [] };
+        : shouldPing && pingRoleIds.length === 0
+          ? { parse: ["everyone"] as const }
+          : { roles: [] };
 
       await channel.send({
         content: content || undefined,
@@ -902,9 +905,12 @@ export class RoleTrackingManager {
         content = "@here\n";
       }
 
+      // Allow @here/@everyone when shouldPing is true and no role IDs, otherwise use roles
       const allowedMentions = shouldPing && pingRoleIds.length > 0
         ? { roles: pingRoleIds }
-        : { roles: [] };
+        : shouldPing && pingRoleIds.length === 0
+          ? { parse: ["everyone"] as const }
+          : { roles: [] };
 
       // If message is an object with embeds/components, send as message payload
       if (typeof message === "object" && (message.embeds || message.components)) {

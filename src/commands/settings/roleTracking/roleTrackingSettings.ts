@@ -1504,13 +1504,15 @@ export class SettingsRoleTrackingCommands {
       return;
     }
 
+    // Defer reply immediately after checking it's not autocomplete and it's in a guild
+    await cmdInteraction.deferReply({ ephemeral: true });
+
     const role = roleId ? cmdInteraction.guild?.roles.cache.get(roleId) : null;
 
     // Check if roleId is provided but role is not found
     if (roleId && !role) {
-      await cmdInteraction.reply({
+      await cmdInteraction.editReply({
         content: "❌ Role not found.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -1552,9 +1554,8 @@ export class SettingsRoleTrackingCommands {
           roleId,
         );
 
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: `✅ Timer reset for <@${user.id}> for role <@&${roleId}>. All warnings have been removed.`,
-          flags: MessageFlags.Ephemeral,
         });
       } else {
         // Reset all roles for user
@@ -1577,9 +1578,8 @@ export class SettingsRoleTrackingCommands {
           },
         });
 
-        await cmdInteraction.reply({
+        await cmdInteraction.editReply({
           content: `✅ All timers reset for <@${user.id}>. All warnings have been removed.`,
-          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -1618,9 +1618,8 @@ export class SettingsRoleTrackingCommands {
       }
     } catch (error) {
       loggers.bot.error("Error resetting timer", error);
-      await cmdInteraction.reply({
+      await cmdInteraction.editReply({
         content: `❌ Failed to reset timer: ${error instanceof Error ? error.message : "Unknown error"}`,
-        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -1715,15 +1714,18 @@ export class SettingsRoleTrackingCommands {
         return;
       }
 
-      // Add all missing members to database
+      // Add all missing members to database with concurrency limiting
       let addedCount = 0;
       let failedCount = 0;
       const now = new Date();
+      const guildId = cmdInteraction.guildId; // Already validated above
 
-      for (const discordId of membersToAdd) {
+      // Simple concurrency limiter - process up to 10 members concurrently
+      const concurrencyLimit = 10;
+      const processMember = async (discordId: string): Promise<void> => {
         try {
           await roleTrackingManager.trackRoleAssignment(
-            cmdInteraction.guildId,
+            guildId,
             discordId,
             roleId,
             now,
@@ -1733,6 +1735,12 @@ export class SettingsRoleTrackingCommands {
           loggers.bot.error(`Failed to add user ${discordId} to database`, error);
           failedCount++;
         }
+      };
+
+      // Process members in batches with concurrency limit
+      for (let i = 0; i < membersToAdd.length; i += concurrencyLimit) {
+        const batch = membersToAdd.slice(i, i + concurrencyLimit);
+        await Promise.all(batch.map(processMember));
       }
 
       // Log to staff channel if configured
