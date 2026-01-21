@@ -1383,55 +1383,53 @@ export class RoleTrackingManager {
                     );
                   }
 
-                  // Log to staff channel without ping
-                  const logEmbedFields = [
-                    { name: "User", value: `<@${member.id}>`, inline: true },
-                    { name: "Role", value: roleConfig.roleName, inline: true },
-                    {
-                      name: "Warning",
-                      value: `#${warning.index + 1} (${warning.offset})`,
-                      inline: true,
-                    },
-                  ];
+                  // Only log to staff channel if warning failed to send
+                  if (!dmResult.success) {
+                    // Log to staff channel without ping
+                    const logEmbedFields = [
+                      { name: "User", value: `<@${member.id}>`, inline: true },
+                      { name: "Role", value: roleConfig.roleName, inline: true },
+                      {
+                        name: "Warning",
+                        value: `#${warning.index + 1} (${warning.offset})`,
+                        inline: true,
+                      },
+                    ];
 
-                  // Only add Patrol Time if PATROL condition is active
-                  if (hasPatrolCondition) {
-                    logEmbedFields.push({
-                      name: "Patrol Time",
-                      value: `${patrolTimeHours.toFixed(1)} hours`,
-                      inline: true,
-                    });
+                    // Only add Patrol Time if PATROL condition is active
+                    if (hasPatrolCondition) {
+                      logEmbedFields.push({
+                        name: "Patrol Time",
+                        value: `${patrolTimeHours.toFixed(1)} hours`,
+                        inline: true,
+                      });
+                    }
+
+                    // Always add Time Remaining and DM Status (shown for both TIME and PATROL conditions)
+                    logEmbedFields.push(
+                      {
+                        name: "Time Remaining",
+                        value: timeRemaining,
+                        inline: true,
+                      },
+                      {
+                        name: "DM Status",
+                        value: `❌ Failed: ${dmResult.error}`,
+                        inline: true,
+                      },
+                    );
+
+                    const logEmbed = new EmbedBuilder()
+                      .setTitle(`⚠️ Role Tracking Warning Failed`)
+                      .setDescription(
+                        `Warning #${warning.index + 1} failed to send to <@${member.id}> for role **${roleConfig.roleName}** - DM failed: ${dmResult.error}`,
+                      )
+                      .addFields(logEmbedFields)
+                      .setColor(Colors.Red)
+                      .setTimestamp();
+
+                    await this.logToStaffChannel(guildId, logEmbed, false, roleConfig.staffChannelId);
                   }
-
-                  // Always add Time Remaining and DM Status (shown for both TIME and PATROL conditions)
-                  logEmbedFields.push(
-                    {
-                      name: "Time Remaining",
-                      value: timeRemaining,
-                      inline: true,
-                    },
-                    {
-                      name: "DM Status",
-                      value: dmResult.success ? "✅ Sent" : `❌ Failed: ${dmResult.error}`,
-                      inline: true,
-                    },
-                  );
-
-                  const embedTitle = dmResult.success 
-                    ? `⚠️ Role Tracking Warning Sent`
-                    : `⚠️ Role Tracking Warning Failed`;
-                  const embedDescription = dmResult.success
-                    ? `Warning #${warning.index + 1} sent to <@${member.id}> for role **${roleConfig.roleName}**`
-                    : `Warning #${warning.index + 1} failed to send to <@${member.id}> for role **${roleConfig.roleName}** - DM failed: ${dmResult.error}`;
-
-                  const logEmbed = new EmbedBuilder()
-                    .setTitle(embedTitle)
-                    .setDescription(embedDescription)
-                    .addFields(logEmbedFields)
-                    .setColor(dmResult.success ? Colors.Orange : Colors.Red)
-                    .setTimestamp();
-
-                  await this.logToStaffChannel(guildId, logEmbed, false, roleConfig.staffChannelId);
                 }
               }
             }

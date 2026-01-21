@@ -325,7 +325,7 @@ export class SettingsRoleTrackingCommands {
     role: Role,
     @SlashOption({
       name: "deadline",
-      description: "Deadline duration (e.g., '1 month', '3 months', '90 days') - optional when updating existing role",
+      description: "Deadline duration (e.g., '1 month', '3 months', '90 days')",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
@@ -361,7 +361,7 @@ export class SettingsRoleTrackingCommands {
     staffPingChannel: GuildBasedChannel | null,
     @SlashOption({
       name: "staff_ping_roles",
-      description: "Roles to ping for staff notifications (optional, comma-separated role IDs or mentions, falls back to guild staff roles)",
+      description: "Roles to ping (comma-separated role IDs/mentions, optional)",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
@@ -468,10 +468,38 @@ export class SettingsRoleTrackingCommands {
         if (deadline) {
           roleConfig.deadlineDuration = deadline;
           // If deadline changed, regenerate warnings based on new deadline
+          // But preserve existing conditions, staff channel, and other custom settings
+          const existingConditions = roleConfig.conditions;
+          const existingStaffChannelId = roleConfig.staffChannelId;
+          const existingStaffPingChannelId = roleConfig.staffPingChannelId;
+          const existingStaffPingRoleIds = roleConfig.staffPingRoleIds;
+          const existingPatrolThreshold = roleConfig.patrolTimeThresholdHours;
+          const existingCustomStaffPingMessage = roleConfig.customStaffPingMessage;
+          
           const newDefaultConfig = this.getDefaultConfig(role.name, deadline, role.id);
           roleConfig.warnings = newDefaultConfig.warnings;
           roleConfig.staffPingOffset = newDefaultConfig.staffPingOffset;
           roleConfig.staffPingMessage = newDefaultConfig.staffPingMessage;
+          
+          // Restore preserved values
+          if (existingConditions !== undefined) {
+            roleConfig.conditions = existingConditions;
+          }
+          if (existingStaffChannelId !== undefined) {
+            roleConfig.staffChannelId = existingStaffChannelId;
+          }
+          if (existingStaffPingChannelId !== undefined) {
+            roleConfig.staffPingChannelId = existingStaffPingChannelId;
+          }
+          if (existingStaffPingRoleIds !== undefined) {
+            roleConfig.staffPingRoleIds = existingStaffPingRoleIds;
+          }
+          if (existingPatrolThreshold !== undefined) {
+            roleConfig.patrolTimeThresholdHours = existingPatrolThreshold;
+          }
+          if (existingCustomStaffPingMessage !== undefined) {
+            roleConfig.customStaffPingMessage = existingCustomStaffPingMessage;
+          }
         }
       } else {
         // Create default configuration for new role
@@ -594,12 +622,14 @@ export class SettingsRoleTrackingCommands {
         { name: "Deadline", value: deadlineToUse, inline: true },
         {
           name: "Conditions",
-          value: conditions.length > 0 ? conditions.join(", ") : "None (no tracking)",
+          value: (roleConfig.conditions && roleConfig.conditions.length > 0) ? roleConfig.conditions.join(", ") : "None (no tracking)",
           inline: true,
         },
         {
           name: "Patrol Threshold",
-          value: patrolThresholdHours !== null ? `${patrolThresholdHours} hours` : "Not set",
+          value: roleConfig.patrolTimeThresholdHours !== null && roleConfig.patrolTimeThresholdHours !== undefined 
+            ? `${roleConfig.patrolTimeThresholdHours} hours` 
+            : "Not set",
           inline: true,
         },
         {
@@ -1572,6 +1602,172 @@ export class SettingsRoleTrackingCommands {
       await cmdInteraction.reply({
         content: `❌ Failed to reset timer: ${error instanceof Error ? error.message : "Unknown error"}`,
         flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+
+  @Slash({
+    name: "sync-role-members",
+    description: "Add all members with a role to the database (if not already tracked)",
+  })
+  async syncRoleMembers(
+    @SlashOption({
+      name: "role",
+      description: "The role to sync members for",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+      autocomplete: true,
+    })
+    roleId: string,
+    interaction: BaseInteraction,
+  ): Promise<void> {
+    if (interaction.isAutocomplete()) {
+      return this.autocompleteTrackedRoles(interaction as AutocompleteInteraction);
+    }
+
+    const cmdInteraction = interaction as CommandInteraction;
+    if (!cmdInteraction.guildId) {
+      await cmdInteraction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      await cmdInteraction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      const guild = cmdInteraction.guild;
+      if (!guild) {
+        await cmdInteraction.editReply({
+          content: "❌ Could not access guild information.",
+        });
+        return;
+      }
+
+      const role = guild.roles.cache.get(roleId);
+      if (!role) {
+        await cmdInteraction.editReply({
+          content: `❌ Role not found. Please make sure the role exists and is configured for tracking.`,
+        });
+        return;
+      }
+
+      // Fetch all members with this role
+      const membersWithRole = role.members;
+      if (membersWithRole.size === 0) {
+        await cmdInteraction.editReply({
+          content: `ℹ️ No members found with role <@&${roleId}>.`,
+        });
+        return;
+      }
+
+      // Get all existing assignments for this role in this guild with user discordIds
+      const existingAssignments = await prisma.roleAssignmentTracking.findMany({
+        where: {
+          guildId: cmdInteraction.guildId,
+          roleId: roleId,
+        },
+        include: {
+          user: {
+            select: {
+              discordId: true,
+            },
+          },
+        },
+      });
+
+      const existingDiscordIds = new Set(
+        existingAssignments.map((a) => a.user.discordId),
+      );
+
+      // Find members not in database
+      const membersToAdd: string[] = [];
+      for (const member of membersWithRole.values()) {
+        if (!existingDiscordIds.has(member.id)) {
+          membersToAdd.push(member.id);
+        }
+      }
+
+      if (membersToAdd.length === 0) {
+        await cmdInteraction.editReply({
+          content: `✅ All ${membersWithRole.size} member(s) with role <@&${roleId}> are already in the database.`,
+        });
+        return;
+      }
+
+      // Add all missing members to database
+      let addedCount = 0;
+      let failedCount = 0;
+      const now = new Date();
+
+      for (const discordId of membersToAdd) {
+        try {
+          await roleTrackingManager.trackRoleAssignment(
+            cmdInteraction.guildId,
+            discordId,
+            roleId,
+            now,
+          );
+          addedCount++;
+        } catch (error) {
+          loggers.bot.error(`Failed to add user ${discordId} to database`, error);
+          failedCount++;
+        }
+      }
+
+      // Log to staff channel if configured
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId: cmdInteraction.guildId },
+        select: { roleTrackingConfig: true, roleTrackingStaffChannelId: true },
+      });
+
+      let roleChannelId: string | null | undefined = null;
+      if (settings?.roleTrackingConfig) {
+        const config = (settings.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
+        const roleConfig = config[roleId];
+        if (roleConfig?.staffChannelId) {
+          roleChannelId = roleConfig.staffChannelId;
+        }
+      }
+
+      if (roleChannelId || settings?.roleTrackingStaffChannelId) {
+        const logEmbed = new EmbedBuilder()
+          .setTitle("🔄 Role Tracking Sync")
+          .setDescription(
+            `Synced members with role <@&${roleId}> by <@${cmdInteraction.user.id}>\n\n` +
+            `**Results:**\n` +
+            `• Total members with role: ${membersWithRole.size}\n` +
+            `• Already in database: ${membersWithRole.size - membersToAdd.length}\n` +
+            `• Added to database: ${addedCount}\n` +
+            `${failedCount > 0 ? `• Failed: ${failedCount}\n` : ""}`,
+          )
+          .setColor(addedCount > 0 ? Colors.Green : Colors.Orange)
+          .setTimestamp();
+
+        await roleTrackingManager.logToStaffChannel(
+          cmdInteraction.guildId,
+          logEmbed,
+          false,
+          roleChannelId,
+        );
+      }
+
+      let resultMessage = `✅ Sync completed for role <@&${roleId}>:\n`;
+      resultMessage += `• Total members: ${membersWithRole.size}\n`;
+      resultMessage += `• Already tracked: ${membersWithRole.size - membersToAdd.length}\n`;
+      resultMessage += `• Added: ${addedCount}`;
+      if (failedCount > 0) {
+        resultMessage += `\n• Failed: ${failedCount}`;
+      }
+
+      await cmdInteraction.editReply({
+        content: resultMessage,
+      });
+    } catch (error) {
+      loggers.bot.error("Error syncing role members", error);
+      await cmdInteraction.editReply({
+        content: `❌ Failed to sync role members: ${error instanceof Error ? error.message : "Unknown error"}`,
       });
     }
   }

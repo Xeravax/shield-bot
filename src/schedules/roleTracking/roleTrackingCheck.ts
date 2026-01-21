@@ -52,13 +52,13 @@ export async function checkRoleTracking(_client: Client): Promise<void> {
 export function initializeRoleTrackingSchedule(client: Client): cron.ScheduledTask {
   loggers.schedules.info("Initializing role tracking schedule...");
 
-  // Schedule to run daily at 9 AM UTC
-  const job = cron.schedule("0 9 * * *", async () => {
+  // Schedule to run daily at 8 PM UTC
+  const job = cron.schedule("0 21 * * *", async () => {
     loggers.schedules.info("Cron job triggered: Role tracking check");
     await checkRoleTracking(client);
   });
 
-  loggers.schedules.info("Role tracking schedule initialized. Will run daily at 9 AM UTC.");
+  loggers.schedules.info("Role tracking schedule initialized. Will run daily at 8 PM UTC.");
   return job;
 }
 
