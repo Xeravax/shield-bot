@@ -158,6 +158,46 @@ export class RoleTrackingManager {
   }
 
   /**
+   * Clean up all role tracking data for a user when they leave the server
+   * Removes all role assignments and warnings (via cascade delete)
+   */
+  async cleanupUserTracking(guildId: string, discordId: string): Promise<void> {
+    try {
+      const userId = await this.getUserIdFromDiscordId(discordId);
+      if (!userId) {
+        loggers.bot.debug(`No User ID found for Discord ID ${discordId} - skipping cleanup`);
+        return;
+      }
+
+      // Delete all role assignment tracking records for this user in this guild
+      // Cascade delete will automatically remove all linked warnings
+      const deletedCount = await prisma.roleAssignmentTracking.deleteMany({
+        where: {
+          guildId,
+          userId,
+        },
+      });
+
+      // Also clean up any orphaned warnings (in case cascade didn't work for some reason)
+      await prisma.roleTrackingWarning.deleteMany({
+        where: {
+          guildId,
+          userId,
+        },
+      });
+
+      loggers.bot.info(
+        `Cleaned up all role tracking data for user ${discordId} in guild ${guildId} (removed ${deletedCount.count} assignment(s))`,
+      );
+    } catch (error) {
+      loggers.bot.error(
+        `Failed to cleanup role tracking data for user ${discordId} in guild ${guildId}`,
+        error,
+      );
+    }
+  }
+
+  /**
    * Handle LOA role removal - reset all timers for this user
    * Also removes all warnings so user starts fresh
    */

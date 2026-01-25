@@ -4,6 +4,35 @@ import { loggers } from "../../../utility/logger.js";
 
 @Discord()
 export class RoleTrackingEvents {
+  @On({ event: "guildMemberRemove" })
+  async onGuildMemberRemove([member]: ArgsOf<"guildMemberRemove">) {
+    try {
+      const guildId = member.guild.id;
+      const userId = member.id;
+
+      // Check if this guild has role tracking configured
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId },
+        select: {
+          roleTrackingConfig: true,
+        },
+      });
+
+      if (!settings?.roleTrackingConfig) {
+        // No role tracking configured for this guild
+        return;
+      }
+
+      // Clean up all role tracking data for this user
+      await roleTrackingManager.cleanupUserTracking(guildId, userId);
+      loggers.bot.debug(
+        `Cleaned up role tracking data for user ${userId} who left guild ${guildId}`,
+      );
+    } catch (error) {
+      loggers.bot.error("Error handling role tracking member remove", error);
+    }
+  }
+
   @On({ event: "guildMemberUpdate" })
   async onGuildMemberUpdate([oldMember, newMember]: ArgsOf<"guildMemberUpdate">) {
     try {
