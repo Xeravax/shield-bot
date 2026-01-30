@@ -16,6 +16,7 @@ import {
 } from "../../utility/permissionUtils.js";
 import { loggers } from "../../utility/logger.js";
 import { GuildGuard, StaffGuard } from "../../utility/guards.js";
+import { getUserExportData } from "../../utility/userDataExport.js";
 
 @Discord()
 @SlashGroup({
@@ -24,6 +25,51 @@ import { GuildGuard, StaffGuard } from "../../utility/guards.js";
 })
 @SlashGroup("user")
 export class UserCommands {
+  @Slash({
+    name: "export",
+    description: "Export your own data stored by the bot (JSON file).",
+  })
+  async export(interaction: CommandInteraction): Promise<void> {
+    try {
+      const payload = await getUserExportData(interaction.user.id);
+      if (!payload) {
+        await interaction.reply({
+          content: "You have no data stored.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const jsonString = JSON.stringify(payload, null, 2);
+      await interaction.reply({
+        files: [
+          {
+            attachment: Buffer.from(jsonString, "utf-8"),
+            name: "my-shield-bot-data.json",
+          },
+        ],
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      loggers.bot.error("Error exporting user data", error);
+      const content =
+        interaction.replied || interaction.deferred
+          ? "Failed to export your data. Please try again later."
+          : "Failed to export your data. Please try again later.";
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.editReply({ content }).catch(() => {});
+        } else {
+          await interaction.reply({
+            content,
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   @Slash({
     name: "permission",
     description: "Check user permissions or list all permission levels.",

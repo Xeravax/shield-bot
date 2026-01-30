@@ -6,6 +6,7 @@
 
 ## User Commands
 - `/user permission [user]` - Check user's permission level or list all permission levels
+- `/user export` - Export your own data (JSON file)
 - `/user group join` - Request invite to SHIELD VRChat group
 - `/user group syncme` - Sync Discord roles to VRChat group roles
 
