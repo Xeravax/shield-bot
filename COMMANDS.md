@@ -51,4 +51,5 @@
 
 ## Dev Commands (Bot Owner)
 - `/eval <code>` - Evaluate JavaScript code for debugging
+- `/dev leaveguild <guild_id>` - Make the bot leave a guild by ID
 
