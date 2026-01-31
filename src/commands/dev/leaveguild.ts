@@ -2,7 +2,6 @@ import { Discord, Slash, SlashOption, SlashGroup } from "discordx";
 import {
   ApplicationCommandOptionType,
   CommandInteraction,
-  MessageFlags,
 } from "discord.js";
 import { BotOwnerGuard } from "../../utility/guards.js";
 import { Guard } from "discordx";
