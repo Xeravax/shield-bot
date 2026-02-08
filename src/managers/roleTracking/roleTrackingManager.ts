@@ -747,7 +747,8 @@ export class RoleTrackingManager {
   }
 
   /**
-   * Record that a warning was sent
+   * Record that a warning was sent (or attempted and failed).
+   * When deliveryFailed is true, we store the attempt so we don't retry sending.
    */
   async recordWarningSent(
     guildId: string,
@@ -757,6 +758,7 @@ export class RoleTrackingManager {
     warningIndex: number,
     roleAssignedAt: Date,
     assignmentTrackingId?: number,
+    deliveryFailed?: boolean,
   ): Promise<void> {
     try {
       const userId = await this.getUserIdFromDiscordId(discordId);
@@ -775,6 +777,7 @@ export class RoleTrackingManager {
           sentAt: new Date(),
           roleAssignedAt,
           assignmentTrackingId: assignmentTrackingId || null,
+          deliveryFailed: deliveryFailed ?? null,
         },
       });
     } catch (error) {
@@ -1432,7 +1435,7 @@ export class RoleTrackingManager {
 
                   const dmResult = await this.sendWarningDM(member.id, messageToSend);
 
-                  // Only record warning if DM was successfully sent
+                  // Record warning so we don't retry. Mark deliveryFailed when DM failed.
                   if (dmResult.success) {
                     await this.recordWarningSent(
                       guildId,
@@ -1447,8 +1450,18 @@ export class RoleTrackingManager {
                       `[RoleTracking] Warning #${warning.index} recorded for user ${member.id} - DM sent successfully`,
                     );
                   } else {
+                    await this.recordWarningSent(
+                      guildId,
+                      member.id,
+                      roleId,
+                      "warning",
+                      warning.index,
+                      assignmentDate,
+                      assignmentTracking?.id,
+                      true, // deliveryFailed - store so we don't retry
+                    );
                     loggers.bot.warn(
-                      `[RoleTracking] Warning #${warning.index} NOT recorded for user ${member.id} - DM failed: ${dmResult.error}`,
+                      `[RoleTracking] Warning #${warning.index} recorded as failed for user ${member.id} - DM failed: ${dmResult.error} (will not retry)`,
                     );
                   }
 

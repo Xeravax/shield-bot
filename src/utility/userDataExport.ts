@@ -71,6 +71,7 @@ export interface UserExportPayload {
     warningIndex: number;
     sentAt: string;
     roleAssignedAt: string;
+    deliveryFailed: boolean | null;
     createdAt: string;
   }>;
   attendance: {
@@ -204,6 +205,7 @@ export async function getUserExportData(
       warningIndex: w.warningIndex,
       sentAt: toIso(w.sentAt),
       roleAssignedAt: toIso(w.roleAssignedAt),
+      deliveryFailed: w.deliveryFailed,
       createdAt: toIso(w.createdAt),
     })),
     attendance: {

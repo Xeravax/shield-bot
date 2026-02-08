@@ -25,9 +25,10 @@ model RoleTrackingWarning {
   roleId              String   // Discord Role ID
   warningType         String   // "warning" | "staff_ping"
   warningIndex        Int      // Which warning number (0-based)
-  sentAt              DateTime // When the warning was sent
+  sentAt              DateTime // When the warning was sent (or attempted)
   roleAssignedAt      DateTime // When user got the role (from RoleAssignmentTracking)
   assignmentTrackingId Int?    // Foreign key to RoleAssignmentTracking
+  deliveryFailed      Boolean? // True if send failed (e.g. DM blocked); we don't retry
   createdAt           DateTime @default(now())
 
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
