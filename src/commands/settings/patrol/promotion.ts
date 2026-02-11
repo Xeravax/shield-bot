@@ -16,12 +16,7 @@ import { StaffGuard } from "../../../utility/guards.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
-@SlashGroup({
-  description: "Promotion settings",
-  name: "promotion",
-  root: "patrol",
-})
-@SlashGroup("promotion", "patrol")
+@SlashGroup("promotion", "settings")
 @Guard(StaffGuard)
 export class SettingsPatrolPromotionCommands {
   @Slash({
