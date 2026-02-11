@@ -39,6 +39,11 @@ const MONTH_NAMES = [
   "December",
 ];
 
+/** Strip to only a-z, 0-9, . and , so role names can't inject formatting. */
+function scrubRoleDisplay(name: string): string {
+  return name.replace(/[^a-zA-Z0-9.,]/g, "") || name;
+}
+
 type TrackedUser = {
   userId: string;
   channelId: string;
@@ -1333,8 +1338,12 @@ export class PatrolTimerManager {
           },
         });
         if (alreadyNotified) continue;
-        const currentRankName = member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? "Current";
-        const nextRankName = member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? "Next";
+        const currentRankName = scrubRoleDisplay(
+          member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? "Current",
+        );
+        const nextRankName = scrubRoleDisplay(
+          member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? "Next",
+        );
         const message = `<@${member.id}>\n${currentRankName} → ${nextRankName}\nAttended ${totalHours.toFixed(1)}+ hours (required: ${rule.requiredHours}h).`;
         const sentMessage = await channel.send(message);
         await sentMessage.react("✅");
