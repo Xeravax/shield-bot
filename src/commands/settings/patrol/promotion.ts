@@ -71,66 +71,6 @@ export class SettingsPatrolPromotionCommands {
   }
 
   @Slash({
-    name: "set-role",
-    description: "Set the recruit role required for promotion eligibility",
-  })
-  async setRole(
-    @SlashOption({
-      name: "role",
-      description: "The recruit role",
-      type: ApplicationCommandOptionType.Role,
-      required: true,
-    })
-    role: Role,
-    interaction: CommandInteraction,
-  ) {
-    if (!interaction.guildId) {return;}
-
-    // Update settings
-    await prisma.guildSettings.upsert({
-      where: { guildId: interaction.guildId },
-      update: { promotionRecruitRoleId: role.id },
-      create: { guildId: interaction.guildId, promotionRecruitRoleId: role.id },
-    });
-
-    await interaction.reply({
-      content: `✅ Promotion recruit role set to ${scrubRoleDisplay(role.name)}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  @Slash({
-    name: "set-min-hours",
-    description: "Set the minimum hours required for promotion",
-  })
-  async setMinHours(
-    @SlashOption({
-      name: "hours",
-      description: "Minimum total hours (can be decimal, e.g., 4.5)",
-      type: ApplicationCommandOptionType.Number,
-      required: true,
-      minValue: 0.1,
-      maxValue: 1000,
-    })
-    hours: number,
-    interaction: CommandInteraction,
-  ) {
-    if (!interaction.guildId) {return;}
-
-    // Update settings
-    await prisma.guildSettings.upsert({
-      where: { guildId: interaction.guildId },
-      update: { promotionMinHours: hours },
-      create: { guildId: interaction.guildId, promotionMinHours: hours },
-    });
-
-    await interaction.reply({
-      content: `✅ Minimum hours for promotion set to ${hours}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  @Slash({
     name: "view",
     description: "View current promotion settings",
   })
@@ -153,30 +93,21 @@ export class SettingsPatrolPromotionCommands {
       ? `<#${settings.promotionChannelId}>`
       : "Not set";
     const guild = interaction.guild;
-    const role = settings.promotionRecruitRoleId
-      ? scrubRoleDisplay(guild?.roles.cache.get(settings.promotionRecruitRoleId)?.name ?? settings.promotionRecruitRoleId)
-      : "Not set";
-    const minHours = settings.promotionMinHours ?? 4;
-
     const rules = patrolTimer.getEffectivePromotionRules(settings);
     let rulesBlock = "";
     if (rules && rules.length > 0) {
       rulesBlock = "\n**Rules:**\n" + rules.map((r, i) => {
         const cooldown = r.cooldownHours != null ? `, cooldown ${r.cooldownHours}h` : "";
         const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
-        const nextLabel = r.nextRankRoleId
-          ? scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId)
-          : "Deputy (legacy)";
+        const nextLabel = scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId);
         return `${i + 1}. ${currentName} → ${nextLabel} at ${r.requiredHours}h${cooldown}`;
       }).join("\n");
     } else {
-      rulesBlock = "\n**Rules:** Single legacy rule (Recruit → Deputy at " + minHours + "h).";
+      rulesBlock = "\n**Rules:** No rules configured. Use add-rule.";
     }
 
     const message = `**Promotion Settings**
 **Channel:** ${channel}
-**Recruit Role (legacy):** ${role}
-**Minimum Hours (legacy):** ${minHours}
 ${rulesBlock}
 
 ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notifications." : ""}`;
@@ -198,7 +129,6 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       where: { guildId: interaction.guildId },
       data: {
         promotionChannelId: null,
-        promotionRecruitRoleId: null,
         promotionRules: Prisma.JsonNull,
       },
     });
@@ -333,7 +263,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     const rules = patrolTimer.getEffectivePromotionRules(settings ?? {});
     if (!rules || rules.length === 0) {
       await interaction.reply({
-        content: "ℹ️ No promotion rules configured. Use legacy (set-role + set-min-hours) or add-rule.",
+        content: "ℹ️ No promotion rules configured. Use add-rule.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -342,9 +272,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     const lines = rules.map((r, i) => {
       const cooldown = r.cooldownHours != null ? `, cooldown ${r.cooldownHours}h` : "";
       const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
-      const next = r.nextRankRoleId
-        ? scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId)
-        : "Deputy (legacy)";
+      const next = scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId);
       return `${i + 1}. ${currentName} → ${next} at ${r.requiredHours}h${cooldown}`;
     });
     await interaction.reply({
@@ -398,15 +326,9 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       return;
     }
 
-    const [legacyDel, newDel] = await Promise.all([
-      prisma.voicePatrolPromotion.deleteMany({
-        where: { guildId: interaction.guildId, userId: user.id },
-      }),
-      prisma.voicePatrolPromotionNotification.deleteMany({
-        where: { guildId: interaction.guildId, userId: user.id },
-      }),
-    ]);
-    const total = legacyDel.count + newDel.count;
+    const { count: total } = await prisma.voicePatrolPromotionNotification.deleteMany({
+      where: { guildId: interaction.guildId, userId: user.id },
+    });
     if (total > 0) {
       await interaction.reply({
         content: `✅ Reset all promotion tracking for <@${user.id}> (${total} record(s) removed). They can be notified again if they meet the criteria.`,
@@ -444,7 +366,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
         where: { guildId: interaction.guildId },
       });
 
-      if (!settings?.promotionChannelId || !settings?.promotionRecruitRoleId) {
+      if (!settings?.promotionChannelId) {
         await interaction.editReply({
           content: "❌ Promotion system is not fully configured. Set the promotion channel first.",
         });
@@ -453,7 +375,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       const rules = patrolTimer.getEffectivePromotionRules(settings);
       if (!rules || rules.length === 0) {
         await interaction.editReply({
-          content: "❌ No promotion rules configured. Use set-role + set-min-hours (legacy) or add-rule.",
+          content: "❌ No promotion rules configured. Use add-rule.",
         });
         return;
       }
@@ -502,7 +424,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
         where: { guildId: interaction.guildId },
       });
 
-      if (!settings?.promotionChannelId || !settings?.promotionRecruitRoleId) {
+      if (!settings?.promotionChannelId) {
         await interaction.editReply({
           content: "❌ Promotion system is not fully configured. Set the promotion channel first.",
         });
@@ -512,7 +434,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       const rules = patrolTimer.getEffectivePromotionRules(settings);
       if (!rules || rules.length === 0) {
         await interaction.editReply({
-          content: "❌ No promotion rules configured. Use set-role + set-min-hours (legacy) or add-rule.",
+          content: "❌ No promotion rules configured. Use add-rule.",
         });
         return;
       }

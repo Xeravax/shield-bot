@@ -138,8 +138,6 @@ export class PatrolTimerManager {
       guildId: string;
       patrolChannelCategoryId?: string | null;
       promotionChannelId?: string | null;
-      promotionMinHours?: number | null;
-      promotionRecruitRoleId?: string | null;
       promotionRules?: PromotionRule[] | null;
       patrolLogChannelId?: string | null;
       loaNotificationChannelId?: string | null;
@@ -148,24 +146,12 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Resolve effective promotion rules: use promotionRules array if non-empty, else legacy single rule.
+   * Resolve effective promotion rules from the promotionRules array.
    */
-  getEffectivePromotionRules(settings: {
-    promotionRules?: unknown;
-    promotionRecruitRoleId?: string | null;
-    promotionMinHours?: number | null;
-  }): PromotionRule[] | null {
+  getEffectivePromotionRules(settings: { promotionRules?: unknown }): PromotionRule[] | null {
     const rules = settings.promotionRules as PromotionRule[] | null | undefined;
     if (Array.isArray(rules) && rules.length > 0) {
       return rules;
-    }
-    if (settings.promotionRecruitRoleId && settings.promotionMinHours != null) {
-      return [{
-        currentRankRoleId: settings.promotionRecruitRoleId,
-        nextRankRoleId: "", // legacy: no next rank id, message uses "Deputy"
-        requiredHours: settings.promotionMinHours,
-        cooldownHours: undefined,
-      }];
     }
     return null;
   }
@@ -1305,8 +1291,6 @@ export class PatrolTimerManager {
       if (!channel || !channel.isTextBased()) {
         return false;
       }
-      const isLegacyRule = (r: PromotionRule) => r.nextRankRoleId === "";
-
       for (const rule of rules) {
         if (!member.roles.cache.has(rule.currentRankRoleId)) continue;
         if (totalHours < rule.requiredHours) continue;
@@ -1315,22 +1299,6 @@ export class PatrolTimerManager {
           if (obtainedAt === null) continue;
           const hoursSinceObtained = (Date.now() - obtainedAt.getTime()) / (1000 * 60 * 60);
           if (hoursSinceObtained < rule.cooldownHours) continue;
-        }
-        if (isLegacyRule(rule)) {
-          const existing = await prisma.voicePatrolPromotion.findUnique({
-            where: { guildId_userId: { guildId, userId: member.id } },
-          });
-          if (existing) continue;
-          const message = `<@${member.id}>\nRecruit > Deputy\nAttended ${Math.floor(totalHours)}+ hours and been in 2+ patrols.`;
-          const sentMessage = await channel.send(message);
-          await sentMessage.react("✅");
-          await sentMessage.react("❌");
-          await prisma.voicePatrolPromotion.create({
-            data: { guildId, userId: member.id, totalHours },
-          });
-          loggers.patrol.info(`Promotion notification sent for ${member.user.tag} (${totalHours.toFixed(2)}h)`);
-          sent = true;
-          return true;
         }
         const alreadyNotified = await prisma.voicePatrolPromotionNotification.findUnique({
           where: {

@@ -55,8 +55,6 @@ export class RoleTrackingEvents {
           roleTrackingConfig: true,
           loaRoleId: true,
           promotionRules: true,
-          promotionRecruitRoleId: true,
-          promotionMinHours: true,
         },
       });
 
@@ -163,6 +161,23 @@ export class RoleTrackingEvents {
               });
             } catch (err) {
               loggers.bot.error("Failed to delete promotion role obtained record", err);
+            }
+          }
+        }
+
+        // When a user loses a role that is a "next rank", clear that notification so they can be notified again
+        const nextRankIds = new Set(rules.map((r) => r.nextRankRoleId));
+        for (const role of removedRoles.values()) {
+          if (nextRankIds.has(role.id)) {
+            try {
+              await prisma.voicePatrolPromotionNotification.deleteMany({
+                where: { guildId, userId, nextRankRoleId: role.id },
+              });
+              loggers.bot.debug(
+                `Cleared promotion notification for user ${userId}, next rank ${role.id} in guild ${guildId} - they can be notified again`,
+              );
+            } catch (err) {
+              loggers.bot.error("Failed to clear promotion notification", err);
             }
           }
         }
