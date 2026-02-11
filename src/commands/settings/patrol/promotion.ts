@@ -16,6 +16,11 @@ import { StaffGuard } from "../../../utility/guards.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
+@SlashGroup({
+  name: "promotion",
+  description: "Voice patrol promotion rules and notifications",
+  root: "settings",
+})
 @SlashGroup("promotion", "settings")
 @Guard(StaffGuard)
 export class SettingsPatrolPromotionCommands {
