@@ -15,9 +15,9 @@ import type { PromotionRule } from "../../../managers/patrol/patrolTimerManager.
 import { StaffGuard } from "../../../utility/guards.js";
 import { loggers } from "../../../utility/logger.js";
 
-/** Strip to only a-z, 0-9, . and , so role names can't inject formatting. */
+/** Strip to only a-z, 0-9, . , and space so role names can't inject formatting. */
 function scrubRoleDisplay(name: string): string {
-  return name.replace(/[^a-zA-Z0-9.,]/g, "") || name;
+  return name.replace(/[^a-zA-Z0-9.,\s]/g, "") || name;
 }
 
 @Discord()
