@@ -15,6 +15,11 @@ import type { PromotionRule } from "../../../managers/patrol/patrolTimerManager.
 import { StaffGuard } from "../../../utility/guards.js";
 import { loggers } from "../../../utility/logger.js";
 
+/** Strip to only a-z, 0-9, . and , so role names can't inject formatting. */
+function scrubRoleDisplay(name: string): string {
+  return name.replace(/[^a-zA-Z0-9.,]/g, "") || name;
+}
+
 @Discord()
 @SlashGroup({
   name: "promotion",
@@ -89,7 +94,7 @@ export class SettingsPatrolPromotionCommands {
     });
 
     await interaction.reply({
-      content: `✅ Promotion recruit role set to <@&${role.id}>`,
+      content: `✅ Promotion recruit role set to ${scrubRoleDisplay(role.name)}`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -147,8 +152,9 @@ export class SettingsPatrolPromotionCommands {
     const channel = settings.promotionChannelId
       ? `<#${settings.promotionChannelId}>`
       : "Not set";
+    const guild = interaction.guild;
     const role = settings.promotionRecruitRoleId
-      ? `<@&${settings.promotionRecruitRoleId}>`
+      ? scrubRoleDisplay(guild?.roles.cache.get(settings.promotionRecruitRoleId)?.name ?? settings.promotionRecruitRoleId)
       : "Not set";
     const minHours = settings.promotionMinHours ?? 4;
 
@@ -157,8 +163,11 @@ export class SettingsPatrolPromotionCommands {
     if (rules && rules.length > 0) {
       rulesBlock = "\n**Rules:**\n" + rules.map((r, i) => {
         const cooldown = r.cooldownHours != null ? `, cooldown ${r.cooldownHours}h` : "";
-        const nextLabel = r.nextRankRoleId ? `<@&${r.nextRankRoleId}>` : "Deputy (legacy)";
-        return `${i + 1}. <@&${r.currentRankRoleId}> → ${nextLabel} at ${r.requiredHours}h${cooldown}`;
+        const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
+        const nextLabel = r.nextRankRoleId
+          ? scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId)
+          : "Deputy (legacy)";
+        return `${i + 1}. ${currentName} → ${nextLabel} at ${r.requiredHours}h${cooldown}`;
       }).join("\n");
     } else {
       rulesBlock = "\n**Rules:** Single legacy rule (Recruit → Deputy at " + minHours + "h).";
@@ -259,7 +268,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     });
     const cooldownStr = cooldownHours != null ? `, cooldown ${cooldownHours}h` : "";
     await interaction.reply({
-      content: `✅ Added rule: <@&${currentRank.id}> → <@&${nextRank.id}> at ${requiredHours}h${cooldownStr}.`,
+      content: `✅ Added rule: ${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)} at ${requiredHours}h${cooldownStr}.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -296,7 +305,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     );
     if (filtered.length === rules.length) {
       await interaction.reply({
-        content: `❌ No rule found for <@&${currentRank.id}> → <@&${nextRank.id}>.`,
+        content: `❌ No rule found for ${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)}.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -306,7 +315,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       data: { promotionRules: filtered.length > 0 ? (filtered as unknown as object) : Prisma.JsonNull },
     });
     await interaction.reply({
-      content: `✅ Removed rule: <@&${currentRank.id}> → <@&${nextRank.id}>.`,
+      content: `✅ Removed rule: ${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)}.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -329,10 +338,14 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       });
       return;
     }
+    const guild = interaction.guild;
     const lines = rules.map((r, i) => {
       const cooldown = r.cooldownHours != null ? `, cooldown ${r.cooldownHours}h` : "";
-      const next = r.nextRankRoleId ? `<@&${r.nextRankRoleId}>` : "Deputy (legacy)";
-      return `${i + 1}. <@&${r.currentRankRoleId}> → ${next} at ${r.requiredHours}h${cooldown}`;
+      const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
+      const next = r.nextRankRoleId
+        ? scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId)
+        : "Deputy (legacy)";
+      return `${i + 1}. ${currentName} → ${next} at ${r.requiredHours}h${cooldown}`;
     });
     await interaction.reply({
       content: "**Promotion Rules**\n" + lines.join("\n"),
@@ -373,12 +386,12 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       });
       if (deleted.count > 0) {
         await interaction.reply({
-          content: `✅ Reset promotion tracking for <@${user.id}> for next rank <@&${nextRank.id}>.`,
+          content: `✅ Reset promotion tracking for <@${user.id}> for next rank ${scrubRoleDisplay(nextRank.name)}.`,
           flags: MessageFlags.Ephemeral,
         });
       } else {
         await interaction.reply({
-          content: `ℹ️ <@${user.id}> has no notification record for <@&${nextRank.id}>.`,
+          content: `ℹ️ <@${user.id}> has no notification record for ${scrubRoleDisplay(nextRank.name)}.`,
           flags: MessageFlags.Ephemeral,
         });
       }

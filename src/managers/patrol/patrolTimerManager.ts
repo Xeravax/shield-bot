@@ -166,27 +166,17 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Get total patrol hours at the time of the user's most recent promotion notification (any tier).
-   * Used for cooldown: hours since = currentTotal - this value.
+   * Get when the user obtained the given role (for promotion cooldown: hours since obtaining role).
+   * Returns null if we have no record (e.g. they had the role before the bot recorded it).
    */
-  async getHoursAtLastPromotionNotification(guildId: string, userId: string): Promise<number | null> {
-    const [latestNew, legacy] = await Promise.all([
-      prisma.voicePatrolPromotionNotification.findFirst({
-        where: { guildId, userId },
-        orderBy: { notifiedAt: "desc" },
-        select: { totalHoursAtNotify: true },
-      }),
-      prisma.voicePatrolPromotion.findUnique({
-        where: { guildId_userId: { guildId, userId } },
-        select: { totalHours: true },
-      }),
-    ]);
-    const fromNew = latestNew?.totalHoursAtNotify ?? null;
-    const fromLegacy = legacy?.totalHours ?? null;
-    if (fromNew != null && fromLegacy != null) {
-      return Math.max(fromNew, fromLegacy);
-    }
-    return fromNew ?? fromLegacy ?? null;
+  async getRoleObtainedAt(guildId: string, discordId: string, roleId: string): Promise<Date | null> {
+    const row = await prisma.voicePatrolRoleObtainedAt.findUnique({
+      where: {
+        guildId_userId_roleId: { guildId, userId: discordId, roleId },
+      },
+      select: { obtainedAt: true },
+    });
+    return row?.obtainedAt ?? null;
   }
 
   async setBotuserRole(_guildId: string, _roleId: string | null) {
@@ -1311,17 +1301,15 @@ export class PatrolTimerManager {
         return false;
       }
       const isLegacyRule = (r: PromotionRule) => r.nextRankRoleId === "";
-      let lastNotificationHours: number | null = null;
 
       for (const rule of rules) {
         if (!member.roles.cache.has(rule.currentRankRoleId)) continue;
         if (totalHours < rule.requiredHours) continue;
         if (rule.cooldownHours != null && rule.cooldownHours > 0) {
-          if (lastNotificationHours === null) {
-            lastNotificationHours = await this.getHoursAtLastPromotionNotification(guildId, member.id);
-          }
-          const hoursSinceLast = lastNotificationHours != null ? totalHours - lastNotificationHours : totalHours;
-          if (hoursSinceLast < rule.cooldownHours) continue;
+          const obtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
+          if (obtainedAt === null) continue;
+          const hoursSinceObtained = (Date.now() - obtainedAt.getTime()) / (1000 * 60 * 60);
+          if (hoursSinceObtained < rule.cooldownHours) continue;
         }
         if (isLegacyRule(rule)) {
           const existing = await prisma.voicePatrolPromotion.findUnique({

@@ -12,7 +12,8 @@ model User {
   voicePatrolMonthly             VoicePatrolMonthlyTime[]
   voicePatrolPromotions          VoicePatrolPromotion[]
   voicePatrolPromotionNotifications VoicePatrolPromotionNotification[]
-  userPreferences                UserPreferences?
+  voicePatrolRoleObtainedAt         VoicePatrolRoleObtainedAt[]
+  userPreferences                   UserPreferences?
   leaveOfAbsences        LeaveOfAbsence[]
   roleAssignmentTracking RoleAssignmentTracking[]
   roleTrackingWarnings   RoleTrackingWarning[]

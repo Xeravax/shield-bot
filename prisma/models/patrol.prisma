@@ -74,3 +74,17 @@ model VoicePatrolPromotionNotification {
   @@index([guildId], map: "VoicePatrolPromotionNotification_guild_idx")
   @@index([userId], map: "VoicePatrolPromotionNotification_user_idx")
 }
+
+/// When a user received a role that is a promotion "current rank" (for cooldown: hours since obtaining role).
+model VoicePatrolRoleObtainedAt {
+  id         Int      @id @default(autoincrement())
+  guildId    String
+  userId     String   // Discord User ID → User.discordId
+  user       User     @relation(fields: [userId], references: [discordId])
+  roleId     String
+  obtainedAt DateTime
+
+  @@unique([guildId, userId, roleId], map: "VoicePatrolRoleObtainedAt_guild_user_role_unique")
+  @@index([guildId], map: "VoicePatrolRoleObtainedAt_guild_idx")
+  @@index([userId], map: "VoicePatrolRoleObtainedAt_user_idx")
+}
