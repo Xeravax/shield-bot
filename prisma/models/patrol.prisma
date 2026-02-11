@@ -50,23 +50,27 @@ model ActiveVoicePatrolSession {
 model VoicePatrolPromotion {
   id         Int      @id @default(autoincrement())
   guildId    String
-  userId     String
+  userId     String // Discord User ID → User.discordId
+  user       User     @relation(fields: [userId], references: [discordId])
   totalHours Float
   notifiedAt DateTime @default(now())
 
   @@unique([guildId, userId], map: "VoicePatrolPromotion_guild_user_unique")
   @@index([guildId], map: "VoicePatrolPromotion_guild_idx")
+  @@index([userId], map: "VoicePatrolPromotion_user_idx")
 }
 
 /// Track promotion notifications per (user, next rank) to avoid duplicate pings
 model VoicePatrolPromotionNotification {
   id                 Int       @id @default(autoincrement())
   guildId            String
-  userId             String // Discord User ID
+  userId             String // Discord User ID → User.discordId
+  user               User      @relation(fields: [userId], references: [discordId])
   nextRankRoleId     String
   totalHoursAtNotify Float?
   notifiedAt         DateTime  @default(now())
 
   @@unique([guildId, userId, nextRankRoleId], map: "VoicePatrolPromotionNotification_guild_user_next_rank_unique")
   @@index([guildId], map: "VoicePatrolPromotionNotification_guild_idx")
+  @@index([userId], map: "VoicePatrolPromotionNotification_user_idx")
 }

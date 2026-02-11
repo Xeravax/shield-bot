@@ -8,9 +8,11 @@ model User {
   squadMemberships       SquadMember[]
   vrchatAccounts         VRChatAccount[]
   whitelistEntries        WhitelistEntry[]
-  voicePatrolTimes       VoicePatrolTime[]
-  voicePatrolMonthly     VoicePatrolMonthlyTime[]
-  userPreferences        UserPreferences?
+  voicePatrolTimes               VoicePatrolTime[]
+  voicePatrolMonthly             VoicePatrolMonthlyTime[]
+  voicePatrolPromotions          VoicePatrolPromotion[]
+  voicePatrolPromotionNotifications VoicePatrolPromotionNotification[]
+  userPreferences                UserPreferences?
   leaveOfAbsences        LeaveOfAbsence[]
   roleAssignmentTracking RoleAssignmentTracking[]
   roleTrackingWarnings   RoleTrackingWarning[]
