@@ -7,6 +7,7 @@ model GuildSettings {
   promotionChannelId         String? // Channel ID for promotion notifications
   promotionMinHours          Float?   @default(4) // Minimum total hours required for promotion
   promotionRecruitRoleId     String? // Role ID that users must have to be eligible for promotion
+  promotionRules             Json? // Array of { currentRankRoleId, nextRankRoleId, requiredHours, cooldownHours? } for rank-based rules
   // Attendance settings
   hostAttendanceRoleIds      Json? // Array of role IDs for host attendance
   enrolledChannels           Json? // Array of channel IDs for attendance squads

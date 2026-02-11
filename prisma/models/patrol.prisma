@@ -57,3 +57,16 @@ model VoicePatrolPromotion {
   @@unique([guildId, userId], map: "VoicePatrolPromotion_guild_user_unique")
   @@index([guildId], map: "VoicePatrolPromotion_guild_idx")
 }
+
+/// Track promotion notifications per (user, next rank) to avoid duplicate pings
+model VoicePatrolPromotionNotification {
+  id                 Int       @id @default(autoincrement())
+  guildId            String
+  userId             String // Discord User ID
+  nextRankRoleId     String
+  totalHoursAtNotify Float?
+  notifiedAt         DateTime  @default(now())
+
+  @@unique([guildId, userId, nextRankRoleId], map: "VoicePatrolPromotionNotification_guild_user_next_rank_unique")
+  @@index([guildId], map: "VoicePatrolPromotionNotification_guild_idx")
+}

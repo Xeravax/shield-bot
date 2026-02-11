@@ -16,6 +16,14 @@ import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
 import { loaManager } from "../../main.js";
 
+/** Single rank-based promotion rule (current rank -> next rank at required hours, optional cooldown) */
+export interface PromotionRule {
+  currentRankRoleId: string;
+  nextRankRoleId: string;
+  requiredHours: number;
+  cooldownHours?: number;
+}
+
 const MONTH_NAMES = [
   "January",
   "February",
@@ -127,10 +135,58 @@ export class PatrolTimerManager {
       promotionChannelId?: string | null;
       promotionMinHours?: number | null;
       promotionRecruitRoleId?: string | null;
+      promotionRules?: PromotionRule[] | null;
       patrolLogChannelId?: string | null;
       loaNotificationChannelId?: string | null;
       staffRoleIds?: unknown;
     };
+  }
+
+  /**
+   * Resolve effective promotion rules: use promotionRules array if non-empty, else legacy single rule.
+   */
+  getEffectivePromotionRules(settings: {
+    promotionRules?: unknown;
+    promotionRecruitRoleId?: string | null;
+    promotionMinHours?: number | null;
+  }): PromotionRule[] | null {
+    const rules = settings.promotionRules as PromotionRule[] | null | undefined;
+    if (Array.isArray(rules) && rules.length > 0) {
+      return rules;
+    }
+    if (settings.promotionRecruitRoleId && settings.promotionMinHours != null) {
+      return [{
+        currentRankRoleId: settings.promotionRecruitRoleId,
+        nextRankRoleId: "", // legacy: no next rank id, message uses "Deputy"
+        requiredHours: settings.promotionMinHours,
+        cooldownHours: undefined,
+      }];
+    }
+    return null;
+  }
+
+  /**
+   * Get total patrol hours at the time of the user's most recent promotion notification (any tier).
+   * Used for cooldown: hours since = currentTotal - this value.
+   */
+  async getHoursAtLastPromotionNotification(guildId: string, userId: string): Promise<number | null> {
+    const [latestNew, legacy] = await Promise.all([
+      prisma.voicePatrolPromotionNotification.findFirst({
+        where: { guildId, userId },
+        orderBy: { notifiedAt: "desc" },
+        select: { totalHoursAtNotify: true },
+      }),
+      prisma.voicePatrolPromotion.findUnique({
+        where: { guildId_userId: { guildId, userId } },
+        select: { totalHours: true },
+      }),
+    ]);
+    const fromNew = latestNew?.totalHoursAtNotify ?? null;
+    const fromLegacy = legacy?.totalHours ?? null;
+    if (fromNew != null && fromLegacy != null) {
+      return Math.max(fromNew, fromLegacy);
+    }
+    return fromNew ?? fromLegacy ?? null;
   }
 
   async setBotuserRole(_guildId: string, _roleId: string | null) {
@@ -1233,68 +1289,90 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Check if a user is eligible for promotion and send notification if so.
+   * Run promotion check for one member; send notification(s) if eligible.
+   * Returns true if at least one notification was sent.
+   * Used by automatic (on leave) and manual check command.
    */
-  private async checkPromotion(guildId: string, member: GuildMember) {
+  async runPromotionCheckForMember(guildId: string, member: GuildMember): Promise<boolean> {
+    let sent = false;
     try {
       const settings = await this.getSettings(guildId);
-      
-      // Check if promotion system is configured
-      if (!settings.promotionChannelId || !settings.promotionRecruitRoleId) {
-        return; // Promotion system not configured
+      if (!settings.promotionChannelId) {
+        return false;
       }
-
-      // Check if user has the recruit role
-      if (!member.roles.cache.has(settings.promotionRecruitRoleId)) {
-        return; // User doesn't have recruit role
+      const rules = this.getEffectivePromotionRules(settings);
+      if (!rules || rules.length === 0) {
+        return false;
       }
-
-      // Check if user has already been promoted (notification already sent)
-      const existingPromotion = await prisma.voicePatrolPromotion.findUnique({
-        where: { guildId_userId: { guildId, userId: member.id } },
-      });
-      
-      if (existingPromotion) {
-        return; // Already promoted
-      }
-
-      const minHours = settings.promotionMinHours ?? 4;
-
-      // Get total patrol time in milliseconds
       const totalTime = await this.getUserTotal(guildId, member.id);
       const totalHours = totalTime / (1000 * 60 * 60);
+      const channel = await member.guild.channels.fetch(settings.promotionChannelId);
+      if (!channel || !channel.isTextBased()) {
+        return false;
+      }
+      const isLegacyRule = (r: PromotionRule) => r.nextRankRoleId === "";
+      let lastNotificationHours: number | null = null;
 
-      // Check if user meets promotion criteria (only hours requirement)
-      if (totalHours >= minHours) {
-        // Get promotion channel
-        const channel = await member.guild.channels.fetch(settings.promotionChannelId);
-        if (!channel || !channel.isTextBased()) {
-          loggers.patrol.error(`Promotion channel ${settings.promotionChannelId} not found or not a text channel`);
-          return;
+      for (const rule of rules) {
+        if (!member.roles.cache.has(rule.currentRankRoleId)) continue;
+        if (totalHours < rule.requiredHours) continue;
+        if (rule.cooldownHours != null && rule.cooldownHours > 0) {
+          if (lastNotificationHours === null) {
+            lastNotificationHours = await this.getHoursAtLastPromotionNotification(guildId, member.id);
+          }
+          const hoursSinceLast = lastNotificationHours != null ? totalHours - lastNotificationHours : totalHours;
+          if (hoursSinceLast < rule.cooldownHours) continue;
         }
-
-        // Send promotion notification
-        const message = `<@${member.id}>\nRecruit > Deputy\nAttended ${Math.floor(totalHours)}+ hours and been in 2+ patrols.`;
+        if (isLegacyRule(rule)) {
+          const existing = await prisma.voicePatrolPromotion.findUnique({
+            where: { guildId_userId: { guildId, userId: member.id } },
+          });
+          if (existing) continue;
+          const message = `<@${member.id}>\nRecruit > Deputy\nAttended ${Math.floor(totalHours)}+ hours and been in 2+ patrols.`;
+          const sentMessage = await channel.send(message);
+          await sentMessage.react("✅");
+          await sentMessage.react("❌");
+          await prisma.voicePatrolPromotion.create({
+            data: { guildId, userId: member.id, totalHours },
+          });
+          loggers.patrol.info(`Promotion notification sent for ${member.user.tag} (${totalHours.toFixed(2)}h)`);
+          sent = true;
+          return true;
+        }
+        const alreadyNotified = await prisma.voicePatrolPromotionNotification.findUnique({
+          where: {
+            guildId_userId_nextRankRoleId: { guildId, userId: member.id, nextRankRoleId: rule.nextRankRoleId },
+          },
+        });
+        if (alreadyNotified) continue;
+        const currentRankName = member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? "Current";
+        const nextRankName = member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? "Next";
+        const message = `<@${member.id}>\n${currentRankName} → ${nextRankName}\nAttended ${totalHours.toFixed(1)}+ hours (required: ${rule.requiredHours}h).`;
         const sentMessage = await channel.send(message);
-        
-        // Add reactions
-        await sentMessage.react('✅');
-        await sentMessage.react('❌');
-
-        // Record the promotion to prevent duplicate notifications
-        await prisma.voicePatrolPromotion.create({
+        await sentMessage.react("✅");
+        await sentMessage.react("❌");
+        await prisma.voicePatrolPromotionNotification.create({
           data: {
             guildId,
             userId: member.id,
-            totalHours,
+            nextRankRoleId: rule.nextRankRoleId,
+            totalHoursAtNotify: totalHours,
           },
         });
-        
-        loggers.patrol.info(`Promotion notification sent for ${member.user.tag} (${totalHours.toFixed(2)}h)`);
+        loggers.patrol.info(`Promotion notification sent for ${member.user.tag}: ${currentRankName} → ${nextRankName} (${totalHours.toFixed(2)}h)`);
+        sent = true;
       }
     } catch (err) {
-      loggers.patrol.error("checkPromotion error", err);
+      loggers.patrol.error("runPromotionCheckForMember error", err);
     }
+    return sent;
+  }
+
+  /**
+   * Check if a user is eligible for promotion and send notification if so (called on patrol leave).
+   */
+  private async checkPromotion(guildId: string, member: GuildMember): Promise<void> {
+    await this.runPromotionCheckForMember(guildId, member);
   }
 
   private async persistMonthly(
