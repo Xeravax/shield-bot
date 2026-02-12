@@ -12,6 +12,7 @@ model User {
   voicePatrolMonthly             VoicePatrolMonthlyTime[]
   voicePatrolPromotionNotifications VoicePatrolPromotionNotification[]
   voicePatrolRoleObtainedAt         VoicePatrolRoleObtainedAt[]
+  activeVoicePatrolSessions         ActiveVoicePatrolSession[]
   userPreferences                   UserPreferences?
   leaveOfAbsences        LeaveOfAbsence[]
   roleAssignmentTracking RoleAssignmentTracking[]
@@ -27,7 +28,7 @@ model VRChatAccount {
   verificationGuildId String? // Guild ID where verification was initiated
   vrchatUsername      String? // Cached VRChat username
   usernameUpdatedAt   DateTime? // Last time username was updated
-  user                User              @relation(fields: [userId], references: [id])
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], map: "VRChatAccount_userId_fkey")
   @@index([vrcUserId], map: "VRChatAccount_vrcUserId_idx")

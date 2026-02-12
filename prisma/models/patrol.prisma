@@ -4,7 +4,7 @@ model VoicePatrolTime {
   id        Int      @id @default(autoincrement())
   guildId   String
   userId    String // Discord User ID
-  user      User     @relation(fields: [userId], references: [discordId])
+  user      User     @relation(fields: [userId], references: [discordId], onDelete: Cascade)
   totalMs   BigInt   @default(0)
   channelId String? // Channel ID where the hours were accumulated (for logging)
   createdAt DateTime @default(now())
@@ -20,7 +20,7 @@ model VoicePatrolMonthlyTime {
   id        Int      @id @default(autoincrement())
   guildId   String
   userId    String
-  user      User     @relation(fields: [userId], references: [discordId])
+  user      User     @relation(fields: [userId], references: [discordId], onDelete: Cascade)
   year      Int // UTC year
   month     Int // 1-12, UTC month
   totalMs   BigInt   @default(0)
@@ -36,7 +36,8 @@ model VoicePatrolMonthlyTime {
 model ActiveVoicePatrolSession {
   id        Int      @id @default(autoincrement())
   guildId   String
-  userId    String
+  userId    String   // Discord User ID → User.discordId
+  user      User     @relation(fields: [userId], references: [discordId], onDelete: Cascade)
   channelId String
   startedAt DateTime
   createdAt DateTime @default(now())
@@ -44,6 +45,7 @@ model ActiveVoicePatrolSession {
 
   @@unique([guildId, userId], map: "ActiveVoicePatrolSession_guild_user_unique")
   @@index([guildId], map: "ActiveVoicePatrolSession_guild_idx")
+  @@index([userId], map: "ActiveVoicePatrolSession_user_idx")
 }
 
 /// Track promotion notifications per (user, next rank) to avoid duplicate pings
@@ -51,7 +53,7 @@ model VoicePatrolPromotionNotification {
   id                 Int       @id @default(autoincrement())
   guildId            String
   userId             String // Discord User ID → User.discordId
-  user               User      @relation(fields: [userId], references: [discordId])
+  user               User      @relation(fields: [userId], references: [discordId], onDelete: Cascade)
   nextRankRoleId     String
   totalHoursAtNotify Float?
   notifiedAt         DateTime  @default(now())
@@ -66,7 +68,7 @@ model VoicePatrolRoleObtainedAt {
   id         Int      @id @default(autoincrement())
   guildId    String
   userId     String   // Discord User ID → User.discordId
-  user       User     @relation(fields: [userId], references: [discordId])
+  user       User     @relation(fields: [userId], references: [discordId], onDelete: Cascade)
   roleId     String
   obtainedAt DateTime
 

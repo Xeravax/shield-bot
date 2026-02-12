@@ -7,8 +7,8 @@ model AttendanceEvent {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   activeAttendanceEvents ActiveAttendanceEvent[]
-  cohost                 User?                   @relation("CohostAttendanceEvent", fields: [cohostId], references: [id])
-  host                   User?                   @relation("HostAttendanceEvent", fields: [hostId], references: [id])
+  cohost                 User?                   @relation("CohostAttendanceEvent", fields: [cohostId], references: [id], onDelete: SetNull)
+  host                   User?                   @relation("HostAttendanceEvent", fields: [hostId], references: [id], onDelete: SetNull)
   staff                  AttendanceStaff[]
   squads                 Squad[]
 
@@ -36,7 +36,7 @@ model SquadMember {
   splitFrom String?
   hasLeft   Boolean @default(false)
   squad     Squad   @relation(fields: [squadId], references: [id])
-  user      User    @relation(fields: [userId], references: [id])
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([squadId], map: "SquadMember_squadId_fkey")
   @@index([userId], map: "SquadMember_userId_fkey")
@@ -47,7 +47,7 @@ model AttendanceStaff {
   userId  Int
   eventId Int
   event   AttendanceEvent @relation(fields: [eventId], references: [id])
-  user    User            @relation(fields: [userId], references: [id])
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([eventId], map: "AttendanceStaff_eventId_fkey")
   @@index([userId], map: "AttendanceStaff_userId_fkey")
@@ -58,7 +58,7 @@ model ActiveAttendanceEvent {
   userId  Int             @unique
   eventId Int
   event   AttendanceEvent @relation(fields: [eventId], references: [id])
-  user    User            @relation("UserActiveAttendanceEvent", fields: [userId], references: [id])
+  user    User            @relation("UserActiveAttendanceEvent", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([eventId], map: "ActiveAttendanceEvent_eventId_fkey")
 }
