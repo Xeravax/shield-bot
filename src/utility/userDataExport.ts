@@ -39,11 +39,6 @@ export interface UserExportPayload {
     createdAt: string;
     updatedAt: string;
   }>;
-  voicePatrolPromotions: Array<{
-    guildId: string;
-    totalHours: number;
-    notifiedAt: string;
-  }>;
   leaveOfAbsences: Array<{
     guildId: string;
     requestedAt: string;
@@ -128,10 +123,6 @@ export async function getUserExportData(
     return null;
   }
 
-  const voicePatrolPromotions = await prisma.voicePatrolPromotion.findMany({
-    where: { userId: user.discordId },
-  });
-
   const payload: UserExportPayload = {
     exportedAt: toIso(new Date()),
     discordId: user.discordId,
@@ -172,11 +163,6 @@ export async function getUserExportData(
       totalMs: t.totalMs.toString(),
       createdAt: toIso(t.createdAt),
       updatedAt: toIso(t.updatedAt),
-    })),
-    voicePatrolPromotions: voicePatrolPromotions.map((p) => ({
-      guildId: p.guildId,
-      totalHours: p.totalHours,
-      notifiedAt: toIso(p.notifiedAt),
     })),
     leaveOfAbsences: user.leaveOfAbsences.map((l) => ({
       guildId: l.guildId,

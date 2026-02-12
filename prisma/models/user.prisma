@@ -10,7 +10,6 @@ model User {
   whitelistEntries        WhitelistEntry[]
   voicePatrolTimes               VoicePatrolTime[]
   voicePatrolMonthly             VoicePatrolMonthlyTime[]
-  voicePatrolPromotions          VoicePatrolPromotion[]
   voicePatrolPromotionNotifications VoicePatrolPromotionNotification[]
   voicePatrolRoleObtainedAt         VoicePatrolRoleObtainedAt[]
   userPreferences                   UserPreferences?
