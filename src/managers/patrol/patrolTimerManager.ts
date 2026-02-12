@@ -1294,11 +1294,16 @@ export class PatrolTimerManager {
       for (const rule of rules) {
         if (!member.roles.cache.has(rule.currentRankRoleId)) continue;
         if (totalHours < rule.requiredHours) continue;
+        let cooldownUnchecked = false;
         if (rule.cooldownHours != null && rule.cooldownHours > 0) {
           const obtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
-          if (obtainedAt === null) continue;
-          const hoursSinceObtained = (Date.now() - obtainedAt.getTime()) / (1000 * 60 * 60);
-          if (hoursSinceObtained < rule.cooldownHours) continue;
+          if (obtainedAt === null) {
+            cooldownUnchecked = true;
+            // Continue with notification but mark cooldown as unchecked
+          } else {
+            const hoursSinceObtained = (Date.now() - obtainedAt.getTime()) / (1000 * 60 * 60);
+            if (hoursSinceObtained < rule.cooldownHours) continue;
+          }
         }
         const alreadyNotified = await prisma.voicePatrolPromotionNotification.findUnique({
           where: {
@@ -1312,7 +1317,10 @@ export class PatrolTimerManager {
         const nextRankName = scrubRoleDisplay(
           member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? "Next",
         );
-        const message = `<@${member.id}>\n${currentRankName} → ${nextRankName}\nAttended ${totalHours.toFixed(1)}+ hours (required: ${rule.requiredHours}h).`;
+        const cooldownWarning = cooldownUnchecked 
+          ? "\n⚠️ Cooldown unchecked due to missing role data"
+          : "";
+        const message = `<@${member.id}>\n${currentRankName} → ${nextRankName}\nAttended ${totalHours.toFixed(1)}+ hours (required: ${rule.requiredHours}h).${cooldownWarning}`;
         const sentMessage = await channel.send(message);
         await sentMessage.react("✅");
         await sentMessage.react("❌");
