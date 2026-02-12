@@ -152,8 +152,12 @@ export class VRChatFriendVerifyButtonHandler {
             components: [],
           });
         }
-      } catch (error) {
-        loggers.vrchat.warn(`Failed to update original message`, error);
+      } catch (error: unknown) {
+        const code = (error as { code?: number; rawError?: { code?: number } })?.code
+          ?? (error as { code?: number; rawError?: { code?: number } })?.rawError?.code;
+        if (code !== 10008) {
+          loggers.vrchat.warn(`Failed to update original message`, error);
+        }
       }
     } else {
       const embed = new EmbedBuilder()

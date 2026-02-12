@@ -23,15 +23,15 @@ import type { User, VRChatAccount } from "../../../../generated/prisma/client.js
 @Discord()
 export class VRCAccountManagerButtonHandler {
   @ButtonComponent({
-    id: /^accountmanager:(main|alt|delete):([a-zA-Z0-9\-_]+)$/,
+    id: /^accountmanager:(main|alt|delete):(\d+)$/,
   })
   async handleAccountManager(interaction: ButtonInteraction) {
     const parts = interaction.customId.split(":");
     const action = parts[1];
-    const vrcUserId = parts[2];
+    const accountIdStr = parts[2];
     const discordId = interaction.user.id;
 
-    if (!action || !vrcUserId) {
+    if (!action || !accountIdStr) {
       await interaction.reply({
         content: "❌ Invalid button interaction data.",
         flags: MessageFlags.Ephemeral,
@@ -48,12 +48,33 @@ export class VRCAccountManagerButtonHandler {
     }
 
     try {
-      // Get the user and their VRChat accounts
+      const accountId = parseInt(accountIdStr, 10);
+      if (Number.isNaN(accountId)) {
+        await interaction.reply({
+          content: "❌ Invalid button interaction data.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const vrcAccount = await prisma.vRChatAccount.findUnique({
+        where: { id: accountId },
+        include: { user: true },
+      });
+
+      if (!vrcAccount || vrcAccount.user.discordId !== discordId) {
+        await interaction.reply({
+          content:
+            "❌ VRChat account not found or not linked to your Discord account.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
       const user = await prisma.user.findUnique({
         where: { discordId },
         include: { vrchatAccounts: true },
       });
-
       if (!user) {
         await interaction.reply({
           content: "❌ User not found in database.",
@@ -62,18 +83,7 @@ export class VRCAccountManagerButtonHandler {
         return;
       }
 
-      // Find the specific VRChat account
-      const vrcAccount = user.vrchatAccounts.find(
-        (acc: { vrcUserId: string }) => acc.vrcUserId === vrcUserId,
-      );
-      if (!vrcAccount) {
-        await interaction.reply({
-          content:
-            "❌ VRChat account not found or not linked to your Discord account.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      const vrcUserId = vrcAccount.vrcUserId;
 
       switch (action) {
         case "main":
@@ -451,16 +461,16 @@ export class VRCAccountManagerButtonHandler {
             .setStyle(mainBtnStyle)
             .setLabel("Main")
             .setDisabled(mainBtnDisabled)
-            .setCustomId(`accountmanager:main:${acc.vrcUserId}`),
+            .setCustomId(`accountmanager:main:${acc.id}`),
           new ButtonBuilder()
             .setStyle(altBtnStyle)
             .setLabel("Alt")
             .setDisabled(altBtnDisabled)
-            .setCustomId(`accountmanager:alt:${acc.vrcUserId}`),
+            .setCustomId(`accountmanager:alt:${acc.id}`),
           new ButtonBuilder()
             .setStyle(ButtonStyle.Danger)
             .setLabel("Unlink (Delete)")
-            .setCustomId(`accountmanager:delete:${acc.vrcUserId}`),
+            .setCustomId(`accountmanager:delete:${acc.id}`),
         ),
       );
     }

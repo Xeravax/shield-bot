@@ -23,16 +23,16 @@ import { loggers } from "../../../../utility/logger.js";
 @Discord()
 export class VRCStaffAccountManagerButtonHandler {
   @ButtonComponent({
-    id: /^staffaccountmanager:(main|alt|delete):(\d+):([a-zA-Z0-9\-_]+)$/,
+    id: /^staffaccountmanager:(main|alt|delete):(\d+):(\d+)$/,
   })
   @Guard(StaffGuard)
   async handleStaffAccountManager(interaction: ButtonInteraction) {
     const parts = interaction.customId.split(":");
     const action = parts[1];
     const targetDiscordId = parts[2];
-    const vrcUserId = parts[3];
+    const accountIdStr = parts[3];
 
-    if (!action || !targetDiscordId || !vrcUserId) {
+    if (!action || !targetDiscordId || !accountIdStr) {
       await interaction.reply({
         content: "❌ Invalid button interaction data.",
         flags: MessageFlags.Ephemeral,
@@ -49,12 +49,33 @@ export class VRCStaffAccountManagerButtonHandler {
     }
 
     try {
-      // Get the target user and their VRChat accounts
+      const accountId = parseInt(accountIdStr, 10);
+      if (Number.isNaN(accountId)) {
+        await interaction.reply({
+          content: "❌ Invalid button interaction data.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const vrcAccount = await prisma.vRChatAccount.findUnique({
+        where: { id: accountId },
+        include: { user: true },
+      });
+
+      if (!vrcAccount || vrcAccount.user.discordId !== targetDiscordId) {
+        await interaction.reply({
+          content:
+            "❌ VRChat account not found or not linked to the target user's Discord account.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
       const user = await prisma.user.findUnique({
         where: { discordId: targetDiscordId },
         include: { vrchatAccounts: true },
       });
-
       if (!user) {
         await interaction.reply({
           content: "❌ User not found in database.",
@@ -63,18 +84,7 @@ export class VRCStaffAccountManagerButtonHandler {
         return;
       }
 
-      // Find the specific VRChat account
-      const vrcAccount = user.vrchatAccounts.find(
-        (acc: { vrcUserId: string }) => acc.vrcUserId === vrcUserId,
-      );
-      if (!vrcAccount) {
-        await interaction.reply({
-          content:
-            "❌ VRChat account not found or not linked to the target user's Discord account.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      const vrcUserId = vrcAccount.vrcUserId;
 
       switch (action) {
         case "main":
@@ -438,20 +448,20 @@ export class VRCStaffAccountManagerButtonHandler {
               .setLabel("Main")
               .setDisabled(mainBtnDisabled)
               .setCustomId(
-                `staffaccountmanager:main:${targetDiscordId}:${acc.vrcUserId}`,
+                `staffaccountmanager:main:${targetDiscordId}:${acc.id}`,
               ),
             new ButtonBuilder()
               .setStyle(altBtnStyle)
               .setLabel("Alt")
               .setDisabled(altBtnDisabled)
               .setCustomId(
-                `staffaccountmanager:alt:${targetDiscordId}:${acc.vrcUserId}`,
+                `staffaccountmanager:alt:${targetDiscordId}:${acc.id}`,
               ),
             new ButtonBuilder()
               .setStyle(ButtonStyle.Danger)
               .setLabel("Unlink (Delete)")
               .setCustomId(
-                `staffaccountmanager:delete:${targetDiscordId}:${acc.vrcUserId}`,
+                `staffaccountmanager:delete:${targetDiscordId}:${acc.id}`,
               ),
           ),
         );
@@ -492,17 +502,17 @@ export class VRCStaffAccountManagerButtonHandler {
               .setStyle(ButtonStyle.Secondary)
               .setLabel("Main")
               .setDisabled(true)
-              .setCustomId(`disabled:main:${acc.vrcUserId}`),
+              .setCustomId(`disabled:main:${acc.id}`),
             new ButtonBuilder()
               .setStyle(ButtonStyle.Secondary)
               .setLabel("Alt")
               .setDisabled(true)
-              .setCustomId(`disabled:alt:${acc.vrcUserId}`),
+              .setCustomId(`disabled:alt:${acc.id}`),
             new ButtonBuilder()
               .setStyle(ButtonStyle.Danger)
               .setLabel("Unlink (Delete)")
               .setCustomId(
-                `staffaccountmanager:delete:${targetDiscordId}:${acc.vrcUserId}`,
+                `staffaccountmanager:delete:${targetDiscordId}:${acc.id}`,
               ),
           ),
         );

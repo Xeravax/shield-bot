@@ -45,8 +45,8 @@ export class VRChatVerifyAccountCommand {
       return;
     }
 
-    const userId = userIdOpt;
-    if (!userId || typeof userId !== "string") {
+    const userId = typeof userIdOpt === "string" ? userIdOpt.trim() : "";
+    if (!userId) {
       await interaction.reply({
         content: `No VRChat user ID provided. Please try again.`,
         flags: MessageFlags.Ephemeral,
@@ -54,7 +54,7 @@ export class VRChatVerifyAccountCommand {
       return;
     }
 
-    // Fetch user details from VRChat API using the userId directly
+    // Fetch user details from VRChat API (resolves username to ID if needed)
     let userInfo: VRChatUser | null = null;
     try {
       userInfo = await getUserById(userId);
@@ -63,7 +63,7 @@ export class VRChatVerifyAccountCommand {
     }
     if (!userInfo || !userInfo.id) {
       await interaction.reply({
-        content: `Could not fetch VRChat user details. Please try again or check the user ID.\n\n- Make sure you WAIT for the autocomplete to load results and SELECT it from the list.`,
+        content: `We couldn't find that VRChat user. You can type your **VRChat username** or use the autocomplete: type a few letters and select your account from the list.`,
         flags: MessageFlags.Ephemeral,
       });
       return;

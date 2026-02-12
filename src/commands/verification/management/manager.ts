@@ -171,14 +171,14 @@ export class VRChatVerifyManagerCommand {
         }
 
         const mainCustomId = isManagingSelf
-          ? `accountmanager:main:${acc.vrcUserId}`
-          : `staffaccountmanager:main:${discordId}:${acc.vrcUserId}`;
+          ? `accountmanager:main:${acc.id}`
+          : `staffaccountmanager:main:${discordId}:${acc.id}`;
         const altCustomId = isManagingSelf
-          ? `accountmanager:alt:${acc.vrcUserId}`
-          : `staffaccountmanager:alt:${discordId}:${acc.vrcUserId}`;
+          ? `accountmanager:alt:${acc.id}`
+          : `staffaccountmanager:alt:${discordId}:${acc.id}`;
         const deleteCustomId = isManagingSelf
-          ? `accountmanager:delete:${acc.vrcUserId}`
-          : `staffaccountmanager:delete:${discordId}:${acc.vrcUserId}`;
+          ? `accountmanager:delete:${acc.id}`
+          : `staffaccountmanager:delete:${discordId}:${acc.id}`;
 
         container.addActionRowComponents(
           new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
@@ -235,19 +235,19 @@ export class VRChatVerifyManagerCommand {
               .setStyle(ButtonStyle.Secondary)
               .setLabel("Main")
               .setDisabled(true)
-              .setCustomId(`disabled:main:${acc.vrcUserId}`),
+              .setCustomId(`disabled:main:${acc.id}`),
             new ButtonBuilder()
               .setStyle(ButtonStyle.Secondary)
               .setLabel("Alt")
               .setDisabled(true)
-              .setCustomId(`disabled:alt:${acc.vrcUserId}`),
+              .setCustomId(`disabled:alt:${acc.id}`),
             new ButtonBuilder()
               .setStyle(ButtonStyle.Danger)
               .setLabel("Unlink (Delete)")
               .setCustomId(
                 isManagingSelf
-                  ? `accountmanager:delete:${acc.vrcUserId}`
-                  : `staffaccountmanager:delete:${discordId}:${acc.vrcUserId}`,
+                  ? `accountmanager:delete:${acc.id}`
+                  : `staffaccountmanager:delete:${discordId}:${acc.id}`,
               ),
           ),
         );

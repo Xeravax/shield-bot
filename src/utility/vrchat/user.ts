@@ -21,8 +21,13 @@ export async function sendFriendRequest(userId: string): Promise<unknown> {
   try {
     return await vrchatApi.friendApi.sendFriendRequest({ userId });
   } catch (error: unknown) {
-    // If already friends, unfriend and try again
     if (error instanceof RequestError && error.statusCode === 400) {
+      const msg = (error.message || "").toLowerCase();
+      // Pending friend request: treat as success, do not unfriend
+      if (msg.includes("already been sent a friend request")) {
+        return undefined;
+      }
+      // Already friends: unfriend and try again
       await unfriendUser(userId);
       return await vrchatApi.friendApi.sendFriendRequest({ userId });
     }
