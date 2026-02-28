@@ -133,23 +133,28 @@ export class WhitelistUserOperations {
   }
 
   /**
-   * Remove a user from the whitelist by Discord ID
+   * Remove a user from the whitelist by Discord ID.
+   * Idempotent: safe to call when the entry is already gone (e.g. duplicate leave/ban events).
    */
   async removeUserByDiscordId(discordId: string, guildId: string): Promise<boolean> {
     try {
       const user = await prisma.user.findUnique({ where: { discordId } });
-      if (!user) {return false;}
+      if (!user) {
+        return false;
+      }
 
-      await prisma.whitelistEntry.delete({
-        where: { 
-          userId_guildId: {
-            userId: user.id,
-            guildId: guildId,
-          },
+      const result = await prisma.whitelistEntry.deleteMany({
+        where: {
+          userId: user.id,
+          guildId: guildId,
         },
       });
-      return true;
-    } catch (_error) {
+      return result.count > 0;
+    } catch (error) {
+      loggers.bot.error(
+        `Failed to remove whitelist entry for ${discordId} in guild ${guildId}`,
+        error,
+      );
       return false;
     }
   }

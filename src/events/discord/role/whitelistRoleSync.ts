@@ -305,11 +305,19 @@ export class WhitelistRoleSync {
       );
 
       const guildId = member.guild.id;
-      // Get their whitelist roles before removal for logging
-      const whitelistRoles = await this.getUserWhitelistRoles(member.id, guildId);
+      // Get their whitelist roles before removal for logging (failure must not block removal)
+      let whitelistRoles: string[] = [];
+      try {
+        whitelistRoles = await this.getUserWhitelistRoles(member.id, guildId);
+      } catch (rolesError) {
+        loggers.bot.warn(
+          `Failed to get whitelist roles for ${memberName} before removal`,
+          rolesError,
+        );
+      }
 
       // Always remove from whitelist when they leave the server (includes kicks/bans)
-      await whitelistManager.removeUserFromWhitelistIfNoRoles(member.id, guildId);
+      await whitelistManager.removeUserByDiscordId(member.id, guildId);
 
       // Send whitelist log message if they had whitelist access
       if (whitelistRoles.length > 0) {
@@ -376,11 +384,19 @@ export class WhitelistRoleSync {
         `User ${userName} was banned - ensuring removal from whitelist`,
       );
 
-      // Get their whitelist roles before removal for logging
-      const whitelistRoles = await this.getUserWhitelistRoles(user.id, guildId);
+      // Get their whitelist roles before removal for logging (failure must not block removal)
+      let whitelistRoles: string[] = [];
+      try {
+        whitelistRoles = await this.getUserWhitelistRoles(user.id, guildId);
+      } catch (rolesError) {
+        loggers.bot.warn(
+          `Failed to get whitelist roles for ${userName} before removal`,
+          rolesError,
+        );
+      }
 
       // Ensure banned user is removed from whitelist
-      await whitelistManager.removeUserFromWhitelistIfNoRoles(user.id, guildId);
+      await whitelistManager.removeUserByDiscordId(user.id, guildId);
 
       // Send whitelist log message if they had whitelist access
       if (whitelistRoles.length > 0) {
