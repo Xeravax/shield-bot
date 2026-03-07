@@ -17,6 +17,7 @@ import {
 import { loggers } from "../../utility/logger.js";
 import { GuildGuard, StaffGuard } from "../../utility/guards.js";
 import { getUserExportData } from "../../utility/userDataExport.js";
+import { patrolTimer } from "../../main.js";
 
 @Discord()
 @SlashGroup({
@@ -466,6 +467,24 @@ export class UserCommands {
             errors.push(`<@${member.id}>: ${errorMsg}`);
             loggers.bot.error(`Error assigning role to ${member.id}`, error);
           }
+        }
+
+        if (successCount > 0 && interaction.guildId) {
+          const details =
+            successCount === 1 && membersToAssign.length === 1
+              ? `${role.name} (${role.id})`
+              : `${role.name} (${role.id}), ${successCount} member(s)`;
+          const targetUserId =
+            successCount === 1 && membersToAssign.length === 1
+              ? membersToAssign[0].id
+              : undefined;
+          await patrolTimer.logCommandUsage(
+            interaction.guildId,
+            "user-role-assign",
+            interaction.user.id,
+            targetUserId,
+            details,
+          );
         }
 
         let resultMessage = `✅ Assigned role <@&${role.id}> to ${successCount} member${successCount !== 1 ? "s" : ""}.`;

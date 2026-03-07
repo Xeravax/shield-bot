@@ -7,7 +7,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
@@ -38,7 +38,7 @@ export class SettingsPatrolLogChannelCommand {
         return;
       }
 
-      // If no channel provided, show current setting
+      // If no channel provided, show current setting (view only – no log)
       if (!channel) {
         const settings = await prisma.guildSettings.findUnique({
           where: { guildId: interaction.guildId },
@@ -70,6 +70,14 @@ export class SettingsPatrolLogChannelCommand {
           patrolLogChannelId: channel.id,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-patrol-log-channel",
+        interaction.user.id,
+        undefined,
+        channel.id,
+      );
 
       await interaction.reply({
         content: `✅ Patrol log channel has been set to <#${channel.id}>`,

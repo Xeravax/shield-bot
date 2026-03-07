@@ -64,6 +64,14 @@ export class SettingsPatrolPromotionCommands {
       create: { guildId: interaction.guildId, promotionChannelId: channel.id },
     });
 
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "promotion-set-channel",
+      interaction.user.id,
+      undefined,
+      `Channel set to <#${channel.id}>`,
+    );
+
     await interaction.reply({
       content: `✅ Promotion channel set to <#${channel.id}>`,
       flags: MessageFlags.Ephemeral,
@@ -104,6 +112,14 @@ export class SettingsPatrolPromotionCommands {
       update: { toPromoteChannelId: channel.id },
       create: { guildId: interaction.guildId, toPromoteChannelId: channel.id },
     });
+
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "promotion-set-to-promote-channel",
+      interaction.user.id,
+      undefined,
+      `Channel set to <#${channel.id}>`,
+    );
 
     await interaction.reply({
       content: `✅ To-promote channel set to <#${channel.id}>`,
@@ -178,6 +194,14 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       },
     });
 
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "promotion-disable",
+      interaction.user.id,
+      undefined,
+      "Promotion notification system disabled.",
+    );
+
     await interaction.reply({
       content: "✅ Promotion notification system disabled.",
       flags: MessageFlags.Ephemeral,
@@ -242,8 +266,16 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       create: { guildId: interaction.guildId, promotionRules: updated as unknown as object },
     });
     const cooldownStr = cooldownHours !== null && cooldownHours !== undefined ? `, cooldown ${cooldownHours}h` : "";
+    const ruleDesc = `${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)} at ${requiredHours}h${cooldownStr}`;
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "promotion-add-rule",
+      interaction.user.id,
+      undefined,
+      ruleDesc,
+    );
     await interaction.reply({
-      content: `✅ Added rule: ${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)} at ${requiredHours}h${cooldownStr}.`,
+      content: `✅ Added rule: ${ruleDesc}.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -289,8 +321,16 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       where: { guildId: interaction.guildId },
       data: { promotionRules: filtered.length > 0 ? (filtered as unknown as object) : Prisma.JsonNull },
     });
+    const removedRuleDesc = `${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)}`;
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "promotion-remove-rule",
+      interaction.user.id,
+      undefined,
+      removedRuleDesc,
+    );
     await interaction.reply({
-      content: `✅ Removed rule: ${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)}.`,
+      content: `✅ Removed rule: ${removedRuleDesc}.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -358,6 +398,13 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
         },
       });
       if (deleted.count > 0) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "promotion-reset-user",
+          interaction.user.id,
+          user.id,
+          `Next rank: ${scrubRoleDisplay(nextRank.name)}. ${deleted.count} record(s) removed.`,
+        );
         await interaction.reply({
           content: `✅ Reset promotion tracking for <@${user.id}> for next rank ${scrubRoleDisplay(nextRank.name)}.`,
           flags: MessageFlags.Ephemeral,
@@ -375,6 +422,13 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       where: { guildId: interaction.guildId, userId: user.id },
     });
     if (total > 0) {
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "promotion-reset-user",
+        interaction.user.id,
+        user.id,
+        `All. ${total} record(s) removed.`,
+      );
       await interaction.reply({
         content: `✅ Reset all promotion tracking for <@${user.id}> (${total} record(s) removed). They can be notified again if they meet the criteria.`,
         flags: MessageFlags.Ephemeral,
@@ -435,11 +489,25 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
       const sent = await patrolTimer.runPromotionCheckForMember(interaction.guildId, member);
       if (sent) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "promotion-check",
+          interaction.user.id,
+          user.id,
+          "Notification sent to promotion channel.",
+        );
         await interaction.editReply({
           content: `✅ Promotion notification sent for <@${user.id}> in <#${settings.promotionChannelId}>.`,
         });
         loggers.patrol.info(`Manual promotion check for ${user.tag} by ${interaction.user.tag}`);
       } else {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "promotion-check",
+          interaction.user.id,
+          user.id,
+          "No notification sent (not eligible or already notified).",
+        );
         const report = await patrolTimer.getPromotionEligibilityReport(interaction.guildId, member);
         const totalHours = report?.totalHours ?? (await patrolTimer.getUserTotal(interaction.guildId, user.id)) / (1000 * 60 * 60);
         let content = `**Promotion check: <@${user.id}>**\n**Total patrol hours:** ${totalHours.toFixed(2)}h\n\n`;
@@ -545,6 +613,14 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
           sentCount++;
         }
       }
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "promotion-check-all",
+        interaction.user.id,
+        undefined,
+        `Checked ${membersToCheck.size} member(s). Sent ${sentCount} notification(s).`,
+      );
 
       await interaction.editReply({
         content: `**Promotion check complete.**\nChecked ${membersToCheck.size} member(s) with current-rank roles. Sent **${sentCount}** notification(s).`,

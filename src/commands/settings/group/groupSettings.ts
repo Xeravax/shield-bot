@@ -8,7 +8,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
@@ -56,6 +56,14 @@ export class GroupSettingsCommand {
           vrcGroupId: groupId,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-group-set-group-id",
+        interaction.user.id,
+        undefined,
+        groupId,
+      );
 
       const embed = new EmbedBuilder()
         .setTitle("✅ VRChat Group ID Set")
@@ -202,6 +210,14 @@ export class GroupSettingsCommand {
         },
       });
 
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-group-promotion-logs",
+        interaction.user.id,
+        undefined,
+        channel.id,
+      );
+
       const embed = new EmbedBuilder()
         .setTitle("✅ Promotion Logs Channel Set")
         .setDescription(
@@ -239,6 +255,14 @@ export class GroupSettingsCommand {
         where: { guildId: interaction.guildId },
         data: { botPromotionLogsChannelId: null },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-group-promotion-logs",
+        interaction.user.id,
+        undefined,
+        "removed",
+      );
 
       const embed = new EmbedBuilder()
         .setTitle("✅ Promotion Logs Cleared")

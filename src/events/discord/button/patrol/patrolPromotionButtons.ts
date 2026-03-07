@@ -157,6 +157,14 @@ export class PatrolPromotionButtonHandlers {
         flags: MessageFlags.Ephemeral,
       });
 
+      await patrolTimer.logCommandUsage(
+        guildId,
+        "promotion-approved",
+        interaction.user.id,
+        userId,
+        `${currentRankName} → ${nextRankName}. Role added. Total hours at notify: ${totalHours.toFixed(1)}h`,
+      );
+
       loggers.patrol.info(`Promotion approved for ${member.user.tag}: ${currentRankName} → ${nextRankName} by ${interaction.user.tag}`);
     } catch (err) {
       loggers.patrol.error("Promotion approve error", err);
@@ -253,6 +261,14 @@ export class PatrolPromotionButtonHandlers {
         content: "❌ Promotion denied.",
         flags: MessageFlags.Ephemeral,
       });
+
+      await patrolTimer.logCommandUsage(
+        guildId,
+        "promotion-denied",
+        interaction.user.id,
+        userId,
+        `${currentRankName} → ${nextRankName}. Cooldown reset.`,
+      );
 
       loggers.patrol.info(`Promotion denied for user ${userId}: ${currentRankName} → ${nextRankName} by ${interaction.user.tag}; cooldown reset`);
     } catch (err) {

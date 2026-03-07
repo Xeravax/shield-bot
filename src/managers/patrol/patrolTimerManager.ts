@@ -1267,7 +1267,7 @@ export class PatrolTimerManager {
         embed.addFields({ name: "Details", value: details, inline: false });
       }
 
-      await textChannel.send({ embeds: [embed] });
+      await textChannel.send({ embeds: [embed], allowedMentions: { users: [] } });
       loggers.patrol.debug(`Logged command usage: ${action} by ${executorId} in guild ${guildId}`);
     } catch (err) {
       loggers.patrol.error("logCommandUsage error", err);

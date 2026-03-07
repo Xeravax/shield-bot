@@ -4,11 +4,8 @@ import {
   MessageFlags,
   GuildMember,
 } from "discord.js";
-import { bot } from "../../../main.js";
-import { PatrolTimerManager } from "../../../managers/patrol/patrolTimerManager.js";
+import { patrolTimer } from "../../../main.js";
 import { StaffGuard } from "../../../utility/guards.js";
-
-const patrolTimer = new PatrolTimerManager(bot);
 
 @Discord()
 @SlashGroup({
@@ -40,6 +37,13 @@ export class SettingsPatrolSubGroup {
     }
 
     await patrolTimer.setCategory(interaction.guildId, voice.parentId);
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "settings-patrol-setup-category",
+      interaction.user.id,
+      undefined,
+      voice.parent?.name ?? voice.parentId,
+    );
     await interaction.reply({
       content: `Tracked category set to: ${voice.parent?.name ?? voice.parentId}`,
       flags: MessageFlags.Ephemeral,

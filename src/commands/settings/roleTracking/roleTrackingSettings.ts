@@ -20,10 +20,9 @@ import {
   BaseInteraction,
 } from "discord.js";
 import { Pagination } from "@discordx/pagination";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma, roleTrackingManager } from "../../../main.js";
 import { StaffGuard } from "../../../utility/guards.js";
 import { loggers } from "../../../utility/logger.js";
-import { roleTrackingManager } from "../../../main.js";
 import type { RoleTrackingConfig, RoleTrackingConfigMap, CustomMessageData, ConditionType } from "../../../managers/roleTracking/roleTrackingManager.js";
 import { parseDurationToMs, isValidDuration, msToDurationString } from "../../../utility/roleTracking/durationParser.js";
 
@@ -665,6 +664,14 @@ export class SettingsRoleTrackingCommands {
         });
       }
 
+      await patrolTimer.logCommandUsage(
+        cmdInteraction.guildId,
+        "role-tracking-add-role",
+        cmdInteraction.user.id,
+        undefined,
+        `${role.name} (${role.id})`,
+      );
+
       const embed = new EmbedBuilder()
         .setTitle(isUpdating ? "✅ Role Tracking Updated" : "✅ Role Added to Tracking")
         .setDescription(isUpdating 
@@ -726,6 +733,14 @@ export class SettingsRoleTrackingCommands {
           roleTrackingStaffChannelId: channel.id,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "role-tracking-set-staff-channel",
+        interaction.user.id,
+        undefined,
+        channel.id,
+      );
 
       await interaction.reply({
         content: `✅ Role tracking staff channel set to <#${channel.id}>`,
@@ -816,6 +831,14 @@ export class SettingsRoleTrackingCommands {
           data: { roleTrackingConfig: newConfig as any },
         });
 
+        await patrolTimer.logCommandUsage(
+          cmdInteraction.guildId,
+          "role-tracking-set-role-staff-channel",
+          cmdInteraction.user.id,
+          undefined,
+          `${role.name} (${role.id}), cleared`,
+        );
+
         await cmdInteraction.reply({
           content: `✅ Removed role-specific staff channel for <@&${role.id}>. It will now use the guild default channel.`,
           flags: MessageFlags.Ephemeral,
@@ -848,6 +871,14 @@ export class SettingsRoleTrackingCommands {
         where: { guildId: cmdInteraction.guildId },
         data: { roleTrackingConfig: newConfig as any },
       });
+
+      await patrolTimer.logCommandUsage(
+        cmdInteraction.guildId,
+        "role-tracking-set-role-staff-channel",
+        cmdInteraction.user.id,
+        undefined,
+        `${role.name} (${role.id}), channel ${channel.id}`,
+      );
 
       await cmdInteraction.reply({
         content: `✅ Staff channel for <@&${role.id}> set to <#${channel.id}>.`,
@@ -1124,6 +1155,14 @@ export class SettingsRoleTrackingCommands {
         data: { roleTrackingConfig: newConfig as any },
       });
 
+      await patrolTimer.logCommandUsage(
+        cmdInteraction.guildId,
+        "role-tracking-remove-role",
+        cmdInteraction.user.id,
+        undefined,
+        `${role.name} (${role.id})`,
+      );
+
       await cmdInteraction.reply({
         content: `✅ Role <@&${role.id}> removed from tracking.`,
         flags: MessageFlags.Ephemeral,
@@ -1208,6 +1247,14 @@ export class SettingsRoleTrackingCommands {
         where: { guildId: cmdInteraction.guildId },
         data: { roleTrackingConfig: newConfig as any },
       });
+
+      await patrolTimer.logCommandUsage(
+        cmdInteraction.guildId,
+        "role-tracking-toggle-role",
+        cmdInteraction.user.id,
+        undefined,
+        `${role.name} (${role.id}), ${enabled ? "enabled" : "disabled"}`,
+      );
 
       await cmdInteraction.reply({
         content: `✅ Role <@&${role.id}> tracking ${enabled ? "enabled" : "disabled"}.`,
@@ -1320,6 +1367,14 @@ export class SettingsRoleTrackingCommands {
         where: { guildId: cmdInteraction.guildId },
         data: { roleTrackingConfig: newConfig as any },
       });
+
+      await patrolTimer.logCommandUsage(
+        cmdInteraction.guildId,
+        "role-tracking-set-threshold",
+        cmdInteraction.user.id,
+        undefined,
+        `${role.name} (${role.id}), ${thresholdHours !== null ? `${thresholdHours}h` : "removed"}`,
+      );
 
       await cmdInteraction.reply({
         content: `✅ Patrol time threshold for <@&${role.id}> ${thresholdHours !== null ? `set to ${thresholdHours} hours` : "removed"}.`,
@@ -1456,6 +1511,14 @@ export class SettingsRoleTrackingCommands {
         data: { roleTrackingConfig: newConfig as any },
       });
 
+      await patrolTimer.logCommandUsage(
+        cmdInteraction.guildId,
+        "role-tracking-set-conditions",
+        cmdInteraction.user.id,
+        undefined,
+        `${role.name} (${role.id}), ${uniqueConditions.join(", ")}`,
+      );
+
       await cmdInteraction.reply({
         content: `✅ Conditions for <@&${role.id}> set to: ${uniqueConditions.join(", ")}`,
         flags: MessageFlags.Ephemeral,
@@ -1554,6 +1617,14 @@ export class SettingsRoleTrackingCommands {
           roleId,
         );
 
+        await patrolTimer.logCommandUsage(
+          cmdInteraction.guildId,
+          "role-tracking-reset-timer",
+          cmdInteraction.user.id,
+          user.id,
+          `role ${role?.name ?? roleId}`,
+        );
+
         await cmdInteraction.editReply({
           content: `✅ Timer reset for <@${user.id}> for role <@&${roleId}>. All warnings have been removed.`,
         });
@@ -1577,6 +1648,14 @@ export class SettingsRoleTrackingCommands {
             userId,
           },
         });
+
+        await patrolTimer.logCommandUsage(
+          cmdInteraction.guildId,
+          "role-tracking-reset-timer",
+          cmdInteraction.user.id,
+          user.id,
+          "all roles",
+        );
 
         await cmdInteraction.editReply({
           content: `✅ All timers reset for <@${user.id}>. All warnings have been removed.`,
@@ -1765,6 +1844,14 @@ export class SettingsRoleTrackingCommands {
         }
       }
 
+      await patrolTimer.logCommandUsage(
+        cmdInteraction.guildId,
+        "role-tracking-sync-role-members",
+        cmdInteraction.user.id,
+        undefined,
+        `${role.name} (${roleId}), added ${addedCount}`,
+      );
+
       if (roleChannelId || settings?.roleTrackingStaffChannelId) {
         const logEmbed = new EmbedBuilder()
           .setTitle("🔄 Role Tracking Sync")
@@ -1833,6 +1920,14 @@ export class SettingsRoleTrackingCommands {
 
       const cleanupCount = await roleTrackingManager.cleanupWarningsForMissingUsers(
         interaction.guildId,
+      );
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "role-tracking-cleanup",
+        interaction.user.id,
+        undefined,
+        `${cleanupCount} user(s)`,
       );
 
       await interaction.editReply({
@@ -2079,6 +2174,14 @@ export class SettingsRoleTrackingCommands {
         data: { roleTrackingConfig: newConfig as any },
       });
 
+      await patrolTimer.logCommandUsage(
+        cmdInteraction.guildId,
+        "role-tracking-configure-warning",
+        cmdInteraction.user.id,
+        undefined,
+        `${role.name} (${role.id}), warning #${finalWarningNumber} at ${offset}`,
+      );
+
       const action = existingIndex >= 0 ? "updated" : "added";
       await cmdInteraction.editReply({
         content: `✅ Warning #${finalWarningNumber} ${action} for <@&${role.id}> at offset ${offset}.`,
@@ -2173,6 +2276,14 @@ export class SettingsRoleTrackingCommands {
           data: { roleTrackingConfig: newConfig as any },
         });
 
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "role-tracking-configure-staff-ping",
+          interaction.user.id,
+          undefined,
+          `${role.name} (${role.id}), cleared`,
+        );
+
         await interaction.reply({
           content: `✅ Custom staff ping message cleared for <@&${role.id}>. Default template will be used.`,
           flags: MessageFlags.Ephemeral,
@@ -2251,6 +2362,14 @@ export class SettingsRoleTrackingCommands {
         where: { guildId: interaction.guildId },
         data: { roleTrackingConfig: newConfig as any },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "role-tracking-configure-staff-ping",
+        interaction.user.id,
+        undefined,
+        `${role.name} (${role.id})`,
+      );
 
       await interaction.editReply({
         content: `✅ Custom staff ping message configured for <@&${role.id}>.`,

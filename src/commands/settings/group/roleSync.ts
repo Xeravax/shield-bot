@@ -8,7 +8,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { groupRoleSyncManager } from "../../../managers/groupRoleSync/groupRoleSyncManager.js";
 import { loggers } from "../../../utility/logger.js";
 
@@ -117,6 +117,15 @@ export class GroupRoleSyncCommand {
           });
         }
       }
+
+      const successCount = syncedAccounts.filter((a) => a.success).length;
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-group-role-sync",
+        interaction.user.id,
+        user.id,
+        `${successCount}/${syncedAccounts.length} account(s)`,
+      );
 
       const hasErrors = syncedAccounts.some((a) => !a.success);
       const accountsList = syncedAccounts

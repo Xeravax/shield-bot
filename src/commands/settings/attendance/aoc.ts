@@ -7,7 +7,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
@@ -82,6 +82,14 @@ export class SettingsAttendanceAOCCommand {
         },
       });
 
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-attendance-aoc-channel",
+        interaction.user.id,
+        undefined,
+        channelId,
+      );
+
       const channel = interaction.guild?.channels.cache.get(channelId);
       const channelMention = channel ? `<#${channelId}>` : channelId;
       await interaction.reply({
@@ -154,6 +162,14 @@ export class SettingsAttendanceAOCCommand {
           instigationLogChannelId: channel.id,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-attendance-instigation-log-channel",
+        interaction.user.id,
+        undefined,
+        channel.id,
+      );
 
       await interaction.reply({
         content: `✅ Instigation log channel has been set to <#${channel.id}>`,

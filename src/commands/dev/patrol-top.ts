@@ -2,7 +2,7 @@ import { Discord, Slash, SlashGroup } from "discordx";
 import { CommandInteraction, MessageFlags } from "discord.js";
 import { BotOwnerGuard } from "../../utility/guards.js";
 import { Guard } from "discordx";
-import { bot } from "../../main.js";
+import { bot, patrolTimer } from "../../main.js";
 import { postPatrolTop } from "../../schedules/patrol/patrolTop.js";
 import { checkRoleTracking } from "../../schedules/roleTracking/roleTrackingCheck.js";
 
@@ -24,6 +24,15 @@ export class ScheduleCommand {
 
     try {
       await postPatrolTop(bot);
+      if (interaction.guildId) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "bot-owner-trigger-patrol-top",
+          interaction.user.id,
+          undefined,
+          "schedule triggered",
+        );
+      }
       await interaction.editReply("✅ Patrol top schedule triggered successfully.");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -40,6 +49,15 @@ export class ScheduleCommand {
 
     try {
       await checkRoleTracking(bot);
+      if (interaction.guildId) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "bot-owner-trigger-inactivity",
+          interaction.user.id,
+          undefined,
+          "schedule triggered",
+        );
+      }
       await interaction.editReply("✅ Inactivity check schedule triggered successfully.");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

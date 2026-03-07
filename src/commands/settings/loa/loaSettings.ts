@@ -9,7 +9,7 @@ import {
   NewsChannel,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
@@ -31,6 +31,8 @@ export class SettingsLOASubGroup {
     successMessage: string,
     errorContext: string,
     errorMessage: string,
+    logAction?: string,
+    logDetails?: string,
   ): Promise<void> {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -49,6 +51,16 @@ export class SettingsLOASubGroup {
           [field]: value,
         },
       });
+
+      if (logAction) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          logAction,
+          interaction.user.id,
+          undefined,
+          logDetails ?? (typeof value === "string" ? value : String(value)),
+        );
+      }
 
       await interaction.reply({
         content: successMessage,
@@ -86,6 +98,8 @@ export class SettingsLOASubGroup {
       `✅ LOA role set to: ${role.name} (<@&${role.id}>)`,
       "Error setting LOA role",
       "❌ Failed to set LOA role. Please try again.",
+      "settings-loa-role",
+      role.id,
     );
   }
 
@@ -111,6 +125,8 @@ export class SettingsLOASubGroup {
       `✅ LOA notification channel set to: <#${channel.id}>`,
       "Error setting LOA notification channel",
       "❌ Failed to set LOA notification channel. Please try again.",
+      "settings-loa-notification-channel",
+      channel.id,
     );
   }
 
@@ -137,6 +153,8 @@ export class SettingsLOASubGroup {
       `✅ LOA cooldown period set to ${days} day${days !== 1 ? "s" : ""}.`,
       "Error setting LOA cooldown days",
       "❌ Failed to set LOA cooldown period. Please try again.",
+      "settings-loa-cooldown-days",
+      String(days),
     );
   }
 
@@ -163,6 +181,8 @@ export class SettingsLOASubGroup {
       `✅ Minimum LOA request time set to ${days} day${days !== 1 ? "s" : ""}.`,
       "Error setting minimum LOA request time",
       "❌ Failed to set minimum LOA request time. Please try again.",
+      "settings-loa-minimum-request-time",
+      String(days),
     );
   }
 }

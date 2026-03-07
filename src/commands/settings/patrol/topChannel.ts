@@ -7,7 +7,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
@@ -70,6 +70,14 @@ export class SettingsPatrolTopChannelCommand {
           patrolTopChannelId: channel.id,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-patrol-top-channel",
+        interaction.user.id,
+        undefined,
+        channel.id,
+      );
 
       await interaction.reply({
         content: `✅ Patrol top channel has been set to <#${channel.id}>. Weekly top posts will be sent every Sunday at 3AM UTC.`,

@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { BotOwnerGuard } from "../../utility/guards.js";
 import { Guard } from "discordx";
-import { bot } from "../../main.js";
+import { bot, patrolTimer } from "../../main.js";
 
 @Discord()
 @SlashGroup({ name: "dev", description: "Development and debugging commands (Bot Owner only)" })
@@ -41,6 +41,15 @@ export class LeaveGuildCommand {
 
     try {
       await guild.leave();
+      if (interaction.guildId) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "bot-owner-leave-guild",
+          interaction.user.id,
+          undefined,
+          `${guild.name} (${guild.id})`,
+        );
+      }
       await interaction.editReply({
         content: `Left guild **${guild.name}** (\`${guild.id}\`).`,
       });

@@ -9,8 +9,7 @@ import {
 } from "discord.js";
 import { Discord, ButtonComponent, Guard } from "discordx";
 import { StaffGuard } from "../../../../utility/guards.js";
-import { loaManager } from "../../../../main.js";
-import { prisma } from "../../../../main.js";
+import { loaManager, patrolTimer, prisma } from "../../../../main.js";
 import { formatDuration } from "../../../../utility/timeParser.js";
 import { loggers } from "../../../../utility/logger.js";
 
@@ -106,6 +105,14 @@ export class LOAButtonHandlers {
         embeds: [embed],
         components,
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "loa-approved",
+        interaction.user.id,
+        loa.user.discordId,
+        `LOA id ${loaId}. ${loa.status === "ACTIVE" ? "Active" : "Approved"}. Duration: ${formatDuration(loa.endDate.getTime() - loa.startDate.getTime())}`,
+      );
 
       // Notify user
       try {
@@ -211,6 +218,14 @@ export class LOAButtonHandlers {
         embeds: [embed],
         components: [],
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "loa-denied",
+        interaction.user.id,
+        loa.user.discordId,
+        `LOA id ${loaId}.${loa.denialReason ? ` Reason: ${loa.denialReason}` : ""}`,
+      );
 
       // Notify user
       try {
@@ -364,6 +379,16 @@ export class LOAButtonHandlers {
           }
         } catch (error) {
           loggers.bot.debug("Could not update original LOA message", error);
+        }
+
+        if (interaction.guildId) {
+          await patrolTimer.logCommandUsage(
+            interaction.guildId,
+            "loa-ended-early",
+            interaction.user.id,
+            loa.user.discordId,
+            `LOA id ${loaId}`,
+          );
         }
 
         const cooldownEnd = loa.cooldownEndDate

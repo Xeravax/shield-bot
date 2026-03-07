@@ -8,7 +8,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { getGroupRoles } from "../../../utility/vrchat/groups.js";
 import { loggers } from "../../../utility/logger.js";
 
@@ -96,6 +96,14 @@ export class GroupRoleMappingCommand {
         },
       });
 
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-group-role-mapping",
+        interaction.user.id,
+        undefined,
+        `map ${discordRole.name} -> ${vrcRoleId}`,
+      );
+
       const embed = new EmbedBuilder()
         .setTitle("✅ Role Mapping Created")
         .setDescription(
@@ -171,6 +179,14 @@ export class GroupRoleMappingCommand {
           id: mapping.id,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-group-role-mapping",
+        interaction.user.id,
+        undefined,
+        `unmap ${discordRole.name} -> ${vrcRoleId}`,
+      );
 
       const embed = new EmbedBuilder()
         .setTitle("✅ Role Mapping Removed")

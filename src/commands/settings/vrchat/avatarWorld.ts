@@ -5,7 +5,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
@@ -78,6 +78,14 @@ export class VRChatSettingsCommand {
         },
       });
 
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-vrchat-avatar-world",
+        interaction.user.id,
+        undefined,
+        worldId,
+      );
+
       await interaction.reply({
         content: `✅ Avatar world has been set to: \`${worldId}\``,
         flags: MessageFlags.Ephemeral,
@@ -123,6 +131,14 @@ export class VRChatSettingsCommand {
           avatarWorldId: null,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-vrchat-avatar-world",
+        interaction.user.id,
+        undefined,
+        "cleared",
+      );
 
       await interaction.reply({
         content: "✅ Avatar world setting has been cleared.",

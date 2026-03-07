@@ -12,7 +12,7 @@ import {
   type MessageActionRowComponentBuilder,
 } from "discord.js";
 import { Discord, ButtonComponent, Guard } from "discordx";
-import { prisma } from "../../../../main.js";
+import { patrolTimer, prisma } from "../../../../main.js";
 import type { User, VRChatAccount } from "../../../../generated/prisma/client.js";
 import { unfriendUser } from "../../../../utility/vrchat/user.js";
 import { StaffGuard } from "../../../../utility/guards.js";
@@ -190,6 +190,14 @@ export class VRCStaffAccountManagerButtonHandler {
       );
     }
 
+    await patrolTimer.logCommandUsage(
+      guildId,
+      "staff-account-set-main",
+      interaction.user.id,
+      targetDiscordId,
+      vrcAccount.vrchatUsername ?? vrcUserId,
+    );
+
     await this.updateStaffAccountManagerMessage(interaction, targetDiscordId);
   }
 
@@ -237,6 +245,14 @@ export class VRCStaffAccountManagerButtonHandler {
         _error,
       );
     }
+
+    await patrolTimer.logCommandUsage(
+      guildId,
+      "staff-account-set-alt",
+      interaction.user.id,
+      targetDiscordId,
+      vrcAccount.vrchatUsername ?? vrcUserId,
+    );
 
     await this.updateStaffAccountManagerMessage(interaction, targetDiscordId);
   }
@@ -310,6 +326,14 @@ export class VRCStaffAccountManagerButtonHandler {
           whitelistError,
         );
       }
+
+      await patrolTimer.logCommandUsage(
+        guildId,
+        "staff-account-deleted",
+        interaction.user.id,
+        targetDiscordId,
+        vrcAccount.vrchatUsername ?? vrcUserId,
+      );
 
       await this.updateStaffAccountManagerMessage(interaction, targetDiscordId);
     } catch (_error) {

@@ -11,7 +11,7 @@ import {
   User,
 } from "discord.js";
 import { GuildGuard, StaffGuard } from "../../utility/guards.js";
-import { loaManager } from "../../main.js";
+import { loaManager, patrolTimer } from "../../main.js";
 import { formatDuration } from "../../utility/timeParser.js";
 
 @Discord()
@@ -157,6 +157,14 @@ export class LOACommands {
       });
       return;
     }
+
+    await patrolTimer.logCommandUsage(
+      guildId,
+      "loa-remove-cooldown",
+      interaction.user.id,
+      user.id,
+      "User can request LOA again",
+    );
 
     await interaction.editReply({
       content: `✅ Removed LOA cooldown for <@${user.id}>. They can now request a new LOA immediately.`,

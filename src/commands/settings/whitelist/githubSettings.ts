@@ -9,7 +9,7 @@ import {
   GuildBasedChannel,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import { encrypt, decrypt } from "../../../utility/encryption.js";
 import { getEnv } from "../../../config/env.js";
@@ -126,6 +126,14 @@ export class WhitelistGitHubSettingsCommand {
         },
       });
 
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-whitelist-gh-token",
+        interaction.user.id,
+        undefined,
+        "redacted",
+      );
+
       await interaction.reply({
         content: "✅ GitHub token has been set.",
         flags: MessageFlags.Ephemeral,
@@ -212,6 +220,14 @@ export class WhitelistGitHubSettingsCommand {
 
       const updatedOwner = owner ?? settings?.whitelistGitHubOwner ?? "Not set";
       const updatedRepo = repo ?? settings?.whitelistGitHubRepo ?? "Not set";
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-whitelist-gh-repo",
+        interaction.user.id,
+        undefined,
+        `${updatedOwner}/${updatedRepo}`,
+      );
+
       await interaction.reply({
         content: `✅ GitHub repository has been set to **${updatedOwner}/${updatedRepo}**`,
         flags: MessageFlags.Ephemeral,
@@ -273,6 +289,14 @@ export class WhitelistGitHubSettingsCommand {
           whitelistGitHubBranch: branch,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-whitelist-gh-branch",
+        interaction.user.id,
+        undefined,
+        branch,
+      );
 
       await interaction.reply({
         content: `✅ GitHub branch has been set to \`${branch}\``,
@@ -352,6 +376,14 @@ export class WhitelistGitHubSettingsCommand {
 
       const updatedEncoded = encoded ?? settings?.whitelistGitHubEncodedPath ?? "whitelist.encoded.txt (default)";
       const updatedDecoded = decoded ?? settings?.whitelistGitHubDecodedPath ?? "whitelist.txt (default)";
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-whitelist-gh-paths",
+        interaction.user.id,
+        undefined,
+        `encoded: ${updatedEncoded}, decoded: ${updatedDecoded}`,
+      );
+
       await interaction.reply({
         content: `✅ File paths updated:\n**Encoded:** \`${updatedEncoded}\`\n**Decoded:** \`${updatedDecoded}\``,
         flags: MessageFlags.Ephemeral,
@@ -449,6 +481,14 @@ export class WhitelistGitHubSettingsCommand {
           whitelistXorKey: keyToStore,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-whitelist-gh-key",
+        interaction.user.id,
+        undefined,
+        "redacted",
+      );
 
       await interaction.reply({
         content: "✅ XOR key has been set.",
@@ -598,6 +638,14 @@ export class WhitelistGitHubSettingsCommand {
         },
       });
 
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-whitelist-log-channel",
+        interaction.user.id,
+        undefined,
+        channel.id,
+      );
+
       await interaction.reply({
         content: `✅ Whitelist log channel has been set to <#${channel.id}>`,
         flags: MessageFlags.Ephemeral,
@@ -643,6 +691,14 @@ export class WhitelistGitHubSettingsCommand {
           whitelistLogChannelId: null,
         },
       });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-whitelist-log-channel",
+        interaction.user.id,
+        undefined,
+        "cleared",
+      );
 
       await interaction.reply({
         content: "✅ Whitelist log channel has been cleared.",

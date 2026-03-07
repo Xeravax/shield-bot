@@ -7,7 +7,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import { StaffGuard } from "../../../utility/guards.js";
-import { prisma } from "../../../main.js";
+import { patrolTimer, prisma } from "../../../main.js";
 import { groupRoleSyncManager } from "../../../managers/groupRoleSync/groupRoleSyncManager.js";
 import { loggers } from "../../../utility/logger.js";
 
@@ -179,6 +179,16 @@ export class GroupBulkRoleSyncCommand {
             error,
           );
         }
+      }
+
+      if (!dryRun && interaction.guildId) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "settings-bulk-role-sync",
+          interaction.user.id,
+          undefined,
+          `success: ${results.success}, failed: ${results.failed}, skipped: ${results.skipped}`,
+        );
       }
 
       // Final results
