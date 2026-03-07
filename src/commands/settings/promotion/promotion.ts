@@ -634,4 +634,3 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     }
   }
 }
-
