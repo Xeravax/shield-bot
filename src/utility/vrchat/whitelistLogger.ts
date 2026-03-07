@@ -64,8 +64,7 @@ export async function sendWhitelistLog(
     // Send the message with componentsv2
     await channel.send({
       components: [container],
-      flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { users: [] },
+      flags: MessageFlags.IsComponentsV2
     });
 
     loggers.bot.info(

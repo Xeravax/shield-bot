@@ -56,9 +56,9 @@ const MONTH_NAMES = [
   "December",
 ];
 
-/** Strip to only a-z, 0-9, . , and space so role names can't inject formatting. */
+/** Strip to only A-z and . so role names can't inject formatting. */
 function scrubRoleDisplay(name: string): string {
-  return name.replace(/[^a-zA-Z0-9.,\s]/g, "") || name;
+  return name.replace(/[^a-zA-Z.]/g, "") || name;
 }
 
 type TrackedUser = {
@@ -1427,9 +1427,14 @@ export class PatrolTimerManager {
             : `${rule.requiredHours}h patrol`;
         const embed = new EmbedBuilder()
           .setColor(Colors.Grey)
-          .setTitle("Patrol promotion – pending")
-          .setDescription(`<@${member.id}> is eligible for promotion.`)
+          .setTitle("Patrol promotion – 🟠 Pending")
+          .setDescription(`**🟠 Pending** — ✅ Approve · ❌ Deny\n\nA member is eligible for promotion.`)
           .addFields(
+            {
+              name: "User",
+              value: `${member.user.tag} (\`${member.id}\`)`,
+              inline: false,
+            },
             {
               name: "Promotion",
               value: `**${currentRankName}** → **${nextRankName}**`,
@@ -1462,11 +1467,12 @@ export class PatrolTimerManager {
           new ButtonBuilder().setCustomId(denyId).setLabel("Deny").setStyle(ButtonStyle.Danger),
         );
         const sentMessage = await (channel as TextChannel).send({
-          content: `<@${member.id}>`,
           embeds: [embed],
-          components: [row],
-          allowedMentions: { users: [member.id] },
+          components: [row]
         });
+        await sentMessage.react("🟠");
+        await sentMessage.react("✅");
+        await sentMessage.react("❌");
         await prisma.voicePatrolPromotionNotification.create({
           data: {
             guildId,

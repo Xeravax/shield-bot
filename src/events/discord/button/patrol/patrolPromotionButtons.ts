@@ -12,13 +12,20 @@ import { loggers } from "../../../../utility/logger.js";
 /** Parse patrol-promo:action:guildId:userId:currentRankRoleId:nextRankRoleId */
 function parseCustomId(customId: string): { guildId: string; userId: string; currentRankRoleId: string; nextRankRoleId: string } | null {
   const parts = customId.split(":");
-  if (parts.length < 6) return null;
+  if (parts.length < 6) {
+    return null;
+  }
   return {
     guildId: parts[2],
     userId: parts[3],
     currentRankRoleId: parts[4],
     nextRankRoleId: parts[5],
   };
+}
+
+/** Strip to only A-z and . so role names can't inject formatting. */
+function scrubRoleDisplay(name: string): string {
+  return name.replace(/[^a-zA-Z.]/g, "") || name;
 }
 
 @Discord()
@@ -101,15 +108,16 @@ export class PatrolPromotionButtonHandlers {
         create: { guildId, userId, roleId: nextRankRoleId, obtainedAt: now },
       });
 
-      const currentRankName = interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current";
-      const nextRankName = interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next";
+      const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
+      const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
       const totalHours = notification.totalHoursAtNotify ?? 0;
 
-      const embed = new EmbedBuilder()
+      const resolvedEmbed = new EmbedBuilder()
         .setColor(Colors.Green)
         .setTitle("Patrol promotion – promoted")
-        .setDescription(`<@${userId}> has been promoted.`)
+        .setDescription(`✅ A member has been promoted.`)
         .addFields(
+          { name: "User", value: `${member.user.tag} (\`${userId}\`)`, inline: false },
           { name: "Promotion", value: `**${currentRankName}** → **${nextRankName}**`, inline: true },
           { name: "Approved by", value: `<@${interaction.user.id}>`, inline: true },
           { name: "Total patrol hours at notify", value: `${totalHours.toFixed(1)}h`, inline: false },
@@ -117,8 +125,8 @@ export class PatrolPromotionButtonHandlers {
         .setTimestamp();
 
       await interaction.editReply({
-        content: interaction.message.content,
-        embeds: [embed],
+        content: "",
+        embeds: [resolvedEmbed],
         components: [],
       });
 
@@ -128,21 +136,26 @@ export class PatrolPromotionButtonHandlers {
         if (toPromoteChannel?.isTextBased() && "send" in toPromoteChannel) {
           const toPromoteEmbed = new EmbedBuilder()
             .setColor(Colors.Green)
-            .setTitle("Patrol promotion – promoted")
-            .setDescription(`<@${userId}> has been promoted.`)
+            .setTitle("Patrol promotion – approved")
+            .setDescription(`✅ A member has been approved for promotion.`)
             .addFields(
+              { name: "User", value: `${member.user.tag} (\`${userId}\`)`, inline: false },
               { name: "Promotion", value: `**${currentRankName}** → **${nextRankName}**`, inline: true },
               { name: "Approved by", value: `<@${interaction.user.id}>`, inline: true },
               { name: "Total patrol hours at notify", value: `${totalHours.toFixed(1)}h`, inline: false },
             )
             .setTimestamp();
           await toPromoteChannel.send({
-            content: `<@${userId}>`,
             embeds: [toPromoteEmbed],
-            allowedMentions: { users: [userId] },
+            allowedMentions: { users: [] },
           });
         }
       }
+
+      await interaction.followUp({
+        content: "✅ Promotion approved.",
+        flags: MessageFlags.Ephemeral,
+      });
 
       loggers.patrol.info(`Promotion approved for ${member.user.tag}: ${currentRankName} → ${nextRankName} by ${interaction.user.tag}`);
     } catch (err) {
@@ -216,23 +229,29 @@ export class PatrolPromotionButtonHandlers {
         where: { id: notification.id },
       });
 
-      const currentRankName = interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current";
-      const nextRankName = interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next";
+      const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
+      const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
 
-      const embed = new EmbedBuilder()
+      const resolvedEmbed = new EmbedBuilder()
         .setColor(Colors.Red)
         .setTitle("Patrol promotion – denied")
-        .setDescription(`<@${userId}> was not promoted. Cooldown reset; they can be considered again after cooldown.`)
+        .setDescription(`❌ Not promoted. Cooldown reset; they can be considered again after cooldown.`)
         .addFields(
+          { name: "User", value: `\`${userId}\``, inline: false },
           { name: "Promotion", value: `**${currentRankName}** → **${nextRankName}**`, inline: true },
           { name: "Denied by", value: `<@${interaction.user.id}>`, inline: true },
         )
         .setTimestamp();
 
       await interaction.editReply({
-        content: interaction.message.content,
-        embeds: [embed],
+        content: "",
+        embeds: [resolvedEmbed],
         components: [],
+      });
+
+      await interaction.followUp({
+        content: "❌ Promotion denied.",
+        flags: MessageFlags.Ephemeral,
       });
 
       loggers.patrol.info(`Promotion denied for user ${userId}: ${currentRankName} → ${nextRankName} by ${interaction.user.tag}; cooldown reset`);
