@@ -1322,11 +1322,19 @@ export class PatrolTimerManager {
           cooldownMet = false;
         }
       }
-      const alreadyNotified = !!(await prisma.voicePatrolPromotionNotification.findUnique({
+      const notificationForRule = await prisma.voicePatrolPromotionNotification.findUnique({
         where: {
           guildId_userId_nextRankRoleId: { guildId, userId: member.id, nextRankRoleId: rule.nextRankRoleId },
         },
-      }));
+        select: { status: true, totalHoursAtNotify: true },
+      });
+      const alreadyNotified = !!(
+        notificationForRule &&
+        (notificationForRule.status === "PENDING" ||
+          notificationForRule.status === "APPROVED" ||
+          (notificationForRule.status === "DENIED" &&
+            totalHours <= (notificationForRule.totalHoursAtNotify ?? 0)))
+      );
       const eligible = hasCurrentRole && hoursMet && cooldownMet && !alreadyNotified;
       const currentRankName = scrubRoleDisplay(
         member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? rule.currentRankRoleId,
@@ -1395,13 +1403,22 @@ export class PatrolTimerManager {
             }
           }
         }
-        const alreadyNotified = await prisma.voicePatrolPromotionNotification.findUnique({
+        const notification = await prisma.voicePatrolPromotionNotification.findUnique({
           where: {
             guildId_userId_nextRankRoleId: { guildId, userId: member.id, nextRankRoleId: rule.nextRankRoleId },
           },
+          select: { id: true, status: true, totalHoursAtNotify: true },
         });
-        if (alreadyNotified) {
-          continue;
+        if (notification) {
+          if (notification.status === "PENDING" || notification.status === "APPROVED") {
+            continue;
+          }
+          if (notification.status === "DENIED") {
+            if (totalHours <= (notification.totalHoursAtNotify ?? 0)) {
+              continue;
+            }
+            // Re-propose: will update this row after sending
+          }
         }
         const currentRankName = scrubRoleDisplay(
           member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? "Current",
@@ -1474,16 +1491,30 @@ export class PatrolTimerManager {
         await sentMessage.react("🟠");
         await sentMessage.react("✅");
         await sentMessage.react("❌");
-        await prisma.voicePatrolPromotionNotification.create({
-          data: {
-            guildId,
-            userId: member.id,
-            nextRankRoleId: rule.nextRankRoleId,
-            totalHoursAtNotify: totalHours,
-            messageId: sentMessage.id,
-            status: "PENDING",
-          } as Parameters<typeof prisma.voicePatrolPromotionNotification.create>[0]["data"],
-        });
+        if (notification?.status === "DENIED") {
+          await prisma.voicePatrolPromotionNotification.update({
+            where: { id: notification.id },
+            data: {
+              status: "PENDING",
+              messageId: sentMessage.id,
+              totalHoursAtNotify: totalHours,
+              notifiedAt: new Date(),
+              resolvedAt: null,
+              resolvedBy: null,
+            },
+          });
+        } else {
+          await prisma.voicePatrolPromotionNotification.create({
+            data: {
+              guildId,
+              userId: member.id,
+              nextRankRoleId: rule.nextRankRoleId,
+              totalHoursAtNotify: totalHours,
+              messageId: sentMessage.id,
+              status: "PENDING",
+            } as Parameters<typeof prisma.voicePatrolPromotionNotification.create>[0]["data"],
+          });
+        }
         loggers.patrol.info(`Promotion notification sent for ${member.user.tag}: ${currentRankName} → ${nextRankName} (${totalHours.toFixed(2)}h)`);
         sent = true;
       }

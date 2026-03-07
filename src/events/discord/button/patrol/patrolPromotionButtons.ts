@@ -230,17 +230,13 @@ export class PatrolPromotionButtonHandlers {
         create: { guildId, userId, roleId: currentRankRoleId, obtainedAt: now },
       });
 
-      await prisma.voicePatrolPromotionNotification.delete({
-        where: { id: notification.id },
-      });
-
       const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
 
       const resolvedContent = [
         "**Patrol promotion – denied**",
         "",
-        "❌ Not promoted. Cooldown reset; they can be considered again after cooldown.",
+        "❌ Not promoted. Cooldown reset; they can be considered again after cooldown and once they have new patrol time.",
         "",
         "**User**",
         `\`${userId}\``,
