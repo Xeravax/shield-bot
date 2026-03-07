@@ -395,11 +395,43 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
         });
         loggers.patrol.info(`Manual promotion check for ${user.tag} by ${interaction.user.tag}`);
       } else {
-        const totalTime = await patrolTimer.getUserTotal(interaction.guildId, user.id);
-        const totalHours = totalTime / (1000 * 60 * 60);
-        await interaction.editReply({
-          content: `ℹ️ <@${user.id}> is not eligible for any promotion right now (already notified for all applicable tiers, or does not meet hours/cooldown). Current total: ${totalHours.toFixed(2)}h.`,
-        });
+        const report = await patrolTimer.getPromotionEligibilityReport(interaction.guildId, member);
+        const totalHours = report?.totalHours ?? (await patrolTimer.getUserTotal(interaction.guildId, user.id)) / (1000 * 60 * 60);
+        let content = `**Promotion check: <@${user.id}>**\n**Total patrol hours:** ${totalHours.toFixed(2)}h\n\n`;
+        if (report && report.rules.length > 0) {
+          content += "**Why no promotion (per rule):**\n";
+          for (let i = 0; i < report.rules.length; i++) {
+            const r = report.rules[i];
+            const ruleTitle = `${i + 1}. ${r.currentRankName} → ${r.nextRankName} (requires ${r.requiredHours}h${r.cooldownHours !== undefined && r.cooldownHours !== null ? `, cooldown ${r.cooldownHours}h` : ""})`;
+            if (!r.hasCurrentRole) {
+              content += `• ${ruleTitle}\n  └ Not eligible: you don't have the current rank role **${r.currentRankName}**. This rule only applies to members with that role.\n`;
+              continue;
+            }
+            const reasons: string[] = [];
+            if (!r.hoursMet) {
+              reasons.push(`hours: you have ${r.totalHours.toFixed(1)}h, need ${r.requiredHours}h (**${r.hoursRemaining.toFixed(1)}h more**)`);
+            } else {
+              reasons.push(`hours: ✓ (${r.totalHours.toFixed(1)}h ≥ ${r.requiredHours}h)`);
+            }
+            if (r.cooldownHours !== undefined && r.cooldownHours !== null && r.cooldownHours > 0) {
+              if (r.cooldownObtainedAt === null) {
+                reasons.push(`cooldown: no data for when you got **${r.currentRankName}** (need ${r.cooldownHours}h since then). Use role tracking or reset to fix.`);
+              } else if (!r.cooldownMet && r.hoursSinceCooldownStart !== null) {
+                const remaining = r.cooldownHours - r.hoursSinceCooldownStart;
+                reasons.push(`cooldown: ${r.hoursSinceCooldownStart.toFixed(1)}h since you got the role (required ${r.cooldownHours}h). **${remaining.toFixed(1)}h left** before eligible.`);
+              } else if (r.hoursSinceCooldownStart !== null) {
+                reasons.push(`cooldown: ✓ (${r.hoursSinceCooldownStart.toFixed(1)}h since role, required ${r.cooldownHours}h)`);
+              }
+            }
+            if (r.alreadyNotified) {
+              reasons.push(`already notified for **${r.nextRankName}** (use \`reset-user\` to allow another notification)`);
+            }
+            content += `• ${ruleTitle}\n  └ ${reasons.join("; ")}\n`;
+          }
+        } else {
+          content += "No promotion rules are configured, or no detailed report could be generated.";
+        }
+        await interaction.editReply({ content });
       }
     } catch (err) {
       loggers.patrol.error("Manual promotion check error", err);

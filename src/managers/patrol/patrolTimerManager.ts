@@ -24,6 +24,23 @@ export interface PromotionRule {
   cooldownHours?: number;
 }
 
+/** Per-rule eligibility breakdown for promotion check reporting */
+export interface RuleEligibilityEntry {
+  currentRankName: string;
+  nextRankName: string;
+  requiredHours: number;
+  cooldownHours: number | undefined;
+  hasCurrentRole: boolean;
+  totalHours: number;
+  hoursMet: boolean;
+  hoursRemaining: number;
+  cooldownObtainedAt: Date | null;
+  hoursSinceCooldownStart: number | null;
+  cooldownMet: boolean;
+  alreadyNotified: boolean;
+  eligible: boolean;
+}
+
 const MONTH_NAMES = [
   "January",
   "February",
@@ -1267,6 +1284,69 @@ export class PatrolTimerManager {
     } catch (e) {
       loggers.patrol.error("ensureUser failed", e);
     }
+  }
+
+  /**
+   * Get a detailed eligibility report for a member across all promotion rules.
+   * Used by the check command to explain why a user has or has not been promoted.
+   */
+  async getPromotionEligibilityReport(
+    guildId: string,
+    member: GuildMember,
+  ): Promise<{ totalHours: number; rules: RuleEligibilityEntry[] } | null> {
+    const settings = await this.getSettings(guildId);
+    const rules = this.getEffectivePromotionRules(settings);
+    if (!rules || rules.length === 0) {
+      return null;
+    }
+    const totalTime = await this.getUserTotal(guildId, member.id);
+    const totalHours = totalTime / (1000 * 60 * 60);
+    const entries: RuleEligibilityEntry[] = [];
+    for (const rule of rules) {
+      const hasCurrentRole = member.roles.cache.has(rule.currentRankRoleId);
+      const hoursMet = totalHours >= rule.requiredHours;
+      const hoursRemaining = Math.max(0, rule.requiredHours - totalHours);
+      let cooldownObtainedAt: Date | null = null;
+      let hoursSinceCooldownStart: number | null = null;
+      let cooldownMet = true;
+      if (rule.cooldownHours !== undefined && rule.cooldownHours !== null && rule.cooldownHours > 0 && hasCurrentRole) {
+        cooldownObtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
+        if (cooldownObtainedAt !== null) {
+          hoursSinceCooldownStart = (Date.now() - cooldownObtainedAt.getTime()) / (1000 * 60 * 60);
+          cooldownMet = hoursSinceCooldownStart >= rule.cooldownHours;
+        } else {
+          cooldownMet = false;
+        }
+      }
+      const alreadyNotified = !!(await prisma.voicePatrolPromotionNotification.findUnique({
+        where: {
+          guildId_userId_nextRankRoleId: { guildId, userId: member.id, nextRankRoleId: rule.nextRankRoleId },
+        },
+      }));
+      const eligible = hasCurrentRole && hoursMet && cooldownMet && !alreadyNotified;
+      const currentRankName = scrubRoleDisplay(
+        member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? rule.currentRankRoleId,
+      );
+      const nextRankName = scrubRoleDisplay(
+        member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? rule.nextRankRoleId,
+      );
+      entries.push({
+        currentRankName,
+        nextRankName,
+        requiredHours: rule.requiredHours,
+        cooldownHours: rule.cooldownHours,
+        hasCurrentRole,
+        totalHours,
+        hoursMet,
+        hoursRemaining,
+        cooldownObtainedAt,
+        hoursSinceCooldownStart,
+        cooldownMet,
+        alreadyNotified,
+        eligible,
+      });
+    }
+    return { totalHours, rules: entries };
   }
 
   /**
