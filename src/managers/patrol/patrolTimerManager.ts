@@ -155,6 +155,7 @@ export class PatrolTimerManager {
       guildId: string;
       patrolChannelCategoryId?: string | null;
       promotionChannelId?: string | null;
+      toPromoteChannelId?: string | null;
       promotionRules?: PromotionRule[] | null;
       patrolLogChannelId?: string | null;
       loaNotificationChannelId?: string | null;
@@ -1372,17 +1373,23 @@ export class PatrolTimerManager {
         return false;
       }
       for (const rule of rules) {
-        if (!member.roles.cache.has(rule.currentRankRoleId)) continue;
-        if (totalHours < rule.requiredHours) continue;
+        if (!member.roles.cache.has(rule.currentRankRoleId)) {
+          continue;
+        }
+        if (totalHours < rule.requiredHours) {
+          continue;
+        }
         let cooldownUnchecked = false;
-        if (rule.cooldownHours != null && rule.cooldownHours > 0) {
+        if (rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0) {
           const obtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
           if (obtainedAt === null) {
             cooldownUnchecked = true;
             // Continue with notification but mark cooldown as unchecked
           } else {
             const hoursSinceObtained = (Date.now() - obtainedAt.getTime()) / (1000 * 60 * 60);
-            if (hoursSinceObtained < rule.cooldownHours) continue;
+            if (hoursSinceObtained < rule.cooldownHours) {
+              continue;
+            }
           }
         }
         const alreadyNotified = await prisma.voicePatrolPromotionNotification.findUnique({
@@ -1390,27 +1397,85 @@ export class PatrolTimerManager {
             guildId_userId_nextRankRoleId: { guildId, userId: member.id, nextRankRoleId: rule.nextRankRoleId },
           },
         });
-        if (alreadyNotified) continue;
+        if (alreadyNotified) {
+          continue;
+        }
         const currentRankName = scrubRoleDisplay(
           member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? "Current",
         );
         const nextRankName = scrubRoleDisplay(
           member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? "Next",
         );
-        const cooldownWarning = cooldownUnchecked 
-          ? "\n⚠️ Cooldown unchecked due to missing role data"
-          : "";
-        const message = `<@${member.id}>\n${currentRankName} → ${nextRankName}\nAttended ${totalHours.toFixed(1)}+ hours (required: ${rule.requiredHours}h).${cooldownWarning}`;
-        const sentMessage = await channel.send(message);
-        await sentMessage.react("✅");
-        await sentMessage.react("❌");
+        let hoursSinceCooldownStart: number | null = null;
+        if (rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0) {
+          const obtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
+          if (obtainedAt !== null) {
+            hoursSinceCooldownStart = (Date.now() - obtainedAt.getTime()) / (1000 * 60 * 60);
+          }
+        }
+        const cooldownLine =
+          rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
+            ? cooldownUnchecked
+              ? `Cooldown: no role-obtained data (unchecked). Required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`
+              : hoursSinceCooldownStart !== null
+                ? `Cooldown: ${hoursSinceCooldownStart.toFixed(1)}h since obtaining **${currentRankName}** (required ${rule.cooldownHours}h). ✓`
+                : `Cooldown: required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`
+            : null;
+        const ruleSummary =
+          rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
+            ? `${rule.requiredHours}h patrol, ${rule.cooldownHours}h cooldown after current rank`
+            : `${rule.requiredHours}h patrol`;
+        const embed = new EmbedBuilder()
+          .setColor(Colors.Grey)
+          .setTitle("Patrol promotion – pending")
+          .setDescription(`<@${member.id}> is eligible for promotion.`)
+          .addFields(
+            {
+              name: "Promotion",
+              value: `**${currentRankName}** → **${nextRankName}**`,
+              inline: true,
+            },
+            {
+              name: "Rule",
+              value: ruleSummary,
+              inline: true,
+            },
+            {
+              name: "Total patrol hours",
+              value: `${totalHours.toFixed(1)}h (required: ${rule.requiredHours}h) ✓`,
+              inline: false,
+            },
+          );
+        if (cooldownLine) {
+          embed.addFields({ name: "Cooldown", value: cooldownLine, inline: false });
+        }
+        embed.addFields({
+          name: "Why eligible",
+          value: "Hours and cooldown met; first notification for this rank.",
+          inline: false,
+        });
+        embed.setTimestamp();
+        const approveId = `patrol-promo:approve:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
+        const denyId = `patrol-promo:deny:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(approveId).setLabel("Approve").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(denyId).setLabel("Deny").setStyle(ButtonStyle.Danger),
+        );
+        const sentMessage = await (channel as TextChannel).send({
+          content: `<@${member.id}>`,
+          embeds: [embed],
+          components: [row],
+          allowedMentions: { users: [member.id] },
+        });
         await prisma.voicePatrolPromotionNotification.create({
           data: {
             guildId,
             userId: member.id,
             nextRankRoleId: rule.nextRankRoleId,
             totalHoursAtNotify: totalHours,
-          },
+            messageId: sentMessage.id,
+            status: "PENDING",
+          } as Parameters<typeof prisma.voicePatrolPromotionNotification.create>[0]["data"],
         });
         loggers.patrol.info(`Promotion notification sent for ${member.user.tag}: ${currentRankName} → ${nextRankName} (${totalHours.toFixed(2)}h)`);
         sent = true;

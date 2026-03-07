@@ -71,6 +71,47 @@ export class SettingsPatrolPromotionCommands {
   }
 
   @Slash({
+    name: "set-to-promote-channel",
+    description: "Set the channel where promoted users are posted (after staff approve)",
+  })
+  async setToPromoteChannel(
+    @SlashOption({
+      name: "channel",
+      description: "The channel to post promoted users to",
+      type: ApplicationCommandOptionType.Channel,
+      required: true,
+    })
+    channel: Channel,
+    interaction: CommandInteraction,
+  ) {
+    if (!interaction.guildId) {
+      return;
+    }
+
+    if (
+      channel.type !== ChannelType.GuildText &&
+      channel.type !== ChannelType.GuildAnnouncement
+    ) {
+      await interaction.reply({
+        content: "❌ The channel must be a text or announcement channel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await prisma.guildSettings.upsert({
+      where: { guildId: interaction.guildId },
+      update: { toPromoteChannelId: channel.id },
+      create: { guildId: interaction.guildId, toPromoteChannelId: channel.id },
+    });
+
+    await interaction.reply({
+      content: `✅ To-promote channel set to <#${channel.id}>`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
     name: "view",
     description: "View current promotion settings",
   })
@@ -92,12 +133,15 @@ export class SettingsPatrolPromotionCommands {
     const channel = settings.promotionChannelId
       ? `<#${settings.promotionChannelId}>`
       : "Not set";
+    const toPromoteChannel = (settings as { toPromoteChannelId?: string | null }).toPromoteChannelId
+      ? `<#${(settings as { toPromoteChannelId: string }).toPromoteChannelId}>`
+      : "Not set";
     const guild = interaction.guild;
     const rules = patrolTimer.getEffectivePromotionRules(settings);
     let rulesBlock = "";
     if (rules && rules.length > 0) {
       rulesBlock = "\n**Rules:**\n" + rules.map((r, i) => {
-        const cooldown = r.cooldownHours != null ? `, cooldown ${r.cooldownHours}h` : "";
+        const cooldown = r.cooldownHours !== null && r.cooldownHours !== undefined ? `, cooldown ${r.cooldownHours}h` : "";
         const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
         const nextLabel = scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId);
         return `${i + 1}. ${currentName} → ${nextLabel} at ${r.requiredHours}h${cooldown}`;
@@ -107,7 +151,8 @@ export class SettingsPatrolPromotionCommands {
     }
 
     const message = `**Promotion Settings**
-**Channel:** ${channel}
+**Promotion channel:** ${channel}
+**To-promote channel:** ${toPromoteChannel}
 ${rulesBlock}
 
 ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notifications." : ""}`;
@@ -188,7 +233,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       currentRankRoleId: currentRank.id,
       nextRankRoleId: nextRank.id,
       requiredHours,
-      ...(cooldownHours != null && cooldownHours >= 0 ? { cooldownHours } : {}),
+      ...(cooldownHours !== null && cooldownHours !== undefined && cooldownHours >= 0 ? { cooldownHours } : {}),
     };
     const updated = [...existing, newRule];
     await prisma.guildSettings.upsert({
@@ -196,7 +241,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       update: { promotionRules: updated as unknown as object },
       create: { guildId: interaction.guildId, promotionRules: updated as unknown as object },
     });
-    const cooldownStr = cooldownHours != null ? `, cooldown ${cooldownHours}h` : "";
+    const cooldownStr = cooldownHours !== null && cooldownHours !== undefined ? `, cooldown ${cooldownHours}h` : "";
     await interaction.reply({
       content: `✅ Added rule: ${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)} at ${requiredHours}h${cooldownStr}.`,
       flags: MessageFlags.Ephemeral,
@@ -270,7 +315,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     }
     const guild = interaction.guild;
     const lines = rules.map((r, i) => {
-      const cooldown = r.cooldownHours != null ? `, cooldown ${r.cooldownHours}h` : "";
+      const cooldown = r.cooldownHours !== null && r.cooldownHours !== undefined ? `, cooldown ${r.cooldownHours}h` : "";
       const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
       const next = scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId);
       return `${i + 1}. ${currentName} → ${next} at ${r.requiredHours}h${cooldown}`;

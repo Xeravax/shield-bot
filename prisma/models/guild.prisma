@@ -5,6 +5,7 @@ model GuildSettings {
   patrolChannelCategoryId    String?
   // Patrol promotion settings
   promotionChannelId         String? // Channel ID for promotion notifications
+  toPromoteChannelId         String? // Channel ID for posting users who were promoted
   promotionRules             Json? // Array of { currentRankRoleId, nextRankRoleId, requiredHours, cooldownHours? } for rank-based rules
   // Attendance settings
   hostAttendanceRoleIds      Json? // Array of role IDs for host attendance

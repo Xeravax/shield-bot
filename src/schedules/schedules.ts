@@ -1,11 +1,13 @@
 import { Client } from "discord.js";
 import { loggers } from "../utility/logger.js";
 import { initializePatrolTopSchedule, stopPatrolTopSchedule } from "./patrol/patrolTop.js";
+import { initializePromotionCheckSchedule, stopPromotionCheckSchedule } from "./patrol/promotionCheck.js";
 import { initializeLOAExpirationSchedule, stopLOAExpirationSchedule } from "./loa/loaExpiration.js";
 import { initializeRoleTrackingSchedule, stopRoleTrackingSchedule } from "./roleTracking/roleTrackingCheck.js";
 import * as cron from "node-cron";
 
 let patrolTopJob: cron.ScheduledTask | null = null;
+let promotionCheckJob: cron.ScheduledTask | null = null;
 let loaExpirationJob: cron.ScheduledTask | null = null;
 let roleTrackingJob: cron.ScheduledTask | null = null;
 
@@ -14,6 +16,9 @@ export function initializeSchedules(client: Client) {
 
   // Initialize patrol top schedule
   patrolTopJob = initializePatrolTopSchedule(client);
+
+  // Initialize promotion check schedule (daily 10 AM UTC)
+  promotionCheckJob = initializePromotionCheckSchedule(client);
 
   // Initialize LOA expiration schedule
   loaExpirationJob = initializeLOAExpirationSchedule(client);
@@ -30,6 +35,10 @@ export function stopSchedules() {
   // Stop patrol top schedule
   stopPatrolTopSchedule(patrolTopJob);
   patrolTopJob = null;
+
+  // Stop promotion check schedule
+  stopPromotionCheckSchedule(promotionCheckJob);
+  promotionCheckJob = null;
 
   // Stop LOA expiration schedule
   stopLOAExpirationSchedule(loaExpirationJob);
