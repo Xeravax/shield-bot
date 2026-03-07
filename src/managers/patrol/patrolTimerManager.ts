@@ -11,6 +11,9 @@ import {
   ButtonStyle,
   ActionRowBuilder,
   TextChannel,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MessageFlags,
 } from "discord.js";
 import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
@@ -1425,50 +1428,48 @@ export class PatrolTimerManager {
           rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
             ? `${rule.requiredHours}h patrol, ${rule.cooldownHours}h cooldown after current rank`
             : `${rule.requiredHours}h patrol`;
-        const embed = new EmbedBuilder()
-          .setColor(Colors.Grey)
-          .setTitle("Patrol promotion – 🟠 Pending")
-          .setDescription(`**🟠 Pending** — ✅ Approve · ❌ Deny\n\nA member is eligible for promotion.`)
-          .addFields(
-            {
-              name: "User",
-              value: `${member.user.tag} (\`${member.id}\`)`,
-              inline: false,
-            },
-            {
-              name: "Promotion",
-              value: `**${currentRankName}** → **${nextRankName}**`,
-              inline: true,
-            },
-            {
-              name: "Rule",
-              value: ruleSummary,
-              inline: true,
-            },
-            {
-              name: "Total patrol hours",
-              value: `${totalHours.toFixed(1)}h (required: ${rule.requiredHours}h) ✓`,
-              inline: false,
-            },
-          );
+        const lines: string[] = [
+          "**Patrol promotion – 🟠 Pending**",
+          "",
+          "**🟠 Pending** — ✅ Approve · ❌ Deny",
+          "",
+          "A member is eligible for promotion.",
+          "",
+          "**User**",
+          `${member.user.tag} (\`${member.id}\`)`,
+          "",
+          "**Promotion**",
+          `**${currentRankName}** → **${nextRankName}**`,
+          "",
+          "**Rule**",
+          ruleSummary,
+          "",
+          "**Total patrol hours**",
+          `${totalHours.toFixed(1)}h (required: ${rule.requiredHours}h) ✓`,
+        ];
         if (cooldownLine) {
-          embed.addFields({ name: "Cooldown", value: cooldownLine, inline: false });
+          lines.push("", "**Cooldown**", cooldownLine);
         }
-        embed.addFields({
-          name: "Why eligible",
-          value: "Hours and cooldown met; first notification for this rank.",
-          inline: false,
-        });
-        embed.setTimestamp();
+        lines.push(
+          "",
+          "**Why eligible**",
+          "Hours and cooldown met; first notification for this rank.",
+          "",
+          `<t:${Math.floor(Date.now() / 1000)}:F>`,
+        );
         const approveId = `patrol-promo:approve:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
         const denyId = `patrol-promo:deny:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setCustomId(approveId).setLabel("Approve").setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(denyId).setLabel("Deny").setStyle(ButtonStyle.Danger),
         );
+        const container = new ContainerBuilder()
+          .setAccentColor(Colors.Grey)
+          .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+          .addActionRowComponents(row);
         const sentMessage = await (channel as TextChannel).send({
-          embeds: [embed],
-          components: [row]
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
         });
         await sentMessage.react("🟠");
         await sentMessage.react("✅");

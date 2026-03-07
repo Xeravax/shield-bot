@@ -3,6 +3,8 @@ import {
   MessageFlags,
   EmbedBuilder,
   Colors,
+  ContainerBuilder,
+  TextDisplayBuilder,
 } from "discord.js";
 import { Discord, ButtonComponent, Guard } from "discordx";
 import { StaffGuard } from "../../../../utility/guards.js";
@@ -89,45 +91,40 @@ export class PatrolPromotionButtonHandlers {
         return;
       }
 
-      try {
-        await member.roles.add(nextRankRoleId);
-      } catch (err) {
-        loggers.patrol.error("Failed to add promotion role", err);
-        await interaction.followUp({
-          content: `❌ Failed to add role (permission or role hierarchy).`,
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      await prisma.voicePatrolRoleObtainedAt.upsert({
-        where: {
-          guildId_userId_roleId: { guildId, userId, roleId: nextRankRoleId },
-        },
-        update: { obtainedAt: now },
-        create: { guildId, userId, roleId: nextRankRoleId, obtainedAt: now },
-      });
+      // Role is NOT assigned by the bot; staff must assign it manually.
 
       const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
       const totalHours = notification.totalHoursAtNotify ?? 0;
 
-      const resolvedEmbed = new EmbedBuilder()
-        .setColor(Colors.Green)
-        .setTitle("Patrol promotion – promoted")
-        .setDescription(`✅ A member has been promoted.`)
-        .addFields(
-          { name: "User", value: `${member.user.tag} (\`${userId}\`)`, inline: false },
-          { name: "Promotion", value: `**${currentRankName}** → **${nextRankName}**`, inline: true },
-          { name: "Approved by", value: `<@${interaction.user.id}>`, inline: true },
-          { name: "Total patrol hours at notify", value: `${totalHours.toFixed(1)}h`, inline: false },
-        )
-        .setTimestamp();
+      const resolvedContent = [
+        "**Patrol promotion – promoted**",
+        "",
+        "✅ A member has been promoted.",
+        "",
+        "**User**",
+        `${member.user.tag} (\`${userId}\`)`,
+        "",
+        "**Promotion**",
+        `**${currentRankName}** → **${nextRankName}**`,
+        "",
+        "**Approved by**",
+        `<@${interaction.user.id}>`,
+        "",
+        "**Total patrol hours at notify**",
+        `${totalHours.toFixed(1)}h`,
+        "",
+        `<t:${Math.floor(Date.now() / 1000)}:F>`,
+      ].join("\n");
+      const resolvedContainer = new ContainerBuilder()
+        .setAccentColor(Colors.Green)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(resolvedContent));
 
       await interaction.editReply({
         content: "",
-        embeds: [resolvedEmbed],
-        components: [],
+        embeds: [],
+        components: [resolvedContainer],
+        flags: MessageFlags.IsComponentsV2,
       });
 
       const settings = await patrolTimer.getSettings(guildId);
@@ -240,21 +237,31 @@ export class PatrolPromotionButtonHandlers {
       const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
 
-      const resolvedEmbed = new EmbedBuilder()
-        .setColor(Colors.Red)
-        .setTitle("Patrol promotion – denied")
-        .setDescription(`❌ Not promoted. Cooldown reset; they can be considered again after cooldown.`)
-        .addFields(
-          { name: "User", value: `\`${userId}\``, inline: false },
-          { name: "Promotion", value: `**${currentRankName}** → **${nextRankName}**`, inline: true },
-          { name: "Denied by", value: `<@${interaction.user.id}>`, inline: true },
-        )
-        .setTimestamp();
+      const resolvedContent = [
+        "**Patrol promotion – denied**",
+        "",
+        "❌ Not promoted. Cooldown reset; they can be considered again after cooldown.",
+        "",
+        "**User**",
+        `\`${userId}\``,
+        "",
+        "**Promotion**",
+        `**${currentRankName}** → **${nextRankName}**`,
+        "",
+        "**Denied by**",
+        `<@${interaction.user.id}>`,
+        "",
+        `<t:${Math.floor(Date.now() / 1000)}:F>`,
+      ].join("\n");
+      const resolvedContainer = new ContainerBuilder()
+        .setAccentColor(Colors.Red)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(resolvedContent));
 
       await interaction.editReply({
         content: "",
-        embeds: [resolvedEmbed],
-        components: [],
+        embeds: [],
+        components: [resolvedContainer],
+        flags: MessageFlags.IsComponentsV2,
       });
 
       await interaction.followUp({
