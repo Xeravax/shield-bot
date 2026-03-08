@@ -1364,9 +1364,15 @@ export class PatrolTimerManager {
   /**
    * Run promotion check for one member; send notification(s) if eligible.
    * Returns true if at least one notification was sent.
-   * Used by automatic (on leave) and manual check command.
+   * Used by automatic (on leave), manual check, and staff suggest command.
+   * @param options.bypassCooldown When true, cooldown is not required (e.g. staff suggest); hours and notification rules still apply.
    */
-  async runPromotionCheckForMember(guildId: string, member: GuildMember): Promise<boolean> {
+  async runPromotionCheckForMember(
+    guildId: string,
+    member: GuildMember,
+    options?: { bypassCooldown?: boolean },
+  ): Promise<boolean> {
+    const bypassCooldown = options?.bypassCooldown === true;
     let sent = false;
     try {
       const settings = await this.getSettings(guildId);
@@ -1391,7 +1397,7 @@ export class PatrolTimerManager {
           continue;
         }
         let cooldownUnchecked = false;
-        if (rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0) {
+        if (!bypassCooldown && rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0) {
           const obtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
           if (obtainedAt === null) {
             cooldownUnchecked = true;
@@ -1434,13 +1440,15 @@ export class PatrolTimerManager {
           }
         }
         const cooldownLine =
-          rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
-            ? cooldownUnchecked
-              ? `Cooldown: no role-obtained data (unchecked). Required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`
-              : hoursSinceCooldownStart !== null
-                ? `Cooldown: ${hoursSinceCooldownStart.toFixed(1)}h since obtaining **${currentRankName}** (required ${rule.cooldownHours}h). ✓`
-                : `Cooldown: required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`
-            : null;
+          bypassCooldown
+            ? `Cooldown: bypassed (staff suggestion).`
+            : rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
+              ? cooldownUnchecked
+                ? `Cooldown: no role-obtained data (unchecked). Required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`
+                : hoursSinceCooldownStart !== null
+                  ? `Cooldown: ${hoursSinceCooldownStart.toFixed(1)}h since obtaining **${currentRankName}** (required ${rule.cooldownHours}h). ✓`
+                  : `Cooldown: required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`
+              : null;
         const ruleSummary =
           rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
             ? `${rule.requiredHours}h patrol, ${rule.cooldownHours}h cooldown after current rank`

@@ -1,4 +1,4 @@
-import { Discord, Guard, Slash, SlashGroup, SlashOption } from "discordx";
+import { Discord, Guard, Slash, SlashChoice, SlashGroup, SlashOption } from "discordx";
 import {
   CommandInteraction,
   MessageFlags,
@@ -336,6 +336,86 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
   }
 
   @Slash({
+    name: "list-notifications",
+    description: "List promotion notifications (who is pending, approved, or denied)",
+  })
+  async listNotifications(
+    @SlashChoice({ name: "Pending", value: "PENDING" })
+    @SlashChoice({ name: "Approved", value: "APPROVED" })
+    @SlashChoice({ name: "Denied", value: "DENIED" })
+    @SlashOption({
+      name: "status",
+      description: "Filter by status (omit for all)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    statusFilter: "PENDING" | "APPROVED" | "DENIED" | undefined,
+    interaction: CommandInteraction,
+  ) {
+    if (!interaction.guildId || !interaction.guild) {
+      return;
+    }
+
+    const where = { guildId: interaction.guildId } as { guildId: string; status?: string };
+    if (statusFilter) {
+      where.status = statusFilter;
+    }
+
+    const notifications = await prisma.voicePatrolPromotionNotification.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { notifiedAt: "desc" }],
+      take: 50,
+    });
+
+    if (notifications.length === 0) {
+      const statusLabel = statusFilter ? ` with status **${statusFilter}**` : "";
+      await interaction.reply({
+        content: `ℹ️ No promotion notifications${statusLabel}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const guild = interaction.guild;
+    const lines: string[] = [];
+    for (const n of notifications) {
+      const nextRankName = scrubRoleDisplay(
+        guild.roles.cache.get(n.nextRankRoleId)?.name ?? n.nextRankRoleId,
+      );
+      const hours = n.totalHoursAtNotify !== null && n.totalHoursAtNotify !== undefined ? `${n.totalHoursAtNotify.toFixed(1)}h` : "—";
+      const notified = `<t:${Math.floor(n.notifiedAt.getTime() / 1000)}:R>`;
+      let resolved = "";
+      if (n.resolvedAt && n.resolvedBy) {
+        resolved = ` · Resolved <t:${Math.floor(n.resolvedAt.getTime() / 1000)}:R> by <@${n.resolvedBy}>`;
+      }
+      lines.push(
+        `**${n.status}** · <@${n.userId}> → **${nextRankName}** (${hours} at notify) ${notified}${resolved}`,
+      );
+    }
+    const statusLabel = statusFilter ? ` (${statusFilter})` : "";
+    const header = `**Promotion notifications**${statusLabel} (${notifications.length} total)\n\n`;
+    let body = lines.join("\n");
+    const maxBody = 2000 - header.length - 50;
+    if (body.length > maxBody) {
+      let truncated = "";
+      let included = 0;
+      for (const line of lines) {
+        if ((truncated + line + "\n").length > maxBody) {
+          break;
+        }
+        truncated += line + "\n";
+        included++;
+      }
+      const omitted = lines.length - included;
+      body = truncated + (omitted > 0 ? `\n… and ${omitted} more.` : "");
+    }
+    await interaction.reply({
+      content: header + body,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
     name: "list-rules",
     description: "List all rank-based promotion rules",
   })
@@ -550,6 +630,113 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       loggers.patrol.error("Manual promotion check error", err);
       await interaction.editReply({
         content: "❌ An error occurred while checking for promotion. Please check the logs.",
+      });
+    }
+  }
+
+  @Slash({
+    name: "suggest",
+    description: "Suggest a user for promotion (bypasses cooldown only; hours and notification rules still apply)",
+  })
+  async suggest(
+    @SlashOption({
+      name: "user",
+      description: "User to suggest for promotion",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    user: User,
+    interaction: CommandInteraction,
+  ) {
+    if (!interaction.guildId || !interaction.guild) {
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId: interaction.guildId },
+      });
+
+      if (!settings?.promotionChannelId) {
+        await interaction.editReply({
+          content: "❌ Promotion system is not fully configured. Set the promotion channel first.",
+        });
+        return;
+      }
+      const rules = patrolTimer.getEffectivePromotionRules(settings);
+      if (!rules || rules.length === 0) {
+        await interaction.editReply({
+          content: "❌ No promotion rules configured. Use add-rule.",
+        });
+        return;
+      }
+
+      const member = await interaction.guild.members.fetch(user.id);
+      if (!member) {
+        await interaction.editReply({
+          content: "❌ User not found in this server.",
+        });
+        return;
+      }
+
+      const sent = await patrolTimer.runPromotionCheckForMember(interaction.guildId, member, {
+        bypassCooldown: true,
+      });
+      if (sent) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "promotion-suggest",
+          interaction.user.id,
+          user.id,
+          "Suggestion sent (cooldown bypassed).",
+        );
+        await interaction.editReply({
+          content: `✅ Promotion suggestion sent for <@${user.id}> in <#${settings.promotionChannelId}> (cooldown bypassed).`,
+        });
+        loggers.patrol.info(`Promotion suggest for ${user.tag} by ${interaction.user.tag} (cooldown bypassed)`);
+      } else {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "promotion-suggest",
+          interaction.user.id,
+          user.id,
+          "No notification sent (hours or notification rules not met).",
+        );
+        const report = await patrolTimer.getPromotionEligibilityReport(interaction.guildId, member);
+        const totalHours =
+          report?.totalHours ?? (await patrolTimer.getUserTotal(interaction.guildId, user.id)) / (1000 * 60 * 60);
+        let content = `**Promotion suggest: <@${user.id}>** (cooldown bypassed)\n**Total patrol hours:** ${totalHours.toFixed(2)}h\n\n`;
+        if (report && report.rules.length > 0) {
+          content += "**Why no promotion (per rule):**\n";
+          for (let i = 0; i < report.rules.length; i++) {
+            const r = report.rules[i];
+            const ruleTitle = `${i + 1}. ${r.currentRankName} → ${r.nextRankName} (requires ${r.requiredHours}h${r.cooldownHours !== undefined && r.cooldownHours !== null ? `, cooldown ${r.cooldownHours}h` : ""})`;
+            if (!r.hasCurrentRole) {
+              content += `• ${ruleTitle}\n  └ Not eligible: they don't have the current rank role **${r.currentRankName}**.\n`;
+              continue;
+            }
+            const reasons: string[] = [];
+            if (!r.hoursMet) {
+              reasons.push(`hours: ${r.totalHours.toFixed(1)}h (need ${r.requiredHours}h, **${r.hoursRemaining.toFixed(1)}h more**)`);
+            } else {
+              reasons.push(`hours: ✓`);
+            }
+            if (r.alreadyNotified) {
+              reasons.push(`already notified for **${r.nextRankName}** (use \`reset-user\` to allow another notification)`);
+            }
+            content += `• ${ruleTitle}\n  └ ${reasons.join("; ")}\n`;
+          }
+        } else {
+          content += "No promotion rules are configured, or no detailed report could be generated.";
+        }
+        await interaction.editReply({ content });
+      }
+    } catch (err) {
+      loggers.patrol.error("Promotion suggest error", err);
+      await interaction.editReply({
+        content: "❌ An error occurred while suggesting for promotion. Please check the logs.",
       });
     }
   }

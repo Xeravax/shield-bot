@@ -233,13 +233,16 @@ export class PatrolPromotionButtonHandlers {
       const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
 
+      const member = await interaction.guild.members.fetch(userId).catch(() => null);
+      const userLabel = member ? `${member.user.tag} (\`${userId}\`)` : `<@${userId}> (\`${userId}\`)`;
+
       const resolvedContent = [
         "**Patrol promotion – denied**",
         "",
         "❌ Not promoted. Cooldown reset; they can be considered again after cooldown and once they have new patrol time.",
         "",
         "**User**",
-        `\`${userId}\``,
+        userLabel,
         "",
         "**Promotion**",
         `**${currentRankName}** → **${nextRankName}**`,
