@@ -1169,7 +1169,6 @@ export class RoleTrackingManager {
       }
 
       const config = (settings?.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
-      const systemInitDate = settings?.roleTrackingInitializedAt || new Date();
 
       const enabledRoles = Object.entries(config).filter(([_, roleConfig]) => roleConfig.enabled);
       loggers.bot.debug(
@@ -1223,26 +1222,14 @@ export class RoleTrackingManager {
               continue;
             }
 
-            // Get role assignment date (member.id is discordId)
-            const assignmentDate = await this.getRoleAssignmentDate(
-              guildId,
-              member.id, // discordId
-              roleId,
-              systemInitDate,
-            );
-
-            loggers.bot.debug(
-              `[RoleTracking] User ${member.id} role ${roleId} assigned at: ${assignmentDate.toISOString()}`,
-            );
-
-            // Get assignment tracking record (needed for warning removal and tracking)
+            // Resolve user ID and assignment tracking first (needed for date and warning dedup)
             const userId = await this.getUserIdFromDiscordId(member.id);
             if (!userId) {
               loggers.bot.warn(`Failed to get User ID for member ${member.id} in guild ${guildId}`);
               continue;
             }
 
-            const assignmentTracking = await prisma.roleAssignmentTracking.findUnique({
+            let assignmentTracking = await prisma.roleAssignmentTracking.findUnique({
               where: {
                 guildId_userId_roleId: {
                   guildId,
@@ -1252,8 +1239,34 @@ export class RoleTrackingManager {
               },
             });
 
+            let assignmentDate: Date;
+            if (!assignmentTracking) {
+              // Member has role but no tracking record. Using systemInitDate would make them
+              // appear assigned long ago and trigger all warnings at once. Backfill with "now"
+              // so they get the correct schedule from this point.
+              await this.trackRoleAssignment(guildId, member.id, roleId, new Date());
+              assignmentDate = new Date();
+              assignmentTracking = await prisma.roleAssignmentTracking.findUnique({
+                where: {
+                  guildId_userId_roleId: {
+                    guildId,
+                    userId,
+                    roleId,
+                  },
+                },
+              });
+              loggers.bot.info(
+                `[RoleTracking] Created missing tracking record for user ${member.id} role ${roleId} (assignedAt=now) - was using systemInitDate and would have sent all warnings`,
+              );
+            } else {
+              assignmentDate = assignmentTracking.assignedAt;
+            }
+
             loggers.bot.debug(
-              `[RoleTracking] Assignment tracking ID for user ${member.id}: ${assignmentTracking?.id || "none"}`,
+              `[RoleTracking] User ${member.id} role ${roleId} assigned at: ${assignmentDate.toISOString()}`,
+            );
+            loggers.bot.debug(
+              `[RoleTracking] Assignment tracking ID for user ${member.id}: ${assignmentTracking?.id ?? "none"}`,
             );
 
             // If no conditions are configured, skip tracking entirely
