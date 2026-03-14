@@ -939,9 +939,14 @@ export class RoleTrackingManager {
       // Use role-specific ping roles if provided, otherwise fall back to guild staff roles
       const pingRoleIds = rolePingRoleIds || (Array.isArray(settings?.staffRoleIds) ? (settings.staffRoleIds as string[]) : []);
 
-      // Build content with staff ping if needed
+      // Build content with staff ping if needed (or use message content if it already includes role pings)
+      const msgContent = typeof message === "object" ? (message as MessageCreateOptions).content : "";
+      const messageHasPingContent = typeof msgContent === "string" && msgContent.trim().length > 0;
+
       let content = "";
-      if (shouldPing && pingRoleIds.length > 0) {
+      if (messageHasPingContent) {
+        content = msgContent;
+      } else if (shouldPing && pingRoleIds.length > 0) {
         const roleMentions = pingRoleIds.map((id) => `<@&${id}>`).join(" ");
         content = `${roleMentions}\n`;
       } else if (shouldPing) {
@@ -957,10 +962,9 @@ export class RoleTrackingManager {
 
       // If message is an object with embeds/components, send as message payload
       if (typeof message === "object" && (message.embeds || message.components)) {
-        // Prepend ping content if needed
         const messagePayload: MessageCreateOptions = {
           ...(message as MessageCreateOptions),
-          content: content + ((message as MessageCreateOptions).content || ""),
+          content: content + (messageHasPingContent ? "" : (msgContent || "")),
           allowedMentions,
         };
         await channel.send(messagePayload);
@@ -1592,12 +1596,17 @@ export class RoleTrackingManager {
                 const deadlineTimestamp = Math.floor(deadlineDate.getTime() / 1000);
                 const assignmentTimestamp = Math.floor(assignmentDate.getTime() / 1000);
                 
+                const rolePingsStr = (roleConfig.staffPingRoleIds || [])
+                  .map((id) => `<@&${id}>`)
+                  .join(" ");
+
                 const variables = {
                   userMention: `<@${member.id}>`,
                   userId: member.id,
                   userName: member.displayName || member.user.username,
                   roleName: roleConfig.roleName,
                   roleId: roleId,
+                  rolePings: rolePingsStr,
                   patrolTimeHours: patrolTimeHours.toFixed(2),
                   patrolTimeFormatted: patrolTimeFormatted,
                   patrolTimeMs: Math.floor(patrolTimeMs).toString(),
