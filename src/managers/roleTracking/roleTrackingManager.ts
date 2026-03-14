@@ -965,14 +965,14 @@ export class RoleTrackingManager {
         const messagePayload: MessageCreateOptions = {
           ...(message as MessageCreateOptions),
           content: content + (messageHasPingContent ? "" : (msgContent || "")),
-          allowedMentions,
+          //allowedMentions,
         };
         await channel.send(messagePayload);
       } else {
         // Otherwise send as plain text with ping
         await channel.send({
           content: content + (message as string),
-          allowedMentions,
+          //allowedMentions,
         });
       }
 
@@ -1527,7 +1527,7 @@ export class RoleTrackingManager {
                       .setColor(Colors.Red)
                       .setTimestamp();
 
-                    await this.logToStaffChannel(guildId, logEmbed, false, roleConfig.staffChannelId);
+                    await this.logToStaffChannel(guildId, logEmbed, true, roleConfig.staffChannelId);
                   }
                 }
               }
