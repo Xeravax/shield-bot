@@ -954,11 +954,11 @@ export class RoleTrackingManager {
       }
 
       // Allow @here/@everyone when shouldPing is true and no role IDs, otherwise use roles
-      const allowedMentions = shouldPing && pingRoleIds.length > 0
-        ? { roles: pingRoleIds }
-        : shouldPing && pingRoleIds.length === 0
-          ? { parse: ["everyone"] as const }
-          : { roles: [] };
+      // const allowedMentions = shouldPing && pingRoleIds.length > 0
+      //   ? { roles: pingRoleIds }
+      //   : shouldPing && pingRoleIds.length === 0
+      //     ? { parse: ["everyone"] as const }
+      //     : { roles: [] };
 
       // If message is an object with embeds/components, send as message payload
       if (typeof message === "object" && (message.embeds || message.components)) {
