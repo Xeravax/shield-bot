@@ -31,10 +31,6 @@ ALTER TABLE `VoicePatrolPromotionNotification` ADD COLUMN `messageId` VARCHAR(19
     ADD COLUMN `resolvedBy` VARCHAR(191) NULL,
     ADD COLUMN `status` VARCHAR(191) NOT NULL DEFAULT 'PENDING';
 
--- AlterTable
-ALTER TABLE `leave_of_absences` ADD COLUMN `announcementChannelId` VARCHAR(191) NULL,
-    ADD COLUMN `announcementMessageId` VARCHAR(191) NULL;
-
 -- CreateIndex
 CREATE INDEX `ActiveVoicePatrolSession_user_idx` ON `ActiveVoicePatrolSession`(`userId`);
 
