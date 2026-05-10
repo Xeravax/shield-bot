@@ -1,45 +1,35 @@
 import {
-  bold,
   Client,
   ContainerBuilder,
   hyperlink,
   inlineCode,
   italic,
   MessageFlags,
+  roleMention,
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
-  time,
-  TimestampStyles,
 } from "discord.js";
 import * as cron from "node-cron";
 import { loggers } from "../../utility/logger.js";
 import { prisma } from "../../main.js";
 
-/** Roles to ping at the start of the weekly host event reminder. */
-const HOST_EVENT_REMINDER_PING_ROLE_IDS = [
-  "814554774052536373",
-  "842897800286306304",
-] as const;
+/** Full Host role - use wherever “hosts” are addressed. */
+const HOST_ROLE_ID = "814554774052536373";
+/** Jr. Host role - use wherever “jr. hosts” are addressed. */
+const JR_HOST_ROLE_ID = "842897800286306304";
 
-function buildPingContent(): string {
-  return HOST_EVENT_REMINDER_PING_ROLE_IDS.map((id) => `<@&${id}>`).join(" ");
-}
+const HOST_REMINDER_ALLOWED_ROLES = [HOST_ROLE_ID, JR_HOST_ROLE_ID] as const;
 
 function buildReminderContainer(): ContainerBuilder {
-  const pings = buildPingContent();
-  const exampleTs = time(
-    Math.floor(Date.now() / 1000),
-    TimestampStyles.LongDateTime,
-  );
+  const host = roleMention(HOST_ROLE_ID);
+  const jrHost = roleMention(JR_HOST_ROLE_ID);
 
   const intro = new TextDisplayBuilder().setContent(
     [
-      pings,
-      "",
       "# Weekly event scheduling reminder",
       "",
-      `Hello ${bold("Hosts")} and ${bold("Jr. Hosts")} — time to get events on the calendar.`,
+      `Hello ${host} and ${jrHost} - time to get events on the calendar.`,
       "",
       "You have until **Monday** to prepare and schedule your events for the week. The sooner they’re posted, the easier it is for members to plan.",
     ].join("\n"),
@@ -53,11 +43,9 @@ function buildReminderContainer(): ContainerBuilder {
     [
       "## Reminders",
       "",
-      "● **Mondays are planning-only** — do not schedule events on Mondays.",
-      "",
-      "● **Per-host limits** — at most **3 on-duty** and **3 off-duty** events.",
-      "",
-      "● **No overlap** — keep at least **1–2 hours** between event start times.",
+      "● **Mondays are planning-only** - do not schedule events on Mondays.",
+      "● **Per-host limits** - at most **3 on-duty** and **3 off-duty** events.",
+      "● **No overlap** - keep at least **2 hours** between event start times.",
     ].join("\n"),
   );
 
@@ -71,11 +59,8 @@ function buildReminderContainer(): ContainerBuilder {
       "",
       "Prefer tools that show **one instant** in each user’s local time:",
       "",
-      `● **Use ${inlineCode("@time")}** — in the message box, type ${inlineCode("@")}, select **time** / timestamp, and pick the date & time. Discord inserts a stamp everyone sees in their own timezone.`,
-      "",
-      `● **Manual format** — ${inlineCode("<t:UNIX_SECONDS:F>")} (full date & time). Example for “right now”: ${exampleTs}`,
-      "",
-      `● **Helpers** — ${hyperlink("guacamolie.nl/timestamp", "https://guacamolie.nl/timestamp")} · ${hyperlink("r.3v.fi/discord-timestamps", "https://r.3v.fi/discord-timestamps/")}`,
+      `● **Use ${inlineCode("@time")}** - in the message box, type ${inlineCode("@")}, select **time** / timestamp, and pick the date & time. Discord inserts a stamp everyone sees in their own timezone.`,
+      `● **Helpers** - ${hyperlink("guacamolie.nl/timestamp", "https://guacamolie.nl/timestamp")} · ${hyperlink("r.3v.fi/discord-timestamps", "https://r.3v.fi/discord-timestamps/")}`,
       "",
       italic(
         "If you skip timestamps entirely, state times in **EST** so people can convert the same way.",
@@ -89,11 +74,11 @@ function buildReminderContainer(): ContainerBuilder {
 
   const closing = new TextDisplayBuilder().setContent(
     [
-      "## Jr. Hosts",
+      `## ${jrHost}`,
       "",
-      "**Jr. Hosts need a full Host as co-host** for any event they run — **no solo Jr. events.**",
+      `${jrHost} must have a ${host} as co-host for any event they run - **no solo Jr. events.**`,
       "",
-      "Thanks for keeping the schedule tight — have a great rest of your day or night!",
+      "Thanks for keeping the schedule tight - have a great rest of your day or night!",
     ].join("\n"),
   );
 
@@ -150,7 +135,7 @@ export async function broadcastHostWeeklyEventReminder(client: Client): Promise<
         }
 
         await channel.send({
-          allowedMentions: { /*roles: [...HOST_EVENT_REMINDER_PING_ROLE_IDS]*/ },
+          allowedMentions: { roles: [...HOST_REMINDER_ALLOWED_ROLES] },
           components: [container],
           flags: MessageFlags.IsComponentsV2,
         });
