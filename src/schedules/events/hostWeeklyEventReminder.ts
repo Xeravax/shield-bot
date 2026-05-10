@@ -27,6 +27,7 @@ function buildPingContent(): string {
 }
 
 function buildReminderContainer(): ContainerBuilder {
+  const pings = buildPingContent();
   const exampleTs = time(
     Math.floor(Date.now() / 1000),
     TimestampStyles.LongDateTime,
@@ -34,6 +35,8 @@ function buildReminderContainer(): ContainerBuilder {
 
   const intro = new TextDisplayBuilder().setContent(
     [
+      pings,
+      "",
       "# Weekly event scheduling reminder",
       "",
       `Hello ${bold("Hosts")} and ${bold("Jr. Hosts")} — time to get events on the calendar.`,
@@ -125,7 +128,6 @@ export async function broadcastHostWeeklyEventReminder(client: Client): Promise<
       return;
     }
 
-    const pingContent = buildPingContent();
     const container = buildReminderContainer();
 
     loggers.schedules.info(
@@ -148,7 +150,6 @@ export async function broadcastHostWeeklyEventReminder(client: Client): Promise<
         }
 
         await channel.send({
-          content: pingContent,
           allowedMentions: { roles: [...HOST_EVENT_REMINDER_PING_ROLE_IDS] },
           components: [container],
           flags: MessageFlags.IsComponentsV2,
