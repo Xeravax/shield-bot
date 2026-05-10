@@ -150,7 +150,7 @@ export async function broadcastHostWeeklyEventReminder(client: Client): Promise<
         }
 
         await channel.send({
-          allowedMentions: { roles: [...HOST_EVENT_REMINDER_PING_ROLE_IDS] },
+          allowedMentions: { /*roles: [...HOST_EVENT_REMINDER_PING_ROLE_IDS]*/ },
           components: [container],
           flags: MessageFlags.IsComponentsV2,
         });
