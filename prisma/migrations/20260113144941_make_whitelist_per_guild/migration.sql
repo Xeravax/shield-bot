@@ -11,7 +11,6 @@ ALTER TABLE `whitelist_entries` ADD COLUMN `guildId` VARCHAR(191) NULL;
 -- Step 2: Find all unique guildIds from whitelist_roles and duplicate entries
 -- For each existing whitelist_entry, create a new entry for each guild that has whitelist roles
 -- Note: We insert without ON DUPLICATE KEY since the unique constraint doesn't exist yet
--- Only proceed if whitelist_roles exists to avoid wiping all entries
 INSERT INTO `whitelist_entries` (`userId`, `guildId`, `createdAt`, `updatedAt`)
 SELECT DISTINCT
     we.`userId`,
@@ -22,13 +21,11 @@ FROM `whitelist_entries` we
 CROSS JOIN (
     SELECT DISTINCT `guildId` FROM `whitelist_roles`
 ) wr
-WHERE we.`guildId` IS NULL
-AND EXISTS(SELECT 1 FROM `whitelist_roles`);
+WHERE we.`guildId` IS NULL;
 
 -- Step 3: Migrate role assignments to new entries
 -- For each role assignment, find the new entry that matches userId + role's guildId
 -- Only migrate assignments where the role's guildId matches the new entry's guildId
--- Only proceed if whitelist_roles exists
 INSERT INTO `whitelist_role_assignments` (`whitelistId`, `roleId`, `assignedAt`, `assignedBy`, `expiresAt`)
 SELECT 
     new_we.`id` AS `whitelistId`,
@@ -41,21 +38,12 @@ INNER JOIN `whitelist_entries` old_we ON wra.`whitelistId` = old_we.`id`
 INNER JOIN `whitelist_roles` wr ON wra.`roleId` = wr.`id`
 INNER JOIN `whitelist_entries` new_we ON new_we.`userId` = old_we.`userId` AND new_we.`guildId` = wr.`guildId`
 WHERE old_we.`guildId` IS NULL
-AND EXISTS(SELECT 1 FROM `whitelist_roles`)
 ON DUPLICATE KEY UPDATE `assignedAt` = VALUES(`assignedAt`);
 
 -- Step 4: Delete old entries that don't have guildId (after migration)
--- Only delete if whitelist_roles exists (meaning migration was attempted)
--- This prevents wiping all entries when whitelist_roles is empty
-DELETE FROM `whitelist_entries` 
-WHERE `guildId` IS NULL 
-AND EXISTS(SELECT 1 FROM `whitelist_roles`);
+DELETE FROM `whitelist_entries` WHERE `guildId` IS NULL;
 
 -- Step 5: Make guildId non-nullable
--- Note: If whitelist_roles was empty, Step 2 would not have created new entries,
--- Step 4 would not have deleted old entries, and this step will fail if NULL guildIds remain.
--- This is intentional - the migration requires whitelist_roles to exist.
--- The EXISTS checks in Steps 2-4 prevent wholesale deletion when whitelist_roles is empty.
 ALTER TABLE `whitelist_entries` MODIFY COLUMN `guildId` VARCHAR(191) NOT NULL;
 
 -- Step 6: Drop foreign key constraint (it depends on the unique index)
