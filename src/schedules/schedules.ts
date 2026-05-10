@@ -4,12 +4,17 @@ import { initializePatrolTopSchedule, stopPatrolTopSchedule } from "./patrol/pat
 import { initializePromotionCheckSchedule, stopPromotionCheckSchedule } from "./patrol/promotionCheck.js";
 import { initializeLOAExpirationSchedule, stopLOAExpirationSchedule } from "./loa/loaExpiration.js";
 import { initializeRoleTrackingSchedule, stopRoleTrackingSchedule } from "./roleTracking/roleTrackingCheck.js";
+import {
+  initializeHostWeeklyEventReminderSchedule,
+  stopHostWeeklyEventReminderSchedule,
+} from "./events/hostWeeklyEventReminder.js";
 import * as cron from "node-cron";
 
 let patrolTopJob: cron.ScheduledTask | null = null;
 let promotionCheckJob: cron.ScheduledTask | null = null;
 let loaExpirationJob: cron.ScheduledTask | null = null;
 let roleTrackingJob: cron.ScheduledTask | null = null;
+let hostWeeklyEventReminderJob: cron.ScheduledTask | null = null;
 
 export function initializeSchedules(client: Client) {
   loggers.schedules.info("Initializing scheduled tasks...");
@@ -25,6 +30,9 @@ export function initializeSchedules(client: Client) {
 
   // Initialize role tracking schedule
   roleTrackingJob = initializeRoleTrackingSchedule(client);
+
+  // Host weekly event reminder (Thursday 15:00 Europe/Amsterdam)
+  hostWeeklyEventReminderJob = initializeHostWeeklyEventReminderSchedule(client);
 
   loggers.schedules.info("All scheduled tasks initialized.");
 }
@@ -47,6 +55,9 @@ export function stopSchedules() {
   // Stop role tracking schedule
   stopRoleTrackingSchedule(roleTrackingJob);
   roleTrackingJob = null;
+
+  stopHostWeeklyEventReminderSchedule(hostWeeklyEventReminderJob);
+  hostWeeklyEventReminderJob = null;
 
   loggers.schedules.info("All scheduled tasks stopped.");
 }

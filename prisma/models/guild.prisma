@@ -30,6 +30,7 @@ model GuildSettings {
   // Patrol settings
   patrolLogChannelId         String? // Channel ID for patrol hours and command usage logs
   patrolTopChannelId         String? // Channel ID for weekly patrol top posts
+  hostWeeklyEventReminderChannelId String? // Channel ID for weekly Thursday host / Jr. host event reminder (Europe/Amsterdam)
   // VRChat instance settings
   avatarWorldId              String? // VRChat world ID for avatar world invites (e.g., wrld_xxx)
   // VRChat group settings

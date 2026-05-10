@@ -5,6 +5,7 @@ import { Guard } from "discordx";
 import { bot, patrolTimer } from "../../main.js";
 import { postPatrolTop } from "../../schedules/patrol/patrolTop.js";
 import { checkRoleTracking } from "../../schedules/roleTracking/roleTrackingCheck.js";
+import { broadcastHostWeeklyEventReminder } from "../../schedules/events/hostWeeklyEventReminder.js";
 
 @Discord()
 @SlashGroup({
@@ -37,6 +38,36 @@ export class ScheduleCommand {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await interaction.editReply(`❌ Failed to trigger patrol top schedule: ${errorMessage}`);
+    }
+  }
+
+  @Slash({
+    name: "host-event-reminder",
+    description:
+      "Force trigger the weekly host event reminder broadcast (Bot Owner only)",
+  })
+  async hostEventReminder(interaction: CommandInteraction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      await broadcastHostWeeklyEventReminder(bot);
+      if (interaction.guildId) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "bot-owner-trigger-host-event-reminder",
+          interaction.user.id,
+          undefined,
+          "schedule triggered",
+        );
+      }
+      await interaction.editReply(
+        "✅ Host weekly event reminder broadcast triggered successfully.",
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await interaction.editReply(
+        `❌ Failed to trigger host event reminder: ${errorMessage}`,
+      );
     }
   }
 
