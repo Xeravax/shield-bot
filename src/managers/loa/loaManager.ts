@@ -1,6 +1,6 @@
-import { Client } from "discord.js";
+import { Client, Colors, EmbedBuilder } from "discord.js";
 import { prisma } from "../../main.js";
-import { parseRelativeTime } from "../../utility/timeParser.js";
+import { formatDuration, parseRelativeTime } from "../../utility/timeParser.js";
 import { loggers } from "../../utility/logger.js";
 import type { LeaveOfAbsence } from "../../generated/prisma/client.js";
 import { LeaveOfAbsenceStatus } from "../../generated/prisma/client.js";
@@ -113,6 +113,8 @@ export class LOAManager {
             endedEarlyAt: null,
             notificationsPaused: false,
             cooldownEndDate: null,
+            announcementChannelId: null,
+            announcementMessageId: null,
           },
         });
 
@@ -396,6 +398,121 @@ export class LOAManager {
   }
 
   /**
+   * Persist the public LOA request message so it can be edited when the LOA ends.
+   */
+  async setAnnouncementMessageIds(loaId: number, channelId: string, messageId: string): Promise<void> {
+    await prisma.leaveOfAbsence.update({
+      where: { id: loaId },
+      data: {
+        announcementChannelId: channelId,
+        announcementMessageId: messageId,
+      },
+    });
+  }
+
+  /**
+   * Edit the original LOA request message to reflect natural expiry or end-early.
+   */
+  async updateAnnouncementToClosedState(
+    loa: {
+      guildId: string;
+      announcementChannelId: string | null;
+      announcementMessageId: string | null;
+      user: { discordId: string };
+      startDate: Date;
+      endDate: Date;
+      reason: string;
+      approvedBy: string | null;
+      endedEarlyAt?: Date | null;
+      cooldownEndDate?: Date | null;
+    },
+    kind: "expired" | "ended_early",
+    messageOverride?: { channelId: string; messageId: string },
+  ): Promise<void> {
+    const channelId = loa.announcementChannelId ?? messageOverride?.channelId;
+    const messageId = loa.announcementMessageId ?? messageOverride?.messageId;
+    if (!channelId || !messageId) {
+      return;
+    }
+
+    const reasonDisplay = loa.reason.length > 1024 ? loa.reason.slice(0, 1021) + "…" : loa.reason;
+
+    try {
+      const guild = await this.client.guilds.fetch(loa.guildId);
+      const channel = await guild.channels.fetch(channelId);
+      if (!channel?.isTextBased() || channel.isDMBased()) {
+        return;
+      }
+
+      const message = await channel.messages.fetch(messageId).catch(() => null);
+      if (!message) {
+        return;
+      }
+
+      const statusLine =
+        kind === "expired"
+          ? "**Status:** ⏰ Ended (scheduled end reached)"
+          : "**Status:** ⚠️ Ended Early";
+
+      const embed = new EmbedBuilder()
+        .setTitle("Leave of Absence Request")
+        .setDescription(`**User:** <@${loa.user.discordId}>\n${statusLine}`)
+        .addFields({
+          name: "Duration",
+          value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
+          inline: true,
+        });
+
+      if (kind === "expired") {
+        embed.addFields(
+          {
+            name: "Start Date",
+            value: `<t:${Math.floor(loa.startDate.getTime() / 1000)}:F>`,
+            inline: true,
+          },
+          {
+            name: "End Date",
+            value: `<t:${Math.floor(loa.endDate.getTime() / 1000)}:F>`,
+            inline: true,
+          },
+        );
+      } else {
+        embed.addFields(
+          {
+            name: "Ended Early At",
+            value: loa.endedEarlyAt ? `<t:${Math.floor(loa.endedEarlyAt.getTime() / 1000)}:F>` : "N/A",
+            inline: true,
+          },
+          {
+            name: "Cooldown Until",
+            value: loa.cooldownEndDate ? `<t:${Math.floor(loa.cooldownEndDate.getTime() / 1000)}:F>` : "N/A",
+            inline: true,
+          },
+        );
+      }
+
+      embed.addFields({ name: "Reason", value: reasonDisplay });
+
+      if (loa.approvedBy) {
+        embed.addFields({
+          name: "Approved By",
+          value: `<@${loa.approvedBy}>`,
+          inline: true,
+        });
+      }
+
+      embed.setColor(kind === "expired" ? Colors.Blue : Colors.Orange).setTimestamp();
+
+      await message.edit({
+        embeds: [embed],
+        components: [],
+      });
+    } catch (error) {
+      loggers.bot.debug("Could not update LOA announcement message", error);
+    }
+  }
+
+  /**
    * Check if user is in cooldown period
    */
   async checkCooldown(guildId: string, discordId: string): Promise<{ inCooldown: boolean; cooldownEndDate?: Date }> {
@@ -590,6 +707,8 @@ export class LOAManager {
         where: { id: loaId },
         data: { status: "EXPIRED" },
       });
+
+      await this.updateAnnouncementToClosedState(loa, "expired");
 
       return { success: true };
     } catch (error) {

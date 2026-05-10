@@ -13,6 +13,8 @@ model LeaveOfAbsence {
   endedEarlyAt       DateTime? // When user ended early
   notificationsPaused Boolean  @default(false)
   cooldownEndDate    DateTime? // Configurable cooldown period from endedEarlyAt (duration derived from guild.leaveOfAbsenceCooldownDays)
+  announcementChannelId String? // Public LOA request message (for post-close edits)
+  announcementMessageId   String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

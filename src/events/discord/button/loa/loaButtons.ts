@@ -336,50 +336,17 @@ export class LOAButtonHandlers {
           return;
         }
 
-        // Update the original LOA request message (not the ephemeral confirmation)
-        try {
-          const channel = interaction.channel;
-          if (channel && channel.isTextBased() && !channel.isDMBased() && currentOriginalMessageId) {
-            // Fetch the original message using the stored message ID
-            const originalMessage = await channel.messages.fetch(currentOriginalMessageId);
-            
-            if (originalMessage) {
-              const embed = new EmbedBuilder()
-                .setTitle("Leave of Absence Request")
-                .setDescription(`**User:** <@${loa.user.discordId}>\n**Status:** ⚠️ Ended Early`)
-                .addFields(
-                  {
-                    name: "Duration",
-                    value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
-                    inline: true,
-                  },
-                  {
-                    name: "Ended Early At",
-                    value: loa.endedEarlyAt ? `<t:${Math.floor(loa.endedEarlyAt.getTime() / 1000)}:F>` : "N/A",
-                    inline: true,
-                  },
-                  {
-                    name: "Cooldown Until",
-                    value: loa.cooldownEndDate ? `<t:${Math.floor(loa.cooldownEndDate.getTime() / 1000)}:F>` : "N/A",
-                    inline: true,
-                  },
-                  {
-                    name: "Reason",
-                    value: loa.reason,
-                  },
-                )
-                .setColor(Colors.Orange)
-                .setTimestamp();
-
-              await originalMessage.edit({
-                embeds: [embed],
-                components: [],
-              });
-            }
-          }
-        } catch (error) {
-          loggers.bot.debug("Could not update original LOA message", error);
-        }
+        const canLegacyOverride =
+          interaction.channel?.isTextBased() &&
+          !interaction.channel.isDMBased() &&
+          Boolean(currentOriginalMessageId);
+        const messageOverride =
+          loa.announcementChannelId && loa.announcementMessageId
+            ? undefined
+            : canLegacyOverride && currentOriginalMessageId
+              ? { channelId: interaction.channel.id, messageId: currentOriginalMessageId }
+              : undefined;
+        await loaManager.updateAnnouncementToClosedState(loa, "ended_early", messageOverride);
 
         if (interaction.guildId) {
           await patrolTimer.logCommandUsage(

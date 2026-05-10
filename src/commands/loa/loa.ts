@@ -121,10 +121,14 @@ export class LOACommands {
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(approveButton, denyButton);
 
     // Send public message (not ephemeral so staff can see it)
-    await interaction.editReply({
+    const replyMessage = await interaction.editReply({
       embeds: [embed],
       components: [row],
     });
+
+    if (interaction.channelId) {
+      await loaManager.setAnnouncementMessageIds(loa.id, interaction.channelId, replyMessage.id);
+    }
   }
 
   @Slash({
