@@ -1,4 +1,17 @@
-import { Client } from "discord.js";
+import {
+  bold,
+  Client,
+  ContainerBuilder,
+  hyperlink,
+  inlineCode,
+  italic,
+  MessageFlags,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  TextDisplayBuilder,
+  time,
+  TimestampStyles,
+} from "discord.js";
 import * as cron from "node-cron";
 import { loggers } from "../../utility/logger.js";
 import { prisma } from "../../main.js";
@@ -9,26 +22,87 @@ const HOST_EVENT_REMINDER_PING_ROLE_IDS = [
   "842897800286306304",
 ] as const;
 
-function buildHostWeeklyEventReminderContent(): string {
-  const pings = HOST_EVENT_REMINDER_PING_ROLE_IDS.map((id) => `<@&${id}>`).join(
-    " ",
+function buildPingContent(): string {
+  return HOST_EVENT_REMINDER_PING_ROLE_IDS.map((id) => `<@&${id}>`).join(" ");
+}
+
+function buildReminderContainer(): ContainerBuilder {
+  const exampleTs = time(
+    Math.floor(Date.now() / 1000),
+    TimestampStyles.LongDateTime,
   );
-  return `${pings}
-Hello Host and Jr. hosts, it's time to do some events! You have until Monday to prepare and schedule your events, so  let's get them flowing!
 
-Your reminders are as follows:
+  const intro = new TextDisplayBuilder().setContent(
+    [
+      "# Weekly event scheduling reminder",
+      "",
+      `Hello ${bold("Hosts")} and ${bold("Jr. Hosts")} — time to get events on the calendar.`,
+      "",
+      "You have until **Monday** to prepare and schedule your events for the week. The sooner they’re posted, the easier it is for members to plan.",
+    ].join("\n"),
+  );
 
-● Events cannot be scheduled on Mondays due to that day being a planning day.
+  const sep1 = new SeparatorBuilder()
+    .setDivider(true)
+    .setSpacing(SeparatorSpacingSize.Large);
 
-● Hosts are allowed 3 on-duty and 3 off-duty events maximum.
+  const rules = new TextDisplayBuilder().setContent(
+    [
+      "## Reminders",
+      "",
+      "● **Mondays are planning-only** — do not schedule events on Mondays.",
+      "",
+      "● **Per-host limits** — at most **3 on-duty** and **3 off-duty** events.",
+      "",
+      "● **No overlap** — keep at least **1–2 hours** between event start times.",
+    ].join("\n"),
+  );
 
-● Events must have 1-2 hour gaps between each other at minimum to prevent overlaps.
+  const sep2 = new SeparatorBuilder()
+    .setDivider(true)
+    .setSpacing(SeparatorSpacingSize.Large);
 
-● You're welcome to use https://guacamolie.nl/timestamp or https://r.3v.fi/discord-timestamps/ if you need help with time zone conversions, or if you wanna be more precise for everyone. If you don't use any of those, please be sure that your time is in EST.
+  const times = new TextDisplayBuilder().setContent(
+    [
+      "## Clear times for every timezone",
+      "",
+      "Prefer tools that show **one instant** in each user’s local time:",
+      "",
+      `● **Use ${inlineCode("@time")}** — in the message box, type ${inlineCode("@")}, select **time** / timestamp, and pick the date & time. Discord inserts a stamp everyone sees in their own timezone.`,
+      "",
+      `● **Manual format** — ${inlineCode("<t:UNIX_SECONDS:F>")} (full date & time). Example for “right now”: ${exampleTs}`,
+      "",
+      `● **Helpers** — ${hyperlink("guacamolie.nl/timestamp", "https://guacamolie.nl/timestamp")} · ${hyperlink("r.3v.fi/discord-timestamps", "https://r.3v.fi/discord-timestamps/")}`,
+      "",
+      italic(
+        "If you skip timestamps entirely, state times in **EST** so people can convert the same way.",
+      ),
+    ].join("\n"),
+  );
 
-● Jr. Hosts must have a full-time host as a co-host for their event if they are planning to host one. Jr. Hosts cannot host alone!
+  const sep3 = new SeparatorBuilder()
+    .setDivider(true)
+    .setSpacing(SeparatorSpacingSize.Large);
 
-Other than that, have a good rest of your day and or night!`;
+  const closing = new TextDisplayBuilder().setContent(
+    [
+      "## Jr. Hosts",
+      "",
+      "**Jr. Hosts need a full Host as co-host** for any event they run — **no solo Jr. events.**",
+      "",
+      "Thanks for keeping the schedule tight — have a great rest of your day or night!",
+    ].join("\n"),
+  );
+
+  return new ContainerBuilder()
+    .setAccentColor(0x3498db)
+    .addTextDisplayComponents(intro)
+    .addSeparatorComponents(sep1)
+    .addTextDisplayComponents(rules)
+    .addSeparatorComponents(sep2)
+    .addTextDisplayComponents(times)
+    .addSeparatorComponents(sep3)
+    .addTextDisplayComponents(closing);
 }
 
 /**
@@ -51,7 +125,8 @@ export async function broadcastHostWeeklyEventReminder(client: Client): Promise<
       return;
     }
 
-    const content = buildHostWeeklyEventReminderContent();
+    const pingContent = buildPingContent();
+    const container = buildReminderContainer();
 
     loggers.schedules.info(
       `Posting host weekly event reminder to ${guildSettings.length} guild(s)`,
@@ -72,7 +147,12 @@ export async function broadcastHostWeeklyEventReminder(client: Client): Promise<
           continue;
         }
 
-        await channel.send({ content, allowedMentions: {} });
+        await channel.send({
+          content: pingContent,
+          allowedMentions: { roles: [...HOST_EVENT_REMINDER_PING_ROLE_IDS] },
+          components: [container],
+          flags: MessageFlags.IsComponentsV2,
+        });
         loggers.schedules.info(
           `Posted host weekly event reminder to channel ${channelId} in guild ${settings.guildId}`,
         );
