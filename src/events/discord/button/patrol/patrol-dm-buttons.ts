@@ -154,4 +154,72 @@ export class PatrolDmButtonHandlers {
       });
     }
   }
+
+  @ButtonComponent({ id: /^patrol-no-shield-member-dm-ignore:(\d+)$/ })
+  async handleIgnoreNoShieldMemberDm(interaction: ButtonInteraction) {
+    try {
+      const parts = interaction.customId.split(":");
+      const userId = parts[1];
+
+      if (!userId || interaction.user.id !== userId) {
+        await interaction.reply({
+          content: "❌ This button is not for you.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      let user = await prisma.user.findUnique({
+        where: { discordId: userId },
+        include: { userPreferences: true },
+      });
+
+      if (!user) {
+        user = await prisma.user.create({
+          data: { discordId: userId },
+          include: { userPreferences: true },
+        });
+      }
+
+      if (user.userPreferences) {
+        await prisma.userPreferences.update({
+          where: { userId: user.id },
+          data: { patrolNoShieldMemberDmDisabled: true },
+        });
+      } else {
+        await prisma.userPreferences.create({
+          data: {
+            userId: user.id,
+            patrolNoShieldMemberDmDisabled: true,
+          },
+        });
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("Reminders turned off")
+        .setDescription(
+          "You will no longer be DM'd when you join a patrol channel without the Shield Member role.\n\nPatrol hours still only count once you have the Shield Member role. Completion DMs after patrol sessions are controlled separately.",
+        )
+        .setColor(Colors.Grey)
+        .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
+        .setTimestamp();
+
+      await interaction.update({
+        embeds: [embed],
+        components: [],
+      });
+
+      loggers.patrol.info(
+        `User ${userId} disabled no-Shield-Member patrol join DMs`,
+      );
+    } catch (error) {
+      loggers.patrol.error("Error in handleIgnoreNoShieldMemberDm", error);
+      await interaction
+        .reply({
+          content: "❌ An error occurred while processing your request.",
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+    }
+  }
 }

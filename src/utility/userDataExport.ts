@@ -11,6 +11,7 @@ export interface UserExportPayload {
   }>;
   userPreferences: {
     patrolDmDisabled: boolean;
+    patrolNoShieldMemberDmDisabled: boolean;
     createdAt: string;
     updatedAt: string;
   } | null;
@@ -135,6 +136,8 @@ export async function getUserExportData(
     userPreferences: user.userPreferences
       ? {
           patrolDmDisabled: user.userPreferences.patrolDmDisabled,
+          patrolNoShieldMemberDmDisabled:
+            user.userPreferences.patrolNoShieldMemberDmDisabled,
           createdAt: toIso(user.userPreferences.createdAt),
           updatedAt: toIso(user.userPreferences.updatedAt),
         }

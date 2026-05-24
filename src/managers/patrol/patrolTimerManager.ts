@@ -18,6 +18,10 @@ import {
 import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
 import { loaManager } from "../../main.js";
+import {
+  PermissionLevel,
+  userHasSpecificRole,
+} from "../../utility/permissionUtils.js";
 
 /** Single rank-based promotion rule (current rank -> next rank at required hours, optional cooldown) */
 export interface PromotionRule {
@@ -239,6 +243,10 @@ export class PatrolTimerManager {
 
       // If moving from one patrol channel to another patrol channel, update channelId without resetting
       if (wasTracked && nowTracked && leftChannelId !== joinedChannelId && joinedChannelId) {
+        if (!(await this.memberHasShieldMemberRole(member))) {
+          await this.clearUntrackedPatrolSession(guildId, member.id);
+          return;
+        }
         const guildMap = this.tracked.get(guildId);
         const tracked = guildMap?.get(member.id);
         if (tracked) {
@@ -311,7 +319,12 @@ export class PatrolTimerManager {
     
     guildMap.delete(member.id);
     
-    // Don't persist time if user is paused or on LOA
+    // Don't persist time without Shield Member role, on LOA, or when paused
+    if (!(await this.memberHasShieldMemberRole(member))) {
+      await this.clearUntrackedPatrolSession(guildId, member.id);
+      return;
+    }
+
     if (await this.isUserPausedOrOnLOA(guildId, member.id)) {
       // Delete persisted session
       await prisma.activeVoicePatrolSession
@@ -385,6 +398,10 @@ export class PatrolTimerManager {
       // ch.members contains members currently connected to this voice channel
       for (const member of ch.members.values()) {
         if (member.user.bot) {continue;}
+        if (!(await this.memberHasShieldMemberRole(member))) {
+          await this.clearUntrackedPatrolSession(guild.id, member.id);
+          continue;
+        }
         trackedUsers.add(member.id);
         this.startTracking(guild.id, member, ch.id);
       }
@@ -1613,8 +1630,96 @@ export class PatrolTimerManager {
       return;
     }
     
-    // User is not on LOA and not manually paused - start tracking normally
+    if (!(await this.memberHasShieldMemberRole(member))) {
+      await this.notifyUserAboutNoShieldMemberCompensation(member, channelId);
+      return;
+    }
+
     this.startTracking(guildId, member, channelId);
+  }
+
+  /** Whether the member has a configured Shield Member Discord role. */
+  private async memberHasShieldMemberRole(member: GuildMember): Promise<boolean> {
+    return userHasSpecificRole(member, PermissionLevel.SHIELD_MEMBER);
+  }
+
+  /** Remove in-memory and persisted patrol session without recording time. */
+  private async clearUntrackedPatrolSession(
+    guildId: string,
+    userId: string,
+  ): Promise<void> {
+    const guildMap = this.tracked.get(guildId);
+    guildMap?.delete(userId);
+    await prisma.activeVoicePatrolSession
+      .deleteMany({ where: { guildId, userId } })
+      .catch((err: unknown) =>
+        loggers.patrol.error("Failed to clear untracked patrol session", err),
+      );
+  }
+
+  /**
+   * DM users without Shield Member role that patrol time is not being recorded.
+   */
+  private async notifyUserAboutNoShieldMemberCompensation(
+    member: GuildMember,
+    channelId: string,
+  ): Promise<void> {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { discordId: member.id },
+        include: { userPreferences: true },
+      });
+
+      if (user?.userPreferences?.patrolNoShieldMemberDmDisabled) {
+        return;
+      }
+
+      const guild = member.guild;
+      let channelName = "a patrol channel";
+      const channel = guild.channels.cache.get(channelId);
+      if (channel) {
+        channelName = channel.name;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("Patrol Channel — Hours Not Recorded")
+        .setDescription(
+          `You joined **${channelName}**, which is a patrol channel. This can happen if a staff member moved you here, you're hosting, or your current roles allow access to these channels.`,
+        )
+        .addFields(
+          {
+            name: "Why aren't my hours counting?",
+            value:
+              "Patrol hours are only recorded for members with the **Shield Member** role. You don't have that role yet, so your time here is **not** being tracked or saved.",
+          },
+          {
+            name: "How do I earn patrol hours?",
+            value:
+              "Apply for Shield and complete training. Once you have the Shield Member role, your patrol time will be tracked automatically and you will stop receiving this message.",
+          },
+        )
+        .setColor(Colors.Orange)
+        .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
+        .setTimestamp();
+
+      const ignoreButton = new ButtonBuilder()
+        .setCustomId(`patrol-no-shield-member-dm-ignore:${member.id}`)
+        .setLabel("Don't remind me about this")
+        .setStyle(ButtonStyle.Secondary);
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        ignoreButton,
+      );
+
+      await member.user.send({ embeds: [embed], components: [row] });
+      loggers.patrol.info(
+        `Sent no-Shield-Member patrol notice to ${member.user.tag}`,
+      );
+    } catch (error) {
+      loggers.patrol.debug(
+        `Could not DM user ${member.id} about no Shield Member compensation: ${error}`,
+      );
+    }
   }
 
   /**

@@ -2,7 +2,8 @@ model UserPreferences {
   id               Int      @id @default(autoincrement())
   userId           Int      @unique
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  patrolDmDisabled Boolean  @default(false)
+  patrolDmDisabled                 Boolean @default(false)
+  patrolNoShieldMemberDmDisabled   Boolean @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
