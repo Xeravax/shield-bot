@@ -1684,7 +1684,7 @@ export class PatrolTimerManager {
       const embed = new EmbedBuilder()
         .setTitle("Patrol Channel — Hours Not Recorded")
         .setDescription(
-          `You joined **${channelName}**, which is a patrol channel. This can happen if a staff member moved you here, you're hosting, or your current roles allow access to these channels.`,
+          `You joined **${channelName}**, which is a patrol channel. This can happen if a staff member moved you here, or your current roles allow access to these channels.`,
         )
         .addFields(
           {
