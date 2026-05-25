@@ -10,6 +10,10 @@ import { Discord, ButtonComponent, Guard } from "discordx";
 import { StaffGuard } from "../../../../utility/guards.js";
 import { prisma, patrolTimer } from "../../../../main.js";
 import { loggers } from "../../../../utility/logger.js";
+import {
+  formatPromotionUserLines,
+  getMainVRChatAccountInfo,
+} from "../../../../utility/vrchat/promotionAccountInfo.js";
 
 /** Parse patrol-promo:action:guildId:userId:currentRankRoleId:nextRankRoleId */
 function parseCustomId(customId: string): { guildId: string; userId: string; currentRankRoleId: string; nextRankRoleId: string } | null {
@@ -96,14 +100,14 @@ export class PatrolPromotionButtonHandlers {
       const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
       const totalHours = notification.totalHoursAtNotify ?? 0;
+      const mainAccount = await getMainVRChatAccountInfo(userId);
 
       const resolvedContent = [
         "**Patrol promotion – promoted**",
         "",
         "✅ A member has been promoted.",
         "",
-        "**User**",
-        `${member.user.tag} (\`${userId}\`)`,
+        ...formatPromotionUserLines(userId, member.user.tag, mainAccount),
         "",
         "**Promotion**",
         `**${currentRankName}** → **${nextRankName}**`,
@@ -136,7 +140,18 @@ export class PatrolPromotionButtonHandlers {
             .setTitle("Patrol promotion – approved")
             .setDescription(`✅ A member has been approved for promotion.`)
             .addFields(
-              { name: "User", value: `${member.user.tag} (\`${userId}\`)`, inline: false },
+              {
+                name: "User",
+                value: `<@${userId}> — ${member.user.tag} (\`${userId}\`)`,
+                inline: false,
+              },
+              {
+                name: "VRChat (MAIN)",
+                value: mainAccount
+                  ? `[${mainAccount.vrchatUsername}](https://vrchat.com/home/user/${mainAccount.vrcUserId})`
+                  : "_No verified MAIN account linked_",
+                inline: false,
+              },
               { name: "Promotion", value: `**${currentRankName}** → **${nextRankName}**`, inline: true },
               { name: "Approved by", value: `<@${interaction.user.id}>`, inline: true },
               { name: "Total patrol hours at notify", value: `${totalHours.toFixed(1)}h`, inline: false },
@@ -144,7 +159,7 @@ export class PatrolPromotionButtonHandlers {
             .setTimestamp();
           await toPromoteChannel.send({
             embeds: [toPromoteEmbed],
-            allowedMentions: { users: [] },
+            allowedMentions: { users: [userId] },
           });
         }
       }
@@ -234,15 +249,15 @@ export class PatrolPromotionButtonHandlers {
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
 
       const member = await interaction.guild.members.fetch(userId).catch(() => null);
-      const userLabel = member ? `${member.user.tag} (\`${userId}\`)` : `<@${userId}> (\`${userId}\`)`;
+      const mainAccount = await getMainVRChatAccountInfo(userId);
+      const userTag = member?.user.tag ?? userId;
 
       const resolvedContent = [
         "**Patrol promotion – denied**",
         "",
         "❌ Not promoted. Cooldown reset; they can be considered again after cooldown and once they have new patrol time.",
         "",
-        "**User**",
-        userLabel,
+        ...formatPromotionUserLines(userId, userTag, mainAccount),
         "",
         "**Promotion**",
         `**${currentRankName}** → **${nextRankName}**`,

@@ -11,6 +11,7 @@ import { Client } from "discordx";
 import bodyParser from "@koa/bodyparser";
 import { PrismaClient } from "./generated/prisma/client.js";
 import { PatrolTimerManager } from "./managers/patrol/patrolTimerManager.js";
+import { AoCPanelManager } from "./managers/aoc/aocPanelManager.js";
 import { LOAManager } from "./managers/loa/loaManager.js";
 import { RoleTrackingManager } from "./managers/roleTracking/roleTrackingManager.js";
 import {
@@ -70,6 +71,10 @@ export const bot = new Client({
 
 // Global patrol timer manager singleton
 export const patrolTimer = new PatrolTimerManager(bot);
+
+// Global AoC panel manager singleton
+export const aocPanelManager = new AoCPanelManager(bot);
+patrolTimer.setOnPatrolStateChange((guildId) => aocPanelManager.scheduleRefresh(guildId));
 
 // Global LOA manager singleton
 export const loaManager = new LOAManager(bot);

@@ -358,9 +358,11 @@ Key models include:
 - `/settings group rolesync` - Manually sync user's Discord to VRChat roles
 - `/settings group bulkrolesync` - Sync all verified users' roles
 - `/settings patrol setup-category` - Set tracked voice category for patrol
-- `/settings patrol promotion set-channel/set-role/set-hours/view/reset/check/check-all` - Promotion system config
+- `/patrol settings` - Patrol promotion notification rules
+- `/role-tracking settings` - Role tracking configuration
+- `/role-tracking-warn` - Role tracking warnings and staff pings
 - `/settings attendance add-channel/remove-channel` - Manage enrolled attendance channels
-- `/settings whitelist set-log-channel/remove-log-channel` - Whitelist log channels
+- `/whitelist settings` - Whitelist GitHub and log channel settings
 - `/settings vrchat set-avatar-world/remove-avatar-world` - Avatar world ID config
 - `/settings loa` - Configure LOA system settings
 

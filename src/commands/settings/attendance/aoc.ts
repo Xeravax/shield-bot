@@ -106,6 +106,76 @@ export class SettingsAttendanceAOCCommand {
   }
 
   @Slash({
+    name: "aoc-voice-channel",
+    description: "Set the AoC voice channel (panel posts to its in-voice text chat)",
+  })
+  async aocVoiceChannel(
+    @SlashOption({
+      name: "channel",
+      description: "The AoC voice channel (must have Text in Voice enabled)",
+      type: ApplicationCommandOptionType.Channel,
+      channelTypes: [ChannelType.GuildVoice],
+      required: false,
+    })
+    channel: GuildBasedChannel | null,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    try {
+      if (!interaction.guildId) {
+        await interaction.reply({
+          content: "❌ This command can only be used in a server.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (!channel) {
+        const settings = await prisma.guildSettings.findUnique({
+          where: { guildId: interaction.guildId },
+        });
+        const aocVoiceChannelId = (settings as { aocVoiceChannelId?: string | null } | null)?.aocVoiceChannelId;
+        if (!aocVoiceChannelId) {
+          await interaction.reply({
+            content: "ℹ️ No AoC voice channel is currently configured.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.reply({
+          content: `ℹ️ AoC voice channel is currently set to <#${aocVoiceChannelId}>`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await prisma.guildSettings.upsert({
+        where: { guildId: interaction.guildId },
+        update: { aocVoiceChannelId: channel.id, aocPanelMessageId: null },
+        create: { guildId: interaction.guildId, aocVoiceChannelId: channel.id },
+      });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-attendance-aoc-voice-channel",
+        interaction.user.id,
+        undefined,
+        channel.id,
+      );
+
+      await interaction.reply({
+        content: `✅ AoC voice channel set to <#${channel.id}>. The live panel will post to this channel's in-voice text chat when someone joins.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error: unknown) {
+      loggers.bot.error("Error setting AoC voice channel", error);
+      await interaction.reply({
+        content: `❌ Failed to set AoC voice channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+
+  @Slash({
     name: "instigation-log-channel",
     description: "Set the instigation log channel ID for AOC lead reminders",
   })

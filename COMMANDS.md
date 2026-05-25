@@ -44,10 +44,17 @@
 - `/settings group rolesync` - Manually sync user's Discord to VRChat roles
 - `/settings group bulkrolesync` - Sync all verified users' roles
 - `/settings patrol setup-category` - Set tracked voice category for patrol
-- `/settings promotion set-channel/set-role/set-min-hours/view/disable/add-rule/remove-rule/list-rules/reset-user/check/check-all` - Promotion notifications (channel, legacy role/hours, rank rules)
+- `/patrol settings set-channel/set-role/set-min-hours/view/disable/add-rule/remove-rule/list-rules/reset-user/check/check-all` - Promotion notifications (channel, legacy role/hours, rank rules)
+- `/role-tracking settings` - Role tracking configuration (add-role, thresholds, conditions, timers, etc.)
+- `/role-tracking-warn` - Role tracking warnings and staff pings (separate command due to Discord size limits)
 - `/settings attendance add-channel/remove-channel` - Manage enrolled attendance channels
-- `/settings whitelist set-log-channel/remove-log-channel` - Whitelist log channels
+- `/whitelist settings gh-token/gh-repo/gh-branch/gh-paths/gh-key/view/log-channel/clear-log-channel` - Whitelist GitHub and log channel settings
 - `/settings vrchat set-avatar-world/remove-avatar-world` - Avatar world ID config
+
+## Phantom Compiler
+- `/phantomcompiler enroll <reason>` - Enroll your MAIN account (use `\n` in reason for line breaks)
+- `/phantomcompiler add <user> <reason>` - Staff: enroll a member on the phantom compiler list
+- `/phantomcompiler unenroll` - Remove your enrollment
 
 ## Dev Commands (Bot Owner)
 - `/eval <code>` - Evaluate JavaScript code for debugging

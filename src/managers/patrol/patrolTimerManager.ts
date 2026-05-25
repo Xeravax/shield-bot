@@ -14,9 +14,15 @@ import {
   ContainerBuilder,
   TextDisplayBuilder,
   MessageFlags,
+  SectionBuilder,
 } from "discord.js";
 import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
+import {
+  formatPromotionUserLines,
+  getMainVRChatAccountInfo,
+  hasEnoughHoursSinceLastNotification,
+} from "../../utility/vrchat/promotionAccountInfo.js";
 import { loaManager } from "../../main.js";
 import {
   PermissionLevel,
@@ -87,9 +93,23 @@ export class PatrolTimerManager {
   private pausedUsers: Map<string, Set<string>> = new Map();
   // guildId => boolean for guild-wide pause
   private pausedGuilds: Set<string> = new Set();
+  private onPatrolStateChange: ((guildId: string) => void) | null = null;
 
   constructor(client: Client) {
     this.client = client;
+  }
+
+  /** Optional callback when users join/leave patrol (e.g. AoC panel refresh). */
+  setOnPatrolStateChange(callback: (guildId: string) => void): void {
+    this.onPatrolStateChange = callback;
+  }
+
+  private notifyPatrolStateChange(guildId: string): void {
+    this.onPatrolStateChange?.(guildId);
+  }
+
+  formatDurationPublic(ms: number): string {
+    return this.formatDuration(ms);
   }
 
   async init() {
@@ -269,6 +289,7 @@ export class PatrolTimerManager {
       // If leaving a tracked channel, stop and persist
       if (wasTracked && !nowTracked) {
         await this.stopTrackingAndPersist(guildId, member, leftChannelId);
+        this.notifyPatrolStateChange(guildId);
       }
 
       // If joining a tracked channel, start tracking
@@ -278,7 +299,12 @@ export class PatrolTimerManager {
           void this.checkLOAAndStartTracking(guild, guildId, member, joinedChannelId, settings).catch((err) =>
             loggers.patrol.error("Error in checkLOAAndStartTracking", err),
           );
+          this.notifyPatrolStateChange(guildId);
         }
+      }
+
+      if (wasTracked && nowTracked && leftChannelId !== joinedChannelId) {
+        this.notifyPatrolStateChange(guildId);
       }
     } catch (err) {
       loggers.patrol.error("voiceStateUpdate error", err);
@@ -369,7 +395,14 @@ export class PatrolTimerManager {
     );
 
     // Log patrol completion
-    await this.logPatrolCompletion(guildId, member.id, delta, channelIdForLogging);
+    await this.logPatrolCompletion(
+      guildId,
+      member.id,
+      delta,
+      channelIdForLogging,
+      tracked.startedAt,
+      new Date(nowMs),
+    );
 
     // Send DM notification if user hasn't opted out
     await this.sendPatrolCompletionDM(member, delta, channelIdForLogging);
@@ -1161,18 +1194,20 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Log patrol completion to the configured log channel
+   * Log patrol completion to the configured log channel (Component V2 with remove button).
    */
   private async logPatrolCompletion(
     guildId: string,
     userId: string,
     durationMs: number,
     channelId: string | null,
+    sessionStartedAt: Date,
+    sessionEndedAt: Date,
   ) {
     try {
       const settings = await this.getSettings(guildId);
       if (!settings.patrolLogChannelId) {
-        return; // No log channel configured
+        return;
       }
 
       const channel = await this.client.channels.fetch(settings.patrolLogChannelId);
@@ -1181,7 +1216,6 @@ export class PatrolTimerManager {
         return;
       }
 
-      // Get channel name - channel is now guaranteed to be a guild text channel
       const textChannel = channel as TextChannel;
       const guild = textChannel.guild;
       let channelName = "Unknown Channel";
@@ -1194,43 +1228,66 @@ export class PatrolTimerManager {
 
       const durationStr = this.formatDuration(durationMs);
 
-      // Get monthly, yearly, and overall totals
       const now = new Date();
       const currentYear = now.getUTCFullYear();
       const currentMonth = now.getUTCMonth() + 1;
-      const monthlyTotal = await this.getUserTotalForMonth(
-        guildId,
-        userId,
-        currentYear,
-        currentMonth,
-      );
-      const yearlyTotal = await this.getUserTotalForYear(
-        guildId,
-        userId,
-        currentYear,
-      );
+      const monthlyTotal = await this.getUserTotalForMonth(guildId, userId, currentYear, currentMonth);
+      const yearlyTotal = await this.getUserTotalForYear(guildId, userId, currentYear);
       const overallTotal = await this.getUserTotal(guildId, userId);
 
       const monthlyStr = this.formatDuration(monthlyTotal);
       const yearlyStr = this.formatDuration(yearlyTotal);
       const overallStr = this.formatDuration(overallTotal);
 
-      // Create log embed
-      const embed = new EmbedBuilder()
-        .setTitle("📊 Patrol Session Completed")
-        .addFields(
-          { name: "User", value: `<@${userId}>`, inline: true },
-          { name: "Duration", value: durationStr, inline: true },
-          { name: "Channel", value: channelName, inline: true },
-          { name: `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`, value: monthlyStr, inline: true },
-          { name: `This Year (${currentYear})`, value: yearlyStr, inline: true },
-          { name: "All-Time Total", value: overallStr, inline: true },
-        )
-        .setColor(Colors.Blue)
-        .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
-        .setTimestamp();
+      const member = await guild.members.fetch(userId).catch(() => null);
+      const userTag = member?.user.tag ?? userId;
+      const mainAccount = await getMainVRChatAccountInfo(userId);
 
-      await textChannel.send({ embeds: [embed] });
+      const removeButtonId = `patrol-session-remove:${guildId}:${userId}:${sessionStartedAt.getTime()}:${sessionEndedAt.getTime()}`;
+      const removeButton = new ButtonBuilder()
+        .setCustomId(removeButtonId)
+        .setLabel("Remove time")
+        .setStyle(ButtonStyle.Danger);
+
+      const userSection = new SectionBuilder()
+        .setButtonAccessory(removeButton)
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            [
+              "**📊 Patrol session completed**",
+              "",
+              ...formatPromotionUserLines(userId, userTag, mainAccount),
+            ].join("\n"),
+          ),
+          new TextDisplayBuilder().setContent(
+            [
+              "**Session**",
+              `**Channel** ${channelName}`,
+              `**Duration** ${durationStr}`,
+              `<t:${Math.floor(sessionEndedAt.getTime() / 1000)}:F>`,
+            ].join("\n"),
+          ),
+        );
+
+      const totalsDisplay = new TextDisplayBuilder().setContent(
+        [
+          "**Patrol totals**",
+          `**${MONTH_NAMES[currentMonth - 1]} ${currentYear}** ${monthlyStr}`,
+          `**This year (${currentYear})** ${yearlyStr}`,
+          `**All-time** ${overallStr}`,
+        ].join("\n"),
+      );
+
+      const container = new ContainerBuilder()
+        .setAccentColor(Colors.Blue)
+        .addSectionComponents(userSection)
+        .addTextDisplayComponents(totalsDisplay);
+
+      await textChannel.send({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+        allowedMentions: { users: [userId] },
+      });
       loggers.patrol.debug(`Logged patrol completion for ${userId} in guild ${guildId}`);
     } catch (err) {
       loggers.patrol.error("logPatrolCompletion error", err);
@@ -1350,7 +1407,7 @@ export class PatrolTimerManager {
         (notificationForRule.status === "PENDING" ||
           notificationForRule.status === "APPROVED" ||
           (notificationForRule.status === "DENIED" &&
-            totalHours <= (notificationForRule.totalHoursAtNotify ?? 0)))
+            !hasEnoughHoursSinceLastNotification(totalHours, notificationForRule.totalHoursAtNotify)))
       );
       const eligible = hasCurrentRole && hoursMet && cooldownMet && !alreadyNotified;
       const currentRankName = scrubRoleDisplay(
@@ -1437,7 +1494,7 @@ export class PatrolTimerManager {
             continue;
           }
           if (notification.status === "DENIED") {
-            if (totalHours <= (notification.totalHoursAtNotify ?? 0)) {
+            if (!hasEnoughHoursSinceLastNotification(totalHours, notification.totalHoursAtNotify)) {
               continue;
             }
             // Re-propose: will update this row after sending
@@ -1470,6 +1527,7 @@ export class PatrolTimerManager {
           rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
             ? `${rule.requiredHours}h patrol, ${rule.cooldownHours}h cooldown after current rank`
             : `${rule.requiredHours}h patrol`;
+        const mainAccount = await getMainVRChatAccountInfo(member.id);
         const lines: string[] = [
           "**Patrol promotion – 🟠 Pending**",
           "",
@@ -1477,8 +1535,7 @@ export class PatrolTimerManager {
           "",
           "A member is eligible for promotion.",
           "",
-          "**User**",
-          `${member.user.tag} (\`${member.id}\`)`,
+          ...formatPromotionUserLines(member.id, member.user.tag, mainAccount),
           "",
           "**Promotion**",
           `**${currentRankName}** → **${nextRankName}**`,
@@ -1512,6 +1569,7 @@ export class PatrolTimerManager {
         const sentMessage = await (channel as TextChannel).send({
           components: [container],
           flags: MessageFlags.IsComponentsV2,
+          allowedMentions: { users: [member.id] },
         });
         await sentMessage.react("🟠");
         await sentMessage.react("✅");
@@ -1547,6 +1605,303 @@ export class PatrolTimerManager {
       loggers.patrol.error("runPromotionCheckForMember error", err);
     }
     return sent;
+  }
+
+  /**
+   * Subtract patrol time for a completed session (reverse of persistMonthly + total).
+   */
+  async subtractPatrolSessionTime(
+    guildId: string,
+    userId: string,
+    startedAt: Date,
+    endedAt: Date,
+  ): Promise<void> {
+    await this.ensureUser(userId);
+    let curStart = new Date(startedAt);
+    const endMs = endedAt.getTime();
+    let totalRemoved = 0;
+
+    while (curStart.getTime() < endMs) {
+      const y = curStart.getUTCFullYear();
+      const m = curStart.getUTCMonth();
+      const nextMonthStart = new Date(
+        Date.UTC(m === 11 ? y + 1 : y, (m + 1) % 12, 1, 0, 0, 0, 0),
+      );
+      const segmentEndMs = Math.min(endMs, nextMonthStart.getTime());
+      const segDelta = segmentEndMs - curStart.getTime();
+      if (segDelta > 0) {
+        totalRemoved += segDelta;
+        const monthRow = await prisma.voicePatrolMonthlyTime.findUnique({
+          where: {
+            guildId_userId_year_month: {
+              guildId,
+              userId,
+              year: y,
+              month: m + 1,
+            },
+          },
+        });
+        const currentMonthTotal = monthRow?.totalMs ? Number(monthRow.totalMs) : 0;
+        const newMonthTotal = Math.max(0, currentMonthTotal - segDelta);
+        await prisma.voicePatrolMonthlyTime.upsert({
+          where: {
+            guildId_userId_year_month: {
+              guildId,
+              userId,
+              year: y,
+              month: m + 1,
+            },
+          },
+          update: { totalMs: BigInt(newMonthTotal) },
+          create: { guildId, userId, year: y, month: m + 1, totalMs: BigInt(0) },
+        });
+      }
+      curStart = new Date(segmentEndMs);
+    }
+
+    if (totalRemoved > 0) {
+      const row = await prisma.voicePatrolTime.findUnique({
+        where: { guildId_userId: { guildId, userId } },
+      });
+      const currentTotal = row?.totalMs ? Number(row.totalMs) : 0;
+      const newTotal = Math.max(0, currentTotal - totalRemoved);
+      await prisma.voicePatrolTime.upsert({
+        where: { guildId_userId: { guildId, userId } },
+        update: { totalMs: BigInt(newTotal) },
+        create: { guildId, userId, totalMs: BigInt(0) },
+      });
+    }
+  }
+
+  /**
+   * Mark an original pending promotion message as denied/superseded (best-effort edit).
+   */
+  async denyPromotionMessageGracefully(
+    guild: Guild,
+    promotionChannelId: string,
+    notification: {
+      id: number;
+      messageId: string | null;
+      userId: string;
+      nextRankRoleId: string;
+      totalHoursAtNotify: number | null;
+    },
+    staffUserId: string,
+    currentRankRoleId: string,
+  ): Promise<void> {
+    const now = new Date();
+    await prisma.voicePatrolPromotionNotification.update({
+      where: { id: notification.id },
+      data: { status: "DENIED", resolvedAt: now, resolvedBy: staffUserId },
+    });
+
+    if (!notification.messageId) {
+      return;
+    }
+
+    const channel = await guild.channels.fetch(promotionChannelId).catch(() => null);
+    if (!channel?.isTextBased()) {
+      return;
+    }
+
+    const message = await (channel as TextChannel).messages.fetch(notification.messageId).catch(() => null);
+    if (!message) {
+      return;
+    }
+
+    const currentRankName = scrubRoleDisplay(
+      guild.roles.cache.get(currentRankRoleId)?.name ?? "Current",
+    );
+    const nextRankName = scrubRoleDisplay(
+      guild.roles.cache.get(notification.nextRankRoleId)?.name ?? "Next",
+    );
+    const member = await guild.members.fetch(notification.userId).catch(() => null);
+    const mainAccount = await getMainVRChatAccountInfo(notification.userId);
+    const userTag = member?.user.tag ?? notification.userId;
+
+    const resolvedContent = [
+      "**Patrol promotion – superseded**",
+      "",
+      "❌ This suggestion was replaced by a resuggestion in a thread.",
+      "",
+      ...formatPromotionUserLines(notification.userId, userTag, mainAccount),
+      "",
+      "**Promotion**",
+      `**${currentRankName}** → **${nextRankName}**`,
+      "",
+      "**Superseded by**",
+      `<@${staffUserId}>`,
+      "",
+      `<t:${Math.floor(Date.now() / 1000)}:F>`,
+    ].join("\n");
+
+    const resolvedContainer = new ContainerBuilder()
+      .setAccentColor(Colors.Red)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(resolvedContent));
+
+    try {
+      await message.edit({
+        content: "",
+        embeds: [],
+        components: [resolvedContainer],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    } catch (editErr) {
+      loggers.patrol.warn(
+        `Could not edit promotion message ${notification.messageId}; recreating denied notice`,
+        editErr,
+      );
+      try {
+        await (channel as TextChannel).send({
+          content: `_(Could not update original message — superseded pending promotion for <@${notification.userId}> → **${nextRankName}**.)_`,
+          allowedMentions: { users: [notification.userId] },
+        });
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  /**
+   * Resuggest every pending promotion into a new thread; deny/supersede originals.
+   */
+  async resuggestAllPendingPromotions(
+    guild: Guild,
+    staffUserId: string,
+  ): Promise<{ threadId: string | null; resent: number; skipped: number }> {
+    const settings = await this.getSettings(guild.id);
+    if (!settings.promotionChannelId) {
+      throw new Error("Promotion channel not configured");
+    }
+
+    const rules = this.getEffectivePromotionRules(settings);
+    if (!rules || rules.length === 0) {
+      throw new Error("No promotion rules configured");
+    }
+
+    const pending = await prisma.voicePatrolPromotionNotification.findMany({
+      where: { guildId: guild.id, status: "PENDING" },
+      orderBy: { notifiedAt: "asc" },
+    });
+
+    if (pending.length === 0) {
+      return { threadId: null, resent: 0, skipped: 0 };
+    }
+
+    const promoChannel = await guild.channels.fetch(settings.promotionChannelId);
+    if (!promoChannel?.isTextBased()) {
+      throw new Error("Invalid promotion channel");
+    }
+
+    const threadName = `Promotion resuggestions — ${new Date().toISOString().slice(0, 10)}`;
+    const thread = await (promoChannel as TextChannel).threads.create({
+      name: threadName.slice(0, 100),
+      autoArchiveDuration: 10080,
+      reason: `Promotion resuggest by ${staffUserId}`,
+    });
+
+    let resent = 0;
+    let skipped = 0;
+
+    for (const notification of pending) {
+      const rule = rules.find(
+        (r) =>
+          r.nextRankRoleId === notification.nextRankRoleId &&
+          guild.members.cache.get(notification.userId)?.roles.cache.has(r.currentRankRoleId),
+      ) ?? rules.find((r) => r.nextRankRoleId === notification.nextRankRoleId);
+
+      if (!rule) {
+        skipped++;
+        continue;
+      }
+
+      const member = await guild.members.fetch(notification.userId).catch(() => null);
+      if (!member) {
+        skipped++;
+        continue;
+      }
+
+      await this.denyPromotionMessageGracefully(
+        guild,
+        settings.promotionChannelId,
+        notification,
+        staffUserId,
+        rule.currentRankRoleId,
+      );
+
+      const totalTime = await this.getUserTotal(guild.id, member.id);
+      const totalHours = totalTime / (1000 * 60 * 60);
+
+      const currentRankName = scrubRoleDisplay(
+        guild.roles.cache.get(rule.currentRankRoleId)?.name ?? "Current",
+      );
+      const nextRankName = scrubRoleDisplay(
+        guild.roles.cache.get(rule.nextRankRoleId)?.name ?? "Next",
+      );
+
+      const mainAccount = await getMainVRChatAccountInfo(member.id);
+      const ruleSummary =
+        rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
+          ? `${rule.requiredHours}h patrol, ${rule.cooldownHours}h cooldown after current rank`
+          : `${rule.requiredHours}h patrol`;
+
+      const lines: string[] = [
+        "**Patrol promotion – 🟠 Pending (resuggested)**",
+        "",
+        "**🟠 Pending** — ✅ Approve · ❌ Deny",
+        "",
+        "A member is eligible for promotion (resent by staff).",
+        "",
+        ...formatPromotionUserLines(member.id, member.user.tag, mainAccount),
+        "",
+        "**Promotion**",
+        `**${currentRankName}** → **${nextRankName}**`,
+        "",
+        "**Rule**",
+        ruleSummary,
+        "",
+        "**Total patrol hours**",
+        `${totalHours.toFixed(1)}h (required: ${rule.requiredHours}h) ✓`,
+        "",
+        `<t:${Math.floor(Date.now() / 1000)}:F>`,
+      ];
+
+      const approveId = `patrol-promo:approve:${guild.id}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
+      const denyId = `patrol-promo:deny:${guild.id}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId(approveId).setLabel("Approve").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(denyId).setLabel("Deny").setStyle(ButtonStyle.Danger),
+      );
+      const container = new ContainerBuilder()
+        .setAccentColor(Colors.Grey)
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
+        .addActionRowComponents(row);
+
+      const sentMessage = await thread.send({
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+        allowedMentions: { users: [member.id] },
+      });
+      await sentMessage.react("🟠").catch(() => null);
+      await sentMessage.react("✅").catch(() => null);
+      await sentMessage.react("❌").catch(() => null);
+
+      await prisma.voicePatrolPromotionNotification.update({
+        where: { id: notification.id },
+        data: {
+          status: "PENDING",
+          messageId: sentMessage.id,
+          totalHoursAtNotify: totalHours,
+          notifiedAt: new Date(),
+          resolvedAt: null,
+          resolvedBy: null,
+        },
+      });
+
+      resent++;
+    }
+
+    return { threadId: thread.id, resent, skipped };
   }
 
   /**

@@ -43,19 +43,19 @@ const MONTH_NAMES = [
 @Discord()
 @SlashGroup({
   name: "patrol",
-  description: "Voice patrol timer",
+  description: "Patrol timer",
 })
 @SlashGroup("patrol")
 export class PatrolTimerCommands {
   @Slash({
     name: "current",
-    description: "Show currently tracked users in memory.",
+    description: "Show tracked users in voice",
   })
   @Guard(StaffGuard)
   async current(
     @SlashOption({
       name: "ephemeral",
-      description: "Whether the response should be ephemeral",
+      description: "Ephemeral reply",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
@@ -81,7 +81,7 @@ export class PatrolTimerCommands {
     });
   }
 
-  @Slash({ name: "top", description: "Show top users by total voice time." })
+  @Slash({ name: "top", description: "Show patrol time leaderboard" })
   @Guard(StaffGuard)
   async top(
     @SlashOption({
@@ -99,14 +99,14 @@ export class PatrolTimerCommands {
     limit: string | undefined,
     @SlashOption({
       name: "all-time",
-      description: "Show all-time totals instead of a specific time period",
+      description: "All-time totals",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
     allTime: boolean = false,
     @SlashOption({
       name: "year",
-      description: "Year (only used if all-time is false)",
+      description: "Year",
       type: ApplicationCommandOptionType.String,
       required: false,
       autocomplete: function (
@@ -119,7 +119,7 @@ export class PatrolTimerCommands {
     year: string | undefined,
     @SlashOption({
       name: "month",
-      description: "Month (only used if all-time is false, leave empty for entire year)",
+      description: "Month",
       type: ApplicationCommandOptionType.String,
       required: false,
       autocomplete: function (
@@ -132,14 +132,14 @@ export class PatrolTimerCommands {
     month: string | undefined,
     @SlashOption({
       name: "here",
-      description: "Top for your current voice channel",
+      description: "Current voice channel only",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
     here: boolean | undefined,
     @SlashOption({
       name: "ephemeral",
-      description: "Whether the response should be ephemeral",
+      description: "Ephemeral reply",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
@@ -231,7 +231,7 @@ export class PatrolTimerCommands {
 
   @Slash({
     name: "manage",
-    description: "Manage patrol data (wipe/adjust/pause/unpause)",
+    description: "Manage patrol data",
   })
   @Guard(StaffGuard)
   async manage(
@@ -250,21 +250,21 @@ export class PatrolTimerCommands {
     action: string,
     @SlashOption({
       name: "user",
-      description: "User (required for wipe/adjust/pause-user/unpause-user)",
+      description: "Target user",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
     user: User | null,
     @SlashOption({
       name: "time",
-      description: "Time to adjust (e.g., +1h30m, -2h15m30s) (required for adjust)",
+      description: "Time adjustment (+1h30m)",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
     time: string | null,
     @SlashOption({
       name: "year",
-      description: "Year to adjust (for adjust)",
+      description: "Year",
       type: ApplicationCommandOptionType.String,
       required: false,
       autocomplete: function (
@@ -277,7 +277,7 @@ export class PatrolTimerCommands {
     year: string | undefined,
     @SlashOption({
       name: "month",
-      description: "Month to adjust (for adjust)",
+      description: "Month",
       type: ApplicationCommandOptionType.String,
       required: false,
       autocomplete: function (
@@ -290,7 +290,7 @@ export class PatrolTimerCommands {
     month: string | undefined,
     @SlashOption({
       name: "ephemeral",
-      description: "Whether the response should be ephemeral",
+      description: "Ephemeral reply",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
@@ -487,26 +487,26 @@ export class PatrolTimerCommands {
 
   @Slash({
     name: "time",
-    description: "Check patrol time (SHIELD_MEMBER can check own time, staff can check others)",
+    description: "Check patrol time",
   })
   async time(
     @SlashOption({
       name: "user",
-      description: "User to check (staff only, defaults to you)",
+      description: "User (default: you)",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
     user: User | undefined,
     @SlashOption({
       name: "all-time",
-      description: "Show all-time total instead of current month",
+      description: "All-time total",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
     allTime: boolean = false,
     @SlashOption({
       name: "year",
-      description: "Year (only used if all-time is false)",
+      description: "Year",
       type: ApplicationCommandOptionType.String,
       required: false,
       autocomplete: function (
@@ -519,7 +519,7 @@ export class PatrolTimerCommands {
     year: string | undefined,
     @SlashOption({
       name: "month",
-      description: "Month (only used if all-time is false)",
+      description: "Month",
       type: ApplicationCommandOptionType.String,
       required: false,
       autocomplete: function (
@@ -532,7 +532,7 @@ export class PatrolTimerCommands {
     month: string | undefined,
     @SlashOption({
       name: "ephemeral",
-      description: "Whether the response should be ephemeral (staff/dev only)",
+      description: "Ephemeral reply",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })

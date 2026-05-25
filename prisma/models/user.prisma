@@ -20,15 +20,17 @@ model User {
 }
 
 model VRChatAccount {
-  id                  Int               @id @default(autoincrement())
-  userId              Int
-  vrcUserId           String
-  accountType         VRChatAccountType @default(IN_VERIFICATION)
-  verificationCode    String?
-  verificationGuildId String? // Guild ID where verification was initiated
-  vrchatUsername      String? // Cached VRChat username
-  usernameUpdatedAt   DateTime? // Last time username was updated
-  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                        Int               @id @default(autoincrement())
+  userId                    Int
+  vrcUserId                 String
+  accountType               VRChatAccountType @default(IN_VERIFICATION)
+  verificationCode          String?
+  verificationGuildId       String? // Guild ID where verification was initiated
+  vrchatUsername            String? // Cached VRChat username
+  usernameUpdatedAt         DateTime? // Last time username was updated
+  phantomCompilerReason     String?           @db.Text // Self-reported phantom/sensory needs (MAIN account only)
+  phantomCompilerEnrolledAt DateTime?
+  user                      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], map: "VRChatAccount_userId_fkey")
   @@index([vrcUserId], map: "VRChatAccount_vrcUserId_idx")

@@ -22,21 +22,21 @@ function scrubRoleDisplay(name: string): string {
 
 @Discord()
 @SlashGroup({
-  name: "promotion",
-  description: "Voice patrol promotion rules and notifications",
-  root: "settings",
+  name: "settings",
+  description: "Settings",
+  root: "patrol",
 })
-@SlashGroup("promotion", "settings")
+@SlashGroup("settings", "patrol")
 @Guard(StaffGuard)
 export class SettingsPatrolPromotionCommands {
   @Slash({
     name: "set-channel",
-    description: "Set the channel for promotion notifications",
+    description: "Set promotion notification channel",
   })
   async setChannel(
     @SlashOption({
       name: "channel",
-      description: "The channel to send promotion notifications to",
+      description: "Notification channel",
       type: ApplicationCommandOptionType.Channel,
       required: true,
     })
@@ -80,12 +80,12 @@ export class SettingsPatrolPromotionCommands {
 
   @Slash({
     name: "set-to-promote-channel",
-    description: "Set the channel where promoted users are posted (after staff approve)",
+    description: "Set to-promote post channel",
   })
   async setToPromoteChannel(
     @SlashOption({
       name: "channel",
-      description: "The channel to post promoted users to",
+      description: "To-promote channel",
       type: ApplicationCommandOptionType.Channel,
       required: true,
     })
@@ -129,7 +129,7 @@ export class SettingsPatrolPromotionCommands {
 
   @Slash({
     name: "view",
-    description: "View current promotion settings",
+    description: "View promotion settings",
   })
   async view(interaction: CommandInteraction) {
     if (!interaction.guildId) {return;}
@@ -181,7 +181,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "disable",
-    description: "Disable the promotion notification system",
+    description: "Disable promotion notifications",
   })
   async disable(interaction: CommandInteraction) {
     if (!interaction.guildId) {return;}
@@ -210,26 +210,26 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "add-rule",
-    description: "Add a rank-based promotion rule (current rank → next rank at hours, optional cooldown)",
+    description: "Add promotion rule",
   })
   async addRule(
     @SlashOption({
       name: "current_rank",
-      description: "Role user must have (current rank)",
+      description: "Current rank role",
       type: ApplicationCommandOptionType.Role,
       required: true,
     })
     currentRank: Role,
     @SlashOption({
       name: "next_rank",
-      description: "Next rank they are being notified for",
+      description: "Next rank role",
       type: ApplicationCommandOptionType.Role,
       required: true,
     })
     nextRank: Role,
     @SlashOption({
       name: "required_hours",
-      description: "All-time patrol hours required",
+      description: "Required patrol hours",
       type: ApplicationCommandOptionType.Number,
       required: true,
       minValue: 0.1,
@@ -238,7 +238,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     requiredHours: number,
     @SlashOption({
       name: "cooldown_hours",
-      description: "Minimum hours since last promotion notification before this rule can fire (optional)",
+      description: "Cooldown hours (optional)",
       type: ApplicationCommandOptionType.Number,
       required: false,
       minValue: 0,
@@ -282,19 +282,19 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "remove-rule",
-    description: "Remove a promotion rule by current and next rank",
+    description: "Remove promotion rule",
   })
   async removeRule(
     @SlashOption({
       name: "current_rank",
-      description: "Current rank role of the rule to remove",
+      description: "Current rank role",
       type: ApplicationCommandOptionType.Role,
       required: true,
     })
     currentRank: Role,
     @SlashOption({
       name: "next_rank",
-      description: "Next rank role of the rule to remove",
+      description: "Next rank role",
       type: ApplicationCommandOptionType.Role,
       required: true,
     })
@@ -337,7 +337,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "list-notifications",
-    description: "List promotion notifications (who is pending, approved, or denied)",
+    description: "List promotion notifications",
   })
   async listNotifications(
     @SlashChoice({ name: "Pending", value: "PENDING" })
@@ -417,7 +417,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "list-rules",
-    description: "List all rank-based promotion rules",
+    description: "List promotion rules",
   })
   async listRules(interaction: CommandInteraction) {
     if (!interaction.guildId) {return;}
@@ -448,19 +448,19 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "reset-user",
-    description: "Reset promotion tracking for a user (all or for a specific next rank)",
+    description: "Reset user promotion tracking",
   })
   async resetUser(
     @SlashOption({
       name: "user",
-      description: "User to reset promotion tracking for",
+      description: "User",
       type: ApplicationCommandOptionType.User,
       required: true,
     })
     user: User,
     @SlashOption({
       name: "next_rank",
-      description: "Reset only notification for this next rank (omit to reset all)",
+      description: "Next rank (empty = all)",
       type: ApplicationCommandOptionType.Role,
       required: false,
     })
@@ -523,12 +523,12 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "check",
-    description: "Manually check a user for promotion eligibility",
+    description: "Check user promotion eligibility",
   })
   async check(
     @SlashOption({
       name: "user",
-      description: "User to check for promotion",
+      description: "User",
       type: ApplicationCommandOptionType.User,
       required: true,
     })
@@ -617,7 +617,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
               }
             }
             if (r.alreadyNotified) {
-              reasons.push(`already notified for **${r.nextRankName}** (use \`reset-user\` to allow another notification)`);
+              reasons.push(`already notified for **${r.nextRankName}** (denied users need **1+ extra hour** since last notification, or use \`reset-user\`)`);
             }
             content += `• ${ruleTitle}\n  └ ${reasons.join("; ")}\n`;
           }
@@ -636,12 +636,12 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "suggest",
-    description: "Suggest a user for promotion (bypasses cooldown only; hours and notification rules still apply)",
+    description: "Suggest user for promotion",
   })
   async suggest(
     @SlashOption({
       name: "user",
-      description: "User to suggest for promotion",
+      description: "User",
       type: ApplicationCommandOptionType.User,
       required: true,
     })
@@ -724,7 +724,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
               reasons.push(`hours: ✓`);
             }
             if (r.alreadyNotified) {
-              reasons.push(`already notified for **${r.nextRankName}** (use \`reset-user\` to allow another notification)`);
+              reasons.push(`already notified for **${r.nextRankName}** (denied users need **1+ extra hour** since last notification, or use \`reset-user\`)`);
             }
             content += `• ${ruleTitle}\n  └ ${reasons.join("; ")}\n`;
           }
@@ -743,7 +743,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
 
   @Slash({
     name: "check-all",
-    description: "Check all users with a current-rank role for promotion (uses same rules as automatic check)",
+    description: "Check all users for promotion",
   })
   async checkAll(interaction: CommandInteraction) {
     if (!interaction.guildId || !interaction.guild) {return;}
@@ -817,6 +817,64 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       loggers.patrol.error("Bulk promotion check error", err);
       await interaction.editReply({
         content: "❌ An error occurred while checking promotions. Please check the logs.",
+      });
+    }
+  }
+
+  @Slash({
+    name: "resuggest-all",
+    description: "Resuggest pending promotions",
+  })
+  async resuggestAll(interaction: CommandInteraction) {
+    if (!interaction.guildId || !interaction.guild) {
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId: interaction.guildId },
+      });
+
+      if (!settings?.promotionChannelId) {
+        await interaction.editReply({
+          content: "❌ Promotion system is not fully configured. Set the promotion channel first.",
+        });
+        return;
+      }
+
+      const result = await patrolTimer.resuggestAllPendingPromotions(
+        interaction.guild,
+        interaction.user.id,
+      );
+
+      if (result.resent === 0 && result.skipped === 0) {
+        await interaction.editReply({
+          content: "ℹ️ No pending promotion notifications to resuggest.",
+        });
+        return;
+      }
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "promotion-resuggest-all",
+        interaction.user.id,
+        undefined,
+        `Resent ${result.resent}, skipped ${result.skipped}. Thread: ${result.threadId ?? "none"}`,
+      );
+
+      const threadMention = result.threadId ? `<#${result.threadId}>` : "thread";
+      await interaction.editReply({
+        content: `✅ Resuggested **${result.resent}** pending promotion(s) in ${threadMention}.${result.skipped > 0 ? ` Skipped ${result.skipped}.` : ""} Original messages were marked superseded.`,
+      });
+      loggers.patrol.info(
+        `Promotion resuggest-all by ${interaction.user.tag}: ${result.resent} resent, ${result.skipped} skipped`,
+      );
+    } catch (err) {
+      loggers.patrol.error("Promotion resuggest-all error", err);
+      await interaction.editReply({
+        content: "❌ An error occurred while resuggesting promotions. Please check the logs.",
       });
     }
   }
