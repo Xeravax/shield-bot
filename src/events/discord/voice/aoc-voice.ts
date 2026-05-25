@@ -14,28 +14,33 @@ export class AoCVoiceStateHandler {
     try {
       const settings = await prisma.guildSettings.findUnique({
         where: { guildId },
-        select: { aocVoiceChannelId: true },
+        select: { aocVoiceChannelId: true, emtVoiceChannelId: true },
       });
-      const aocVoiceId = settings?.aocVoiceChannelId;
-      if (!aocVoiceId) {
+
+      const panelVoiceIds = [
+        settings?.aocVoiceChannelId,
+        settings?.emtVoiceChannelId,
+      ].filter((id): id is string => !!id);
+
+      if (panelVoiceIds.length === 0) {
         return;
       }
 
-      const wasInAoC = oldState.channelId === aocVoiceId;
-      const nowInAoC = newState.channelId === aocVoiceId;
-      const aocAffected = wasInAoC || nowInAoC;
+      const wasInPanel = oldState.channelId && panelVoiceIds.includes(oldState.channelId);
+      const nowInPanel = newState.channelId && panelVoiceIds.includes(newState.channelId);
+      const panelAffected = wasInPanel || nowInPanel;
 
-      if (!aocAffected) {
+      if (!panelAffected) {
         return;
       }
 
-      if (nowInAoC && !wasInAoC) {
-        await aocPanelManager.onAoCVoiceJoin(guildId);
+      if (nowInPanel && !wasInPanel) {
+        await aocPanelManager.onPhantomPanelVoiceJoin(guildId);
       } else {
         aocPanelManager.scheduleRefresh(guildId);
       }
     } catch (err) {
-      loggers.bot.error("AoC voiceStateUpdate handler error", err);
+      loggers.bot.error("Phantom panel voiceStateUpdate handler error", err);
     }
   }
 }

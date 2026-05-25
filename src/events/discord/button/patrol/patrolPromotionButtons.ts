@@ -5,11 +5,15 @@ import {
   Colors,
   ContainerBuilder,
   TextDisplayBuilder,
+  GuildMember,
 } from "discord.js";
-import { Discord, ButtonComponent, Guard } from "discordx";
-import { StaffGuard } from "../../../../utility/guards.js";
+import { Discord, ButtonComponent } from "discordx";
 import { prisma, patrolTimer } from "../../../../main.js";
 import { loggers } from "../../../../utility/logger.js";
+import {
+  PermissionFlags,
+  userHasPermission,
+} from "../../../../utility/permissionUtils.js";
 import {
   formatPromotionUserLines,
   getMainVRChatAccountInfo,
@@ -34,11 +38,29 @@ function scrubRoleDisplay(name: string): string {
   return name.replace(/[^a-zA-Z.]/g, "") || name;
 }
 
+async function editPromotionMessage(
+  interaction: ButtonInteraction,
+  container: ContainerBuilder,
+): Promise<void> {
+  if (!interaction.message.editable) {
+    throw new Error("Promotion message is not editable");
+  }
+  await interaction.message.edit({
+    content: "",
+    embeds: [],
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+  });
+}
+
 @Discord()
 export class PatrolPromotionButtonHandlers {
+  /**
+   * No @Guard on buttons — StaffGuard hits Prisma before deferUpdate and breaks
+   * thread/channel component interactions. Staff is checked after deferUpdate.
+   */
   @ButtonComponent({ id: /^patrol-promo:approve:/ })
-  @Guard(StaffGuard)
-  async handleApprove(interaction: ButtonInteraction) {
+  async handleApprove(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guildId || !interaction.guild) {
       await interaction.reply({
         content: "❌ This can only be used in a server.",
@@ -48,6 +70,15 @@ export class PatrolPromotionButtonHandlers {
     }
 
     await interaction.deferUpdate();
+
+    const member = interaction.member as GuildMember | null;
+    if (!member || !(await userHasPermission(member, PermissionFlags.STAFF))) {
+      await interaction.followUp({
+        content: "You don't have permission to use this. Staff access required.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     const parsed = parseCustomId(interaction.customId);
     if (!parsed) {
@@ -86,16 +117,14 @@ export class PatrolPromotionButtonHandlers {
         data: { status: "APPROVED", resolvedAt: now, resolvedBy: interaction.user.id },
       });
 
-      const member = await interaction.guild.members.fetch(userId).catch(() => null);
-      if (!member) {
+      const promotedMember = await interaction.guild.members.fetch(userId).catch(() => null);
+      if (!promotedMember) {
         await interaction.followUp({
           content: "❌ User not found in this server.",
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
-
-      // Role is NOT assigned by the bot; staff must assign it manually.
 
       const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
@@ -107,7 +136,7 @@ export class PatrolPromotionButtonHandlers {
         "",
         "✅ A member has been promoted.",
         "",
-        ...formatPromotionUserLines(userId, member.user.tag, mainAccount),
+        ...formatPromotionUserLines(userId, promotedMember.user.tag, mainAccount),
         "",
         "**Promotion**",
         `**${currentRankName}** → **${nextRankName}**`,
@@ -124,12 +153,7 @@ export class PatrolPromotionButtonHandlers {
         .setAccentColor(Colors.Green)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(resolvedContent));
 
-      await interaction.editReply({
-        content: "",
-        embeds: [],
-        components: [resolvedContainer],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      await editPromotionMessage(interaction, resolvedContainer);
 
       const settings = await patrolTimer.getSettings(guildId);
       if (settings.toPromoteChannelId) {
@@ -142,7 +166,7 @@ export class PatrolPromotionButtonHandlers {
             .addFields(
               {
                 name: "User",
-                value: `<@${userId}> — ${member.user.tag} (\`${userId}\`)`,
+                value: `<@${userId}> — ${promotedMember.user.tag} (\`${userId}\`)`,
                 inline: false,
               },
               {
@@ -177,7 +201,7 @@ export class PatrolPromotionButtonHandlers {
         `${currentRankName} → ${nextRankName}. Role added. Total hours at notify: ${totalHours.toFixed(1)}h`,
       );
 
-      loggers.patrol.info(`Promotion approved for ${member.user.tag}: ${currentRankName} → ${nextRankName} by ${interaction.user.tag}`);
+      loggers.patrol.info(`Promotion approved for ${promotedMember.user.tag}: ${currentRankName} → ${nextRankName} by ${interaction.user.tag}`);
     } catch (err) {
       loggers.patrol.error("Promotion approve error", err);
       await interaction.followUp({
@@ -188,8 +212,7 @@ export class PatrolPromotionButtonHandlers {
   }
 
   @ButtonComponent({ id: /^patrol-promo:deny:/ })
-  @Guard(StaffGuard)
-  async handleDeny(interaction: ButtonInteraction) {
+  async handleDeny(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guildId || !interaction.guild) {
       await interaction.reply({
         content: "❌ This can only be used in a server.",
@@ -199,6 +222,15 @@ export class PatrolPromotionButtonHandlers {
     }
 
     await interaction.deferUpdate();
+
+    const member = interaction.member as GuildMember | null;
+    if (!member || !(await userHasPermission(member, PermissionFlags.STAFF))) {
+      await interaction.followUp({
+        content: "You don't have permission to use this. Staff access required.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     const parsed = parseCustomId(interaction.customId);
     if (!parsed) {
@@ -248,9 +280,9 @@ export class PatrolPromotionButtonHandlers {
       const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
 
-      const member = await interaction.guild.members.fetch(userId).catch(() => null);
+      const promotedMember = await interaction.guild.members.fetch(userId).catch(() => null);
       const mainAccount = await getMainVRChatAccountInfo(userId);
-      const userTag = member?.user.tag ?? userId;
+      const userTag = promotedMember?.user.tag ?? userId;
 
       const resolvedContent = [
         "**Patrol promotion – denied**",
@@ -271,12 +303,7 @@ export class PatrolPromotionButtonHandlers {
         .setAccentColor(Colors.Red)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(resolvedContent));
 
-      await interaction.editReply({
-        content: "",
-        embeds: [],
-        components: [resolvedContainer],
-        flags: MessageFlags.IsComponentsV2,
-      });
+      await editPromotionMessage(interaction, resolvedContainer);
 
       await interaction.followUp({
         content: "❌ Promotion denied.",

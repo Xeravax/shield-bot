@@ -48,6 +48,8 @@
 - `/role-tracking settings` - Role tracking configuration (add-role, thresholds, conditions, timers, etc.)
 - `/role-tracking-warn` - Role tracking warnings and staff pings (separate command due to Discord size limits)
 - `/settings attendance add-channel/remove-channel` - Manage enrolled attendance channels
+- `/settings attendance aoc-voice-channel` - AoC voice channel for live phantom-compiler panel
+- `/settings attendance emt-voice-channel` - EMT voice channel for the same phantom-compiler panel
 - `/whitelist settings gh-token/gh-repo/gh-branch/gh-paths/gh-key/view/log-channel/clear-log-channel` - Whitelist GitHub and log channel settings
 - `/settings vrchat set-avatar-world/remove-avatar-world` - Avatar world ID config
 

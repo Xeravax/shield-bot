@@ -11,7 +11,7 @@ export class AoCMessageHandler {
     }
 
     try {
-      await aocPanelManager.onMessageInAoCVoiceChat(
+      await aocPanelManager.onMessageInPhantomPanelVoiceChat(
         message.guildId,
         message.channelId,
         message.id,

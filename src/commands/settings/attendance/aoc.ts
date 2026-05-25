@@ -176,6 +176,76 @@ export class SettingsAttendanceAOCCommand {
   }
 
   @Slash({
+    name: "emt-voice-channel",
+    description: "Set the EMT voice channel (same phantom-compiler panel as AoC)",
+  })
+  async emtVoiceChannel(
+    @SlashOption({
+      name: "channel",
+      description: "The EMT voice channel (must have Text in Voice enabled)",
+      type: ApplicationCommandOptionType.Channel,
+      channelTypes: [ChannelType.GuildVoice],
+      required: false,
+    })
+    channel: GuildBasedChannel | null,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    try {
+      if (!interaction.guildId) {
+        await interaction.reply({
+          content: "❌ This command can only be used in a server.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (!channel) {
+        const settings = await prisma.guildSettings.findUnique({
+          where: { guildId: interaction.guildId },
+        });
+        const emtVoiceChannelId = settings?.emtVoiceChannelId;
+        if (!emtVoiceChannelId) {
+          await interaction.reply({
+            content: "ℹ️ No EMT voice channel is currently configured.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+        await interaction.reply({
+          content: `ℹ️ EMT voice channel is currently set to <#${emtVoiceChannelId}>`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      await prisma.guildSettings.upsert({
+        where: { guildId: interaction.guildId },
+        update: { emtVoiceChannelId: channel.id, emtPanelMessageId: null },
+        create: { guildId: interaction.guildId, emtVoiceChannelId: channel.id },
+      });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "settings-attendance-emt-voice-channel",
+        interaction.user.id,
+        undefined,
+        channel.id,
+      );
+
+      await interaction.reply({
+        content: `✅ EMT voice channel set to <#${channel.id}>. The live phantom-compiler panel will post when someone joins.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error: unknown) {
+      loggers.bot.error("Error setting EMT voice channel", error);
+      await interaction.reply({
+        content: `❌ Failed to set EMT voice channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+
+  @Slash({
     name: "instigation-log-channel",
     description: "Set the instigation log channel ID for AOC lead reminders",
   })

@@ -17,14 +17,45 @@ type EnrolledUser = {
   reason: string;
 };
 
-/**
- * Resolve the AoC voice channel and its in-voice text chat (discord.js TextBasedChannel on GuildVoiceChannel).
- */
-async function resolveAoCVoiceChannel(
+type EnrolledUserOnPatrol = EnrolledUser & {
+  patrolChannelId: string;
+};
+
+type PhantomPanelSite = {
+  key: "aoc" | "emt";
+  voiceChannelIdField: "aocVoiceChannelId" | "emtVoiceChannelId";
+  panelMessageIdField: "aocPanelMessageId" | "emtPanelMessageId";
+  headerTitle: string;
+};
+
+const PHANTOM_PANEL_SITES: PhantomPanelSite[] = [
+  {
+    key: "aoc",
+    voiceChannelIdField: "aocVoiceChannelId",
+    panelMessageIdField: "aocPanelMessageId",
+    headerTitle: "**AoC — Phantom Compiler Panel**",
+  },
+  {
+    key: "emt",
+    voiceChannelIdField: "emtVoiceChannelId",
+    panelMessageIdField: "emtPanelMessageId",
+    headerTitle: "**EMT — Phantom Compiler Panel**",
+  },
+];
+
+type GuildPanelSettings = {
+  patrolChannelCategoryId: string | null;
+  aocVoiceChannelId: string | null;
+  aocPanelMessageId: string | null;
+  emtVoiceChannelId: string | null;
+  emtPanelMessageId: string | null;
+};
+
+async function resolveVoiceChannel(
   guild: Guild,
-  aocVoiceChannelId: string,
+  voiceChannelId: string,
 ): Promise<VoiceChannel | null> {
-  const channel = await guild.channels.fetch(aocVoiceChannelId).catch(() => null);
+  const channel = await guild.channels.fetch(voiceChannelId).catch(() => null);
   if (!channel?.isVoiceBased()) {
     return null;
   }
@@ -38,20 +69,20 @@ function formatUserList(users: EnrolledUser[], emptyMessage: string): string {
   return users.map((u) => `<@${u.discordId}>`).join("\n");
 }
 
-function formatOnPatrolSection(users: EnrolledUser[], emptyMessage: string): string {
+function formatOnPatrolSection(users: EnrolledUserOnPatrol[], emptyMessage: string): string {
   if (users.length === 0) {
     return emptyMessage;
   }
   const lines: string[] = [];
   for (const u of users) {
-    lines.push(`<@${u.discordId}>`, u.reason, "");
+    lines.push(`<@${u.discordId}> — <#${u.patrolChannelId}>`, u.reason, "");
   }
   return lines.join("\n").trimEnd();
 }
 
 export class AoCPanelManager {
   private refreshTimers = new Map<string, NodeJS.Timeout>();
-  private repostTimers = new Map<string, NodeJS.Timeout>();
+  private repostTimers = new Map<string, NodeJS.Timeout>(); // key: `${guildId}:${siteKey}`
   private refreshInFlight = new Map<string, Promise<void>>();
 
   constructor(private client: Client) {}
@@ -67,51 +98,70 @@ export class AoCPanelManager {
       setTimeout(() => {
         this.refreshTimers.delete(guildId);
         void this.refreshPanel(guildId).catch((err) =>
-          loggers.bot.error("AoC panel refresh failed", err),
+          loggers.bot.error("Phantom panel refresh failed", err),
         );
       }, delayMs),
     );
   }
 
-  async onAoCVoiceJoin(guildId: string): Promise<void> {
+  async onPhantomPanelVoiceJoin(guildId: string): Promise<void> {
     this.scheduleRefresh(guildId);
   }
 
   /**
-   * When someone posts in the AoC voice text chat while patrol is active and the panel
-   * is present, delete the old panel and post a fresh one at the bottom.
+   * When someone posts in a configured phantom-panel voice text chat while patrol is active,
+   * delete the old panel and post a fresh one at the bottom.
    */
+  async onMessageInPhantomPanelVoiceChat(
+    guildId: string,
+    channelId: string,
+    messageId: string,
+  ): Promise<void> {
+    const settings = await this.getGuildPanelSettings(guildId);
+    if (!settings) {
+      return;
+    }
+
+    for (const site of this.getActiveSites(settings)) {
+      const voiceChannelId = settings[site.voiceChannelIdField];
+      if (voiceChannelId !== channelId) {
+        continue;
+      }
+      const panelMessageId = settings[site.panelMessageIdField];
+      if (panelMessageId && panelMessageId === messageId) {
+        return;
+      }
+      this.scheduleRepost(guildId, site.key);
+      return;
+    }
+  }
+
+  /** @deprecated Use onMessageInPhantomPanelVoiceChat */
   async onMessageInAoCVoiceChat(
     guildId: string,
     channelId: string,
     messageId: string,
   ): Promise<void> {
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId },
-      select: { aocVoiceChannelId: true, aocPanelMessageId: true },
-    });
-    if (!settings?.aocVoiceChannelId || settings.aocVoiceChannelId !== channelId) {
-      return;
-    }
-    if (!settings.aocPanelMessageId || settings.aocPanelMessageId === messageId) {
-      return;
-    }
-
-    this.scheduleRepost(guildId);
+    return this.onMessageInPhantomPanelVoiceChat(guildId, channelId, messageId);
   }
 
-  /** Debounced repost so rapid chat does not spam delete/send cycles. */
-  private scheduleRepost(guildId: string, delayMs = 500): void {
-    const existing = this.repostTimers.get(guildId);
+  /** @deprecated Use onPhantomPanelVoiceJoin */
+  async onAoCVoiceJoin(guildId: string): Promise<void> {
+    return this.onPhantomPanelVoiceJoin(guildId);
+  }
+
+  private scheduleRepost(guildId: string, siteKey: PhantomPanelSite["key"], delayMs = 500): void {
+    const timerKey = `${guildId}:${siteKey}`;
+    const existing = this.repostTimers.get(timerKey);
     if (existing) {
       clearTimeout(existing);
     }
     this.repostTimers.set(
-      guildId,
+      timerKey,
       setTimeout(() => {
-        this.repostTimers.delete(guildId);
-        void this.repostPanel(guildId).catch((err) =>
-          loggers.bot.error("AoC panel repost failed", err),
+        this.repostTimers.delete(timerKey);
+        void this.repostPanelForSite(guildId, siteKey).catch((err) =>
+          loggers.bot.error("Phantom panel repost failed", err),
         );
       }, delayMs),
     );
@@ -124,14 +174,33 @@ export class AoCPanelManager {
     return activeSessions > 0;
   }
 
+  private async getGuildPanelSettings(guildId: string): Promise<GuildPanelSettings | null> {
+    return prisma.guildSettings.findUnique({
+      where: { guildId },
+      select: {
+        patrolChannelCategoryId: true,
+        aocVoiceChannelId: true,
+        aocPanelMessageId: true,
+        emtVoiceChannelId: true,
+        emtPanelMessageId: true,
+      },
+    });
+  }
+
+  private getActiveSites(settings: GuildPanelSettings): PhantomPanelSite[] {
+    return PHANTOM_PANEL_SITES.filter((site) => {
+      const voiceId = settings[site.voiceChannelIdField];
+      return !!voiceId;
+    });
+  }
+
   private async getPanelTarget(
     guildId: string,
+    site: PhantomPanelSite,
+    settings: GuildPanelSettings,
   ): Promise<{ guild: Guild; voiceChannel: VoiceChannel } | null> {
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId },
-      select: { aocVoiceChannelId: true },
-    });
-    if (!settings?.aocVoiceChannelId) {
+    const voiceChannelId = settings[site.voiceChannelIdField];
+    if (!voiceChannelId) {
       return null;
     }
 
@@ -140,9 +209,11 @@ export class AoCPanelManager {
       return null;
     }
 
-    const voiceChannel = await resolveAoCVoiceChannel(guild, settings.aocVoiceChannelId);
+    const voiceChannel = await resolveVoiceChannel(guild, voiceChannelId);
     if (!voiceChannel) {
-      loggers.bot.warn(`AoC voice channel ${settings.aocVoiceChannelId} not found in guild ${guildId}`);
+      loggers.bot.warn(
+        `${site.key} voice channel ${voiceChannelId} not found in guild ${guildId}`,
+      );
       return null;
     }
 
@@ -150,117 +221,124 @@ export class AoCPanelManager {
   }
 
   async refreshPanel(guildId: string): Promise<void> {
-    return this.runPanelUpdate(guildId, "refresh");
+    return this.runPanelUpdate(guildId);
   }
 
-  private async repostPanel(guildId: string): Promise<void> {
-    return this.runPanelUpdate(guildId, "repost");
+  private async repostPanelForSite(guildId: string, siteKey: PhantomPanelSite["key"]): Promise<void> {
+    const settings = await this.getGuildPanelSettings(guildId);
+    if (!settings || !(await this.hasActivePatrol(guildId))) {
+      return;
+    }
+    const site = PHANTOM_PANEL_SITES.find((s) => s.key === siteKey);
+    if (!site || !settings[site.voiceChannelIdField]) {
+      return;
+    }
+    await this.runRepostPanelForSite(guildId, site, settings);
   }
 
-  private async runPanelUpdate(
-    guildId: string,
-    mode: "refresh" | "repost",
-  ): Promise<void> {
+  private async runPanelUpdate(guildId: string): Promise<void> {
     const inFlight = this.refreshInFlight.get(guildId);
     if (inFlight) {
       return inFlight;
     }
 
-    const run = (mode === "repost" ? this.runRepostPanel(guildId) : this.runRefreshPanel(guildId)).finally(
-      () => {
-        this.refreshInFlight.delete(guildId);
-      },
-    );
+    const run = this.runRefreshAllPanels(guildId).finally(() => {
+      this.refreshInFlight.delete(guildId);
+    });
     this.refreshInFlight.set(guildId, run);
     return run;
   }
 
-  private async runRepostPanel(guildId: string): Promise<void> {
-    const target = await this.getPanelTarget(guildId);
+  private async runRepostPanelForSite(
+    guildId: string,
+    site: PhantomPanelSite,
+    settings: GuildPanelSettings,
+  ): Promise<void> {
+    const target = await this.getPanelTarget(guildId, site, settings);
     if (!target) {
       return;
     }
 
-    const { guild, voiceChannel } = target;
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId },
-      select: { aocPanelMessageId: true },
-    });
-
-    if (!settings?.aocPanelMessageId) {
+    const { voiceChannel } = target;
+    const panelMessageId = settings[site.panelMessageIdField];
+    if (!panelMessageId) {
       return;
     }
 
-    const someoneInAoC = voiceChannel.members.filter((m: GuildMember) => !m.user.bot).size > 0;
-    if (!someoneInAoC) {
+    const someoneInChannel = voiceChannel.members.filter((m: GuildMember) => !m.user.bot).size > 0;
+    if (!someoneInChannel) {
       return;
     }
 
-    if (!(await this.hasActivePatrol(guildId))) {
-      return;
-    }
-
-    const existing = await voiceChannel.messages.fetch(settings.aocPanelMessageId).catch(() => null);
+    const existing = await voiceChannel.messages.fetch(panelMessageId).catch(() => null);
     if (!existing) {
       return;
     }
 
     await existing.delete().catch(() => null);
 
-    const components = await this.buildPanelComponents(guildId, guild);
+    const components = await this.buildPanelComponents(guildId, target.guild, site);
     const sent = await (voiceChannel as SendableChannels).send({
       components,
       flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { users: [] },
+      allowedMentions: { parse: [] },
     });
 
     await prisma.guildSettings.update({
       where: { guildId },
-      data: { aocPanelMessageId: sent.id },
+      data: { [site.panelMessageIdField]: sent.id },
     });
   }
 
-  private async runRefreshPanel(guildId: string): Promise<void> {
-    const target = await this.getPanelTarget(guildId);
+  private async runRefreshAllPanels(guildId: string): Promise<void> {
+    const settings = await this.getGuildPanelSettings(guildId);
+    if (!settings) {
+      return;
+    }
+
+    for (const site of this.getActiveSites(settings)) {
+      await this.runRefreshPanelForSite(guildId, site, settings);
+    }
+  }
+
+  private async runRefreshPanelForSite(
+    guildId: string,
+    site: PhantomPanelSite,
+    settings: GuildPanelSettings,
+  ): Promise<void> {
+    const target = await this.getPanelTarget(guildId, site, settings);
     if (!target) {
       return;
     }
 
     const { guild, voiceChannel } = target;
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId },
-      select: {
-        aocPanelMessageId: true,
-        patrolChannelCategoryId: true,
-      },
-    });
+    const panelMessageId = settings[site.panelMessageIdField];
+    const someoneInChannel = voiceChannel.members.filter((m: GuildMember) => !m.user.bot).size > 0;
 
-    const someoneInAoC = voiceChannel.members.filter((m: GuildMember) => !m.user.bot).size > 0;
-
-    if (!someoneInAoC) {
-      if (settings?.aocPanelMessageId) {
-        const old = await voiceChannel.messages.fetch(settings.aocPanelMessageId).catch(() => null);
+    if (!someoneInChannel) {
+      if (panelMessageId) {
+        const old = await voiceChannel.messages.fetch(panelMessageId).catch(() => null);
         if (old) {
           await old.delete().catch(() => null);
         }
         await prisma.guildSettings.update({
           where: { guildId },
-          data: { aocPanelMessageId: null },
+          data: { [site.panelMessageIdField]: null },
         });
       }
       return;
     }
 
-    const components = await this.buildPanelComponents(guildId, guild);
+    const components = await this.buildPanelComponents(guildId, guild, site);
 
-    if (settings?.aocPanelMessageId) {
-      const existing = await voiceChannel.messages.fetch(settings.aocPanelMessageId).catch(() => null);
+    if (panelMessageId) {
+      const existing = await voiceChannel.messages.fetch(panelMessageId).catch(() => null);
       if (existing) {
         try {
           await existing.edit({
             components,
             flags: MessageFlags.IsComponentsV2,
-            allowedMentions: { users: [] },
+            allowedMentions: { parse: [] },
           });
           return;
         } catch {
@@ -272,12 +350,12 @@ export class AoCPanelManager {
     const sent = await (voiceChannel as SendableChannels).send({
       components,
       flags: MessageFlags.IsComponentsV2,
-      allowedMentions: { users: [] },
+      allowedMentions: { parse: [] },
     });
 
     await prisma.guildSettings.update({
       where: { guildId },
-      data: { aocPanelMessageId: sent.id },
+      data: { [site.panelMessageIdField]: sent.id },
     });
   }
 
@@ -295,8 +373,9 @@ export class AoCPanelManager {
       if (!a.phantomCompilerReason) {
         continue;
       }
-      const member = guild.members.cache.get(a.user.discordId)
-        ?? await guild.members.fetch(a.user.discordId).catch(() => null);
+      const member =
+        guild.members.cache.get(a.user.discordId) ??
+        (await guild.members.fetch(a.user.discordId).catch(() => null));
       if (member && !member.user.bot) {
         enrolled.push({ discordId: a.user.discordId, reason: a.phantomCompilerReason });
       }
@@ -304,59 +383,64 @@ export class AoCPanelManager {
     return enrolled;
   }
 
-  private async getPatrollingEnrolledUserIds(
+  private getPatrollingEnrolledUsers(
     guild: Guild,
     patrolCategoryId: string | null,
     enrolled: EnrolledUser[],
-  ): Promise<Set<string>> {
-    const patrolling = new Set<string>();
+  ): EnrolledUserOnPatrol[] {
     if (!patrolCategoryId || enrolled.length === 0) {
-      return patrolling;
+      return [];
     }
 
-    const enrolledIds = new Set(enrolled.map((e) => e.discordId));
+    const enrolledById = new Map(enrolled.map((e) => [e.discordId, e]));
+    const onPatrol: EnrolledUserOnPatrol[] = [];
+    const seen = new Set<string>();
 
     for (const channel of guild.channels.cache.values()) {
-      if (!channel.isVoiceBased()) {
-        continue;
-      }
-      if (channel.parentId !== patrolCategoryId) {
+      if (!channel.isVoiceBased() || channel.parentId !== patrolCategoryId) {
         continue;
       }
       for (const member of channel.members.values()) {
-        if (!member.user.bot && enrolledIds.has(member.id)) {
-          patrolling.add(member.id);
+        if (member.user.bot || seen.has(member.id)) {
+          continue;
+        }
+        const enrolledUser = enrolledById.get(member.id);
+        if (enrolledUser) {
+          seen.add(member.id);
+          onPatrol.push({
+            ...enrolledUser,
+            patrolChannelId: channel.id,
+          });
         }
       }
     }
 
-    return patrolling;
+    return onPatrol;
   }
 
-  private async buildPanelComponents(guildId: string, guild: Guild): Promise<ContainerBuilder[]> {
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId },
-      select: { patrolChannelCategoryId: true },
-    });
+  private async buildPanelComponents(
+    guildId: string,
+    guild: Guild,
+    site: PhantomPanelSite,
+  ): Promise<ContainerBuilder[]> {
+    const settings = await this.getGuildPanelSettings(guildId);
+    const patrolCategoryId = settings?.patrolChannelCategoryId ?? null;
 
     const enrolled = await this.getEnrolledUsersInGuild(guild);
-    const patrollingIds = await this.getPatrollingEnrolledUserIds(
-      guild,
-      settings?.patrolChannelCategoryId ?? null,
-      enrolled,
-    );
+    const onPatrolUsers = this.getPatrollingEnrolledUsers(guild, patrolCategoryId, enrolled);
+    const onPatrolIds = new Set(onPatrolUsers.map((u) => u.discordId));
+    const notOnPatrolUsers = enrolled.filter((e) => !onPatrolIds.has(e.discordId));
 
-    const onPatrolUsers = enrolled.filter((e) => patrollingIds.has(e.discordId));
-    const notOnPatrolUsers = enrolled.filter((e) => !patrollingIds.has(e.discordId));
+    const siteLabel = site.key === "emt" ? "EMT" : "AoC";
 
     const headerContainer = new ContainerBuilder()
       .setAccentColor(Colors.Blurple)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           [
-            "**AoC — Phantom Compiler Panel**",
+            site.headerTitle,
             "",
-            "_Live view of phantom-compiler enrollments. Updates when patrol or AoC voice state changes._",
+            `_Live view of phantom-compiler enrollments. Updates when patrol or ${siteLabel} voice state changes._`,
           ].join("\n"),
         ),
       );
