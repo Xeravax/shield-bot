@@ -52,6 +52,7 @@
 - `/settings vrchat set-avatar-world/remove-avatar-world` - Avatar world ID config
 
 ## Phantom Compiler
+- `/phantomcompiler panel` - Staff: post self-service enrollment panel (Enroll/Update opens a reason modal; Unenroll removes you)
 - `/phantomcompiler enroll <reason>` - Enroll your MAIN account (use `\n` in reason for line breaks)
 - `/phantomcompiler add <user> <reason>` - Staff: enroll a member on the phantom compiler list
 - `/phantomcompiler unenroll` - Remove your enrollment
