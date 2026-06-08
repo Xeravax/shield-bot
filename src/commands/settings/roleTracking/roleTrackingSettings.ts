@@ -720,6 +720,59 @@ export class SettingsRoleTrackingCommands {
   }
 
   @Slash({
+    name: "set-advisor-role",
+    description: "Set the advisor role excluded from all role tracking checks",
+  })
+  async setAdvisorRole(
+    @SlashOption({
+      name: "role",
+      description: "Advisor role (members with this role are excluded from tracking)",
+      type: ApplicationCommandOptionType.Role,
+      required: true,
+    })
+    role: Role,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      await prisma.guildSettings.upsert({
+        where: { guildId: interaction.guildId },
+        update: { roleTrackingAdvisorRoleId: role.id },
+        create: {
+          guildId: interaction.guildId,
+          roleTrackingAdvisorRoleId: role.id,
+        },
+      });
+
+      await patrolTimer.logCommandUsage(
+        interaction.guildId,
+        "role-tracking-set-advisor-role",
+        interaction.user.id,
+        undefined,
+        `${role.name} (${role.id})`,
+      );
+
+      await interaction.reply({
+        content: `✅ Role tracking advisor role set to <@&${role.id}>. Members with this role are excluded from all activity checks.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      loggers.bot.error("Error setting advisor role", error);
+      await interaction.reply({
+        content: `❌ Failed to set advisor role: ${error instanceof Error ? error.message : "Unknown error"}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+
+  @Slash({
     name: "set-role-staff-channel",
     description: "Set per-role staff channel",
   })
@@ -926,12 +979,21 @@ export class SettingsRoleTrackingCommands {
           .setTimestamp();
 
         // Show guild default channel only on first page if no roles have their own channels
-        if (i === 0 && settings?.roleTrackingStaffChannelId) {
-          const hasRoleSpecificChannels = pageRoles.some(([_, roleConfig]) => roleConfig.staffChannelId);
-          if (!hasRoleSpecificChannels) {
+        if (i === 0) {
+          if (settings?.roleTrackingStaffChannelId) {
+            const hasRoleSpecificChannels = pageRoles.some(([_, roleConfig]) => roleConfig.staffChannelId);
+            if (!hasRoleSpecificChannels) {
+              embed.addFields({
+                name: "Guild Default Staff Channel",
+                value: `<#${settings.roleTrackingStaffChannelId}>`,
+                inline: true,
+              });
+            }
+          }
+          if (settings?.roleTrackingAdvisorRoleId) {
             embed.addFields({
-              name: "Guild Default Staff Channel",
-              value: `<#${settings.roleTrackingStaffChannelId}>`,
+              name: "Excluded Advisor Role",
+              value: `<@&${settings.roleTrackingAdvisorRoleId}>`,
               inline: true,
             });
           }
@@ -1698,6 +1760,16 @@ export class SettingsRoleTrackingCommands {
     try {
       await cmdInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId: cmdInteraction.guildId },
+        select: {
+          loaRoleId: true,
+          roleTrackingAdvisorRoleId: true,
+          roleTrackingConfig: true,
+          roleTrackingStaffChannelId: true,
+        },
+      });
+
       const guild = cmdInteraction.guild;
       if (!guild) {
         await cmdInteraction.editReply({
@@ -1749,17 +1821,32 @@ export class SettingsRoleTrackingCommands {
         existingAssignments.map((a) => a.user.discordId),
       );
 
-      // Find members not in database
+      // Find members not in database (excluding LOA/advisor roles)
       const membersToAdd: string[] = [];
+      let excludedCount = 0;
       for (const member of membersWithRole.values()) {
+        if (
+          roleTrackingManager.isExcludedFromRoleTracking(
+            member,
+            settings?.loaRoleId,
+            settings?.roleTrackingAdvisorRoleId,
+          )
+        ) {
+          excludedCount++;
+          continue;
+        }
         if (!existingDiscordIds.has(member.id)) {
           membersToAdd.push(member.id);
         }
       }
 
       if (membersToAdd.length === 0) {
+        const excludedNote =
+          excludedCount > 0
+            ? `\n• Excluded (LOA/advisor): ${excludedCount}`
+            : "";
         await cmdInteraction.editReply({
-          content: `✅ All ${membersWithRole.size} member(s) with role <@&${roleId}> are already in the database.`,
+          content: `✅ All eligible member(s) with role <@&${roleId}> are already in the database.${excludedNote}`,
         });
         return;
       }
@@ -1794,11 +1881,6 @@ export class SettingsRoleTrackingCommands {
       }
 
       // Log to staff channel if configured
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId: cmdInteraction.guildId },
-        select: { roleTrackingConfig: true, roleTrackingStaffChannelId: true },
-      });
-
       let roleChannelId: string | null | undefined = null;
       if (settings?.roleTrackingConfig) {
         const config = (settings.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
@@ -1823,8 +1905,9 @@ export class SettingsRoleTrackingCommands {
             `Synced members with role <@&${roleId}> by <@${cmdInteraction.user.id}>\n\n` +
             `**Results:**\n` +
             `• Total members with role: ${membersWithRole.size}\n` +
-            `• Already in database: ${membersWithRole.size - membersToAdd.length}\n` +
+            `• Already in database: ${membersWithRole.size - membersToAdd.length - excludedCount}\n` +
             `• Added to database: ${addedCount}\n` +
+            `${excludedCount > 0 ? `• Excluded (LOA/advisor): ${excludedCount}\n` : ""}` +
             `${failedCount > 0 ? `• Failed: ${failedCount}\n` : ""}`,
           )
           .setColor(addedCount > 0 ? Colors.Green : Colors.Orange)

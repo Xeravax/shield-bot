@@ -4,6 +4,7 @@ import {
   Colors,
   TextChannel,
   MessageCreateOptions,
+  GuildMember,
 } from "discord.js";
 import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
@@ -301,6 +302,23 @@ export class RoleTrackingManager {
       loggers.bot.error(`Failed to check LOA role for user ${userId} in guild ${guildId}`, error);
       return false;
     }
+  }
+
+  /**
+   * Check if a member is excluded from role tracking (LOA or advisor role).
+   */
+  isExcludedFromRoleTracking(
+    member: GuildMember,
+    loaRoleId: string | null | undefined,
+    advisorRoleId: string | null | undefined,
+  ): boolean {
+    if (loaRoleId && member.roles.cache.has(loaRoleId)) {
+      return true;
+    }
+    if (advisorRoleId && member.roles.cache.has(advisorRoleId)) {
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -1174,6 +1192,8 @@ export class RoleTrackingManager {
       }
 
       const config = (settings?.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
+      const loaRoleId = settings.loaRoleId;
+      const advisorRoleId = settings.roleTrackingAdvisorRoleId;
 
       const enabledRoles = Object.entries(config).filter(([_, roleConfig]) => roleConfig.enabled);
       loggers.bot.debug(
@@ -1219,10 +1239,10 @@ export class RoleTrackingManager {
               `[RoleTracking] Processing user ${member.id} for role ${roleId} in guild ${guildId}`,
             );
 
-            // Check if user has LOA role - if true, skip entirely
-            if (await this.hasLOARole(guildId, member.id)) {
+            // Check if user has LOA or advisor role - if true, skip entirely
+            if (this.isExcludedFromRoleTracking(member, loaRoleId, advisorRoleId)) {
               loggers.bot.debug(
-                `[RoleTracking] User ${member.id} has LOA role, skipping role tracking`,
+                `[RoleTracking] User ${member.id} has LOA or advisor role, skipping role tracking`,
               );
               continue;
             }

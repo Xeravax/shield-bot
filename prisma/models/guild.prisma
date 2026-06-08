@@ -48,6 +48,7 @@ model GuildSettings {
   // Role tracking settings
   roleTrackingConfig         Json? // Map of role IDs to role tracking configurations
   roleTrackingStaffChannelId String? // Channel ID for role tracking staff notifications
+  roleTrackingAdvisorRoleId  String? // Discord role ID excluded from all role tracking checks
   roleTrackingInitializedAt  DateTime? // Timestamp when role tracking was first enabled for this guild
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt

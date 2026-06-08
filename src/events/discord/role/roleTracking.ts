@@ -54,6 +54,7 @@ export class RoleTrackingEvents {
         select: {
           roleTrackingConfig: true,
           loaRoleId: true,
+          roleTrackingAdvisorRoleId: true,
           promotionRules: true,
         },
       });
@@ -64,6 +65,7 @@ export class RoleTrackingEvents {
 
       const config = settings.roleTrackingConfig as Record<string, any> | null;
       const loaRoleId = settings.loaRoleId;
+      const advisorRoleId = settings.roleTrackingAdvisorRoleId;
 
       // Find which roles were added and removed
       const addedRoles = newRoles.filter((role) => !oldRoles.has(role.id));
@@ -99,10 +101,14 @@ export class RoleTrackingEvents {
           const roleWasRemoved = removedRoles.has(roleId);
 
           if (roleWasAdded) {
-            // Check if user has LOA role - if true, don't track this assignment
-            const hasLOA = loaRoleId ? newRoles.has(loaRoleId) : false;
+            // Check if user has LOA or advisor role - if true, don't track this assignment
+            const isExcluded = roleTrackingManager.isExcludedFromRoleTracking(
+              newMember,
+              loaRoleId,
+              advisorRoleId,
+            );
 
-            if (!hasLOA) {
+            if (!isExcluded) {
               // Track role assignment
               await roleTrackingManager.trackRoleAssignment(guildId, userId, roleId, new Date());
               loggers.bot.debug(
@@ -110,7 +116,7 @@ export class RoleTrackingEvents {
               );
             } else {
               loggers.bot.debug(
-                `Skipping role assignment tracking for user ${userId}, role ${roleId} in guild ${guildId} - user has LOA role`,
+                `Skipping role assignment tracking for user ${userId}, role ${roleId} in guild ${guildId} - user has LOA or advisor role`,
               );
             }
           } else if (roleWasRemoved) {
