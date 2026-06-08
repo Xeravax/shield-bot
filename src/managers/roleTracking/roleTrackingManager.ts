@@ -31,6 +31,7 @@ export interface RoleTrackingConfig {
   staffChannelId?: string | null; // Optional per-role staff channel, falls back to guild setting if not set
   staffPingChannelId?: string | null; // Optional per-role channel for staff pings, falls back to staffChannelId or guild setting
   staffPingRoleIds?: string[] | null; // Optional per-role roles to ping, falls back to guild staff roles if not set
+  staffOnly?: boolean; // When true, no member DMs; staff ping only
 }
 
 export interface RoleTrackingConfigMap {

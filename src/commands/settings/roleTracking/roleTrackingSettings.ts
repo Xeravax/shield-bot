@@ -111,7 +111,12 @@ export class SettingsRoleTrackingCommands {
   /**
    * Get default configuration for a role based on deadline
    */
-  private getDefaultConfig(roleName: string, deadline: string, _roleId: string): RoleTrackingConfig {
+  private getDefaultConfig(
+    roleName: string,
+    deadline: string,
+    _roleId: string,
+    staffOnly = false,
+  ): RoleTrackingConfig {
     const deadlineMs = parseDurationToMs(deadline);
     if (!deadlineMs) {
       throw new Error(`Invalid deadline: ${deadline}`);
@@ -124,13 +129,15 @@ export class SettingsRoleTrackingCommands {
       const weeks = Math.floor(deadlineMs / weekMs);
       
       const warnings = [];
-      for (let i = 1; i < weeks; i++) {
-        warnings.push({
-          index: i - 1,
-          offset: `${i} week${i > 1 ? "s" : ""}`,
-          type: "warning",
-          message: `Hello! This is your Week ${i} reminder for the {roleName} role. You have ${weeks - i} week${weeks - i > 1 ? "s" : ""} remaining. Make sure you're getting your patrol time in! If you need extended time, please request a Leave of Absence (LOA).`,
-        });
+      if (!staffOnly) {
+        for (let i = 1; i < weeks; i++) {
+          warnings.push({
+            index: i - 1,
+            offset: `${i} week${i > 1 ? "s" : ""}`,
+            type: "warning",
+            message: `Hello! This is your Week ${i} reminder for the {roleName} role. You have ${weeks - i} week${weeks - i > 1 ? "s" : ""} remaining. Make sure you're getting your patrol time in! If you need extended time, please request a Leave of Absence (LOA).`,
+          });
+        }
       }
 
       return {
@@ -139,6 +146,7 @@ export class SettingsRoleTrackingCommands {
         deadlineDuration: deadline,
         conditions: [], // No conditions by default - must be specified
         patrolTimeThresholdHours: null,
+        staffOnly: staffOnly || undefined,
         warnings,
         staffPingOffset: `${weeks} weeks`,
         staffPingMessage: {
@@ -185,23 +193,25 @@ export class SettingsRoleTrackingCommands {
       const months = Math.floor(deadlineMs / monthMs);
       
       const warnings = [];
-      for (let i = 2; i <= months; i++) {
-        // Compute ordinal suffix
-        const getOrdinalSuffix = (n: number): string => {
-          const j = n % 10;
-          const k = n % 100;
-          if (j === 1 && k !== 11) return "st";
-          if (j === 2 && k !== 12) return "nd";
-          if (j === 3 && k !== 13) return "rd";
-          return "th";
-        };
-        const suffix = getOrdinalSuffix(i);
-        warnings.push({
-          index: i - 2,
-          offset: `${i} months`,
-          type: "warning",
-          message: `Hello! This is your ${i}${suffix} month reminder for the {roleName} role. You have ${months - i + 1} month${months - i + 1 > 1 ? "s" : ""} remaining. Keep up with your patrol time! If you need extended time off from S.H.I.E.L.D., please request a Leave of Absence (LOA).`,
-        });
+      if (!staffOnly) {
+        for (let i = 2; i <= months; i++) {
+          // Compute ordinal suffix
+          const getOrdinalSuffix = (n: number): string => {
+            const j = n % 10;
+            const k = n % 100;
+            if (j === 1 && k !== 11) return "st";
+            if (j === 2 && k !== 12) return "nd";
+            if (j === 3 && k !== 13) return "rd";
+            return "th";
+          };
+          const suffix = getOrdinalSuffix(i);
+          warnings.push({
+            index: i - 2,
+            offset: `${i} months`,
+            type: "warning",
+            message: `Hello! This is your ${i}${suffix} month reminder for the {roleName} role. You have ${months - i + 1} month${months - i + 1 > 1 ? "s" : ""} remaining. Keep up with your patrol time! If you need extended time off from S.H.I.E.L.D., please request a Leave of Absence (LOA).`,
+          });
+        }
       }
 
       return {
@@ -210,6 +220,7 @@ export class SettingsRoleTrackingCommands {
         deadlineDuration: deadline,
         conditions: [], // No conditions by default - must be specified
         patrolTimeThresholdHours: null,
+        staffOnly: staffOnly || undefined,
         warnings,
         staffPingOffset: `${months} months`,
         staffPingMessage: {
@@ -308,6 +319,13 @@ export class SettingsRoleTrackingCommands {
       required: false,
     })
     staffPingRolesInput: string | null,
+    @SlashOption({
+      name: "staff_only",
+      description: "Staff-only alerts (no member DMs)",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    staffOnlyInput: boolean | null,
     interaction: BaseInteraction,
   ): Promise<void> {
     // Handle autocomplete for conditions
@@ -399,6 +417,8 @@ export class SettingsRoleTrackingCommands {
         }
       }
 
+      const staffOnly = staffOnlyInput ?? existingConfig?.staffOnly ?? false;
+
       // Start with existing config if updating, otherwise create default
       let roleConfig: RoleTrackingConfig;
       if (isUpdating && existingConfig) {
@@ -418,10 +438,11 @@ export class SettingsRoleTrackingCommands {
           const existingPatrolThreshold = roleConfig.patrolTimeThresholdHours;
           const existingCustomStaffPingMessage = roleConfig.customStaffPingMessage;
           
-          const newDefaultConfig = this.getDefaultConfig(role.name, deadline, role.id);
-          roleConfig.warnings = newDefaultConfig.warnings;
+          const newDefaultConfig = this.getDefaultConfig(role.name, deadline, role.id, staffOnly);
+          roleConfig.warnings = staffOnly ? [] : newDefaultConfig.warnings;
           roleConfig.staffPingOffset = newDefaultConfig.staffPingOffset;
           roleConfig.staffPingMessage = newDefaultConfig.staffPingMessage;
+          roleConfig.staffOnly = staffOnly || undefined;
           
           // Restore preserved values
           if (existingConditions !== undefined) {
@@ -445,7 +466,12 @@ export class SettingsRoleTrackingCommands {
         }
       } else {
         // Create default configuration for new role
-        roleConfig = this.getDefaultConfig(role.name, deadlineToUse, role.id);
+        roleConfig = this.getDefaultConfig(role.name, deadlineToUse, role.id, staffOnly);
+      }
+
+      if (staffOnly) {
+        roleConfig.staffOnly = true;
+        roleConfig.warnings = [];
       }
       
       // Update patrol threshold if provided
@@ -577,6 +603,11 @@ export class SettingsRoleTrackingCommands {
         {
           name: "Warnings",
           value: `${roleConfig.warnings.length} warning(s) configured`,
+          inline: true,
+        },
+        {
+          name: "Staff Only",
+          value: roleConfig.staffOnly ? "Yes" : "No",
           inline: true,
         },
       ];
