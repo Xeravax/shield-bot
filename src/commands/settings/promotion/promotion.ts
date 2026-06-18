@@ -21,6 +21,30 @@ function scrubRoleDisplay(name: string): string {
   return name.replace(/[^a-zA-Z.]/g, "") || name;
 }
 
+function describePromotionRule(
+  currentRankName: string,
+  nextRankName: string,
+  rule: PromotionRule,
+): string {
+  const cooldownStr =
+    rule.cooldownHours !== null && rule.cooldownHours !== undefined ? `, cooldown ${rule.cooldownHours}h` : "";
+  const declinedStr =
+    rule.declinedCooldownHours !== undefined && rule.declinedCooldownHours !== null
+      ? `, declined ${rule.declinedCooldownHours}h`
+      : `, declined ${DEFAULT_DECLINED_COOLDOWN_HOURS}h (default)`;
+  return `${scrubRoleDisplay(currentRankName)} → ${scrubRoleDisplay(nextRankName)} at ${rule.requiredHours}h${cooldownStr}${declinedStr}`;
+}
+
+function findPromotionRuleIndex(
+  rules: PromotionRule[],
+  currentRankRoleId: string,
+  nextRankRoleId: string,
+): number {
+  return rules.findIndex(
+    (r) => r.currentRankRoleId === currentRankRoleId && r.nextRankRoleId === nextRankRoleId,
+  );
+}
+
 function formatRuleCooldownLabel(r: PromotionRule | RuleEligibilityEntry): string {
   const cooldown =
     r.cooldownHours !== null && r.cooldownHours !== undefined ? `, cooldown ${r.cooldownHours}h` : "";
@@ -333,6 +357,13 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       where: { guildId: interaction.guildId },
     });
     const existing = (settings?.promotionRules as PromotionRule[] | null) ?? [];
+    if (findPromotionRuleIndex(existing, currentRank.id, nextRank.id) !== -1) {
+      await interaction.reply({
+        content: `❌ A rule already exists for ${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)}. Use \`edit-rule\` to change it in place.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const newRule: PromotionRule = {
       currentRankRoleId: currentRank.id,
       nextRankRoleId: nextRank.id,
@@ -348,12 +379,7 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       update: { promotionRules: updated as unknown as object },
       create: { guildId: interaction.guildId, promotionRules: updated as unknown as object },
     });
-    const cooldownStr = cooldownHours !== null && cooldownHours !== undefined ? `, cooldown ${cooldownHours}h` : "";
-    const declinedStr =
-      declinedCooldownHours !== null && declinedCooldownHours !== undefined
-        ? `, declined ${declinedCooldownHours}h`
-        : "";
-    const ruleDesc = `${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)} at ${requiredHours}h${cooldownStr}${declinedStr}`;
+    const ruleDesc = describePromotionRule(currentRank.name, nextRank.name, newRule);
     await patrolTimer.logCommandUsage(
       interaction.guildId,
       "promotion-add-rule",
@@ -418,6 +444,140 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     );
     await interaction.reply({
       content: `✅ Removed rule: ${removedRuleDesc}.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
+    name: "edit-rule",
+    description: "Edit an existing promotion rule in place (keeps enrolled users' progress)",
+  })
+  async editRule(
+    @SlashOption({
+      name: "current_rank",
+      description: "Current rank role (identifies the rule)",
+      type: ApplicationCommandOptionType.Role,
+      required: true,
+    })
+    currentRank: Role,
+    @SlashOption({
+      name: "next_rank",
+      description: "Next rank role (identifies the rule)",
+      type: ApplicationCommandOptionType.Role,
+      required: true,
+    })
+    nextRank: Role,
+    @SlashOption({
+      name: "required_hours",
+      description: "New required patrol hours (omit to keep current)",
+      type: ApplicationCommandOptionType.Number,
+      required: false,
+      minValue: 0.1,
+      maxValue: 10000,
+    })
+    requiredHours: number | undefined,
+    @SlashOption({
+      name: "cooldown_hours",
+      description: "New cooldown hours (omit to keep; 0 removes cooldown)",
+      type: ApplicationCommandOptionType.Number,
+      required: false,
+      minValue: 0,
+      maxValue: 5000,
+    })
+    cooldownHours: number | undefined,
+    @SlashOption({
+      name: "declined_cooldown_hours",
+      description: "New declined cooldown hours after denial (omit to keep current)",
+      type: ApplicationCommandOptionType.Number,
+      required: false,
+      minValue: 1,
+      maxValue: 5000,
+    })
+    declinedCooldownHours: number | undefined,
+    @SlashOption({
+      name: "use_default_declined_cooldown",
+      description: "Revert declined cooldown to the default (360h / 15 days)",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    useDefaultDeclinedCooldown: boolean | undefined,
+    interaction: CommandInteraction,
+  ) {
+    if (!interaction.guildId) {
+      return;
+    }
+
+    const hasChange =
+      requiredHours !== undefined ||
+      cooldownHours !== undefined ||
+      declinedCooldownHours !== undefined ||
+      useDefaultDeclinedCooldown === true;
+    if (!hasChange) {
+      await interaction.reply({
+        content: "❌ Provide at least one value to change (`required_hours`, `cooldown_hours`, `declined_cooldown_hours`, or `use_default_declined_cooldown`).",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (useDefaultDeclinedCooldown && declinedCooldownHours !== undefined) {
+      await interaction.reply({
+        content: "❌ Use either `declined_cooldown_hours` or `use_default_declined_cooldown`, not both.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const settings = await prisma.guildSettings.findUnique({
+      where: { guildId: interaction.guildId },
+    });
+    const rules = [...((settings?.promotionRules as PromotionRule[] | null) ?? [])];
+    const ruleIndex = findPromotionRuleIndex(rules, currentRank.id, nextRank.id);
+    if (ruleIndex === -1) {
+      await interaction.reply({
+        content: `❌ No rule found for ${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)}. Use \`add-rule\` to create one.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const beforeDesc = describePromotionRule(currentRank.name, nextRank.name, rules[ruleIndex]);
+    const updatedRule: PromotionRule = { ...rules[ruleIndex] };
+
+    if (requiredHours !== undefined) {
+      updatedRule.requiredHours = requiredHours;
+    }
+    if (cooldownHours !== undefined) {
+      if (cooldownHours > 0) {
+        updatedRule.cooldownHours = cooldownHours;
+      } else {
+        delete updatedRule.cooldownHours;
+      }
+    }
+    if (useDefaultDeclinedCooldown) {
+      delete updatedRule.declinedCooldownHours;
+    } else if (declinedCooldownHours !== undefined) {
+      updatedRule.declinedCooldownHours = declinedCooldownHours;
+    }
+
+    rules[ruleIndex] = updatedRule;
+    await prisma.guildSettings.upsert({
+      where: { guildId: interaction.guildId },
+      update: { promotionRules: rules as unknown as object },
+      create: { guildId: interaction.guildId, promotionRules: rules as unknown as object },
+    });
+
+    const afterDesc = describePromotionRule(currentRank.name, nextRank.name, updatedRule);
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "promotion-edit-rule",
+      interaction.user.id,
+      undefined,
+      `${beforeDesc} → ${afterDesc}`,
+    );
+
+    await interaction.reply({
+      content: `✅ Updated rule in place.\n**Before:** ${beforeDesc}\n**After:** ${afterDesc}\n\nExisting notification and cooldown records for this rank pair are unchanged.`,
       flags: MessageFlags.Ephemeral,
     });
   }
