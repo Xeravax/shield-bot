@@ -25,15 +25,6 @@ import type { RoleTrackingConfigMap, CustomMessageData } from "../../../managers
 import { parseDurationToMs, isValidDuration } from "../../../utility/roleTracking/durationParser.js";
 
 @Discord()
-@SlashGroup({
-  name: "role-tracking",
-  description: "Role tracking",
-})
-@SlashGroup({
-  name: "settings",
-  description: "Settings",
-  root: "role-tracking",
-})
 @SlashGroup("settings", "role-tracking")
 @Guard(StaffGuard)
 export class SettingsRoleTrackingWarnCommands {
