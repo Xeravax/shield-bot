@@ -18,6 +18,10 @@ import {
   formatPromotionUserLines,
   getMainVRChatAccountInfo,
 } from "../../../../utility/vrchat/promotionAccountInfo.js";
+import {
+  DEFAULT_DECLINED_COOLDOWN_HOURS,
+  getDeclinedCooldownHours,
+} from "../../../../managers/patrol/patrolTimerManager.js";
 
 /** Parse patrol-promo:action:guildId:userId:currentRankRoleId:nextRankRoleId */
 function parseCustomId(customId: string): { guildId: string; userId: string; currentRankRoleId: string; nextRankRoleId: string } | null {
@@ -269,13 +273,12 @@ export class PatrolPromotionButtonHandlers {
         data: { status: "DENIED", resolvedAt: now, resolvedBy: interaction.user.id },
       });
 
-      await prisma.voicePatrolRoleObtainedAt.upsert({
-        where: {
-          guildId_userId_roleId: { guildId, userId, roleId: currentRankRoleId },
-        },
-        update: { obtainedAt: now },
-        create: { guildId, userId, roleId: currentRankRoleId, obtainedAt: now },
-      });
+      const settings = await patrolTimer.getSettings(guildId);
+      const rules = patrolTimer.getEffectivePromotionRules(settings);
+      const rule = rules?.find(
+        (r) => r.currentRankRoleId === currentRankRoleId && r.nextRankRoleId === nextRankRoleId,
+      );
+      const declinedHours = rule ? getDeclinedCooldownHours(rule) : DEFAULT_DECLINED_COOLDOWN_HOURS;
 
       const currentRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current");
       const nextRankName = scrubRoleDisplay(interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next");
@@ -287,7 +290,7 @@ export class PatrolPromotionButtonHandlers {
       const resolvedContent = [
         "**Patrol promotion – denied**",
         "",
-        "❌ Not promoted. Cooldown reset; they can be considered again after cooldown and once they have new patrol time.",
+        "❌ Not promoted. They can be considered again after the declined cooldown and once they have new patrol time.",
         "",
         ...formatPromotionUserLines(userId, userTag, mainAccount),
         "",
@@ -296,6 +299,9 @@ export class PatrolPromotionButtonHandlers {
         "",
         "**Denied by**",
         `<@${interaction.user.id}>`,
+        "",
+        "**Declined cooldown**",
+        `${declinedHours}h before re-suggestion for this rank`,
         "",
         `<t:${Math.floor(Date.now() / 1000)}:F>`,
       ].join("\n");
@@ -315,7 +321,7 @@ export class PatrolPromotionButtonHandlers {
         "promotion-denied",
         interaction.user.id,
         userId,
-        `${currentRankName} → ${nextRankName}. Cooldown reset.`,
+        `${currentRankName} → ${nextRankName}. Declined cooldown: ${declinedHours}h.`,
       );
 
       loggers.patrol.info(`Promotion denied for user ${userId}: ${currentRankName} → ${nextRankName} by ${interaction.user.tag}; cooldown reset`);

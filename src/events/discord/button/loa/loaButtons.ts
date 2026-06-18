@@ -12,6 +12,7 @@ import { StaffGuard } from "../../../../utility/guards.js";
 import { loaManager, patrolTimer, prisma } from "../../../../main.js";
 import { formatDuration } from "../../../../utility/timeParser.js";
 import { loggers } from "../../../../utility/logger.js";
+import { buildLOARequestEmbed, getLOAMessageLink } from "../../../../managers/loa/loaManager.js";
 
 @Discord()
 export class LOAButtonHandlers {
@@ -56,38 +57,10 @@ export class LOAButtonHandlers {
         return;
       }
 
-      // Update embed
-      const embed = new EmbedBuilder()
-        .setTitle("Leave of Absence Request")
-        .setDescription(`**User:** <@${loa.user.discordId}>\n**Status:** ${loa.status === "ACTIVE" ? "✅ Active" : "✅ Approved"}`)
-        .addFields(
-          {
-            name: "Duration",
-            value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
-            inline: true,
-          },
-          {
-            name: "Start Date",
-            value: `<t:${Math.floor(loa.startDate.getTime() / 1000)}:F>`,
-            inline: true,
-          },
-          {
-            name: "End Date",
-            value: `<t:${Math.floor(loa.endDate.getTime() / 1000)}:F>`,
-            inline: true,
-          },
-          {
-            name: "Reason",
-            value: loa.reason,
-          },
-          {
-            name: "Approved By",
-            value: `<@${loa.approvedBy}>`,
-            inline: true,
-          },
-        )
-        .setColor(Colors.Green)
-        .setTimestamp();
+      const embed = buildLOARequestEmbed(
+        loa,
+        loa.status === "ACTIVE" ? "active" : "approved",
+      );
 
       // Add "End Early" button if active
       const components: ActionRowBuilder<ButtonBuilder>[] = [];
@@ -117,8 +90,11 @@ export class LOAButtonHandlers {
       // Notify user
       try {
         const user = await interaction.client.users.fetch(loa.user.discordId);
+        const messageLink = getLOAMessageLink(loa);
+        const linkLine = messageLink ? `\n\n[View your LOA request in the server](${messageLink})` : "";
         await user.send({
-          content: `✅ Your LOA request has been approved! Your LOA is now ${loa.status === "ACTIVE" ? "active" : "scheduled to start"}.\n\n**Duration:** ${formatDuration(loa.endDate.getTime() - loa.startDate.getTime())}\n**End Date:** <t:${Math.floor(loa.endDate.getTime() / 1000)}:F>`,
+          content: `✅ Your LOA request has been approved! Your LOA is now ${loa.status === "ACTIVE" ? "active" : "scheduled to start"}.${linkLine}`,
+          embeds: [embed],
         });
       } catch (_error) {
         loggers.bot.debug(`Could not DM user ${loa.user.discordId} about LOA approval`);
@@ -174,45 +150,7 @@ export class LOAButtonHandlers {
         return;
       }
 
-      // Update original message
-      const embed = new EmbedBuilder()
-        .setTitle("Leave of Absence Request")
-        .setDescription(`**User:** <@${loa.user.discordId}>\n**Status:** ❌ Denied`)
-        .addFields(
-          {
-            name: "Duration",
-            value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
-            inline: true,
-          },
-          {
-            name: "Start Date",
-            value: `<t:${Math.floor(loa.startDate.getTime() / 1000)}:F>`,
-            inline: true,
-          },
-          {
-            name: "End Date",
-            value: `<t:${Math.floor(loa.endDate.getTime() / 1000)}:F>`,
-            inline: true,
-          },
-          {
-            name: "Reason",
-            value: loa.reason,
-          },
-          {
-            name: "Denied By",
-            value: `<@${loa.deniedBy}>`,
-            inline: true,
-          },
-        )
-        .setColor(Colors.Red)
-        .setTimestamp();
-
-      if (loa.denialReason) {
-        embed.addFields({
-          name: "Denial Reason",
-          value: loa.denialReason,
-        });
-      }
+      const embed = buildLOARequestEmbed(loa, "denied");
 
       await interaction.editReply({
         embeds: [embed],
@@ -346,7 +284,7 @@ export class LOAButtonHandlers {
             : canLegacyOverride && currentOriginalMessageId
               ? { channelId: interaction.channel.id, messageId: currentOriginalMessageId }
               : undefined;
-        await loaManager.updateAnnouncementToClosedState(loa, "ended_early", messageOverride);
+        await loaManager.notifyLOAEnded(loa, "ended_early", messageOverride);
 
         if (interaction.guildId) {
           await patrolTimer.logCommandUsage(

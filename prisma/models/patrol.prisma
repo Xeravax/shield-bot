@@ -70,14 +70,31 @@ model VoicePatrolPromotionNotification {
 
 /// When a user received a role that is a promotion "current rank" (for cooldown: hours since obtaining role).
 model VoicePatrolRoleObtainedAt {
-  id         Int      @id @default(autoincrement())
-  guildId    String
-  userId     String   // Discord User ID → User.discordId
-  user       User     @relation(fields: [userId], references: [discordId], onDelete: Cascade)
-  roleId     String
-  obtainedAt DateTime
+  id                         Int       @id @default(autoincrement())
+  guildId                    String
+  userId                     String    // Discord User ID → User.discordId
+  user                       User      @relation(fields: [userId], references: [discordId], onDelete: Cascade)
+  roleId                     String
+  obtainedAt                 DateTime
+  cooldownPausedAt           DateTime?
+  cooldownPauseAccumulatedMs BigInt    @default(0)
 
   @@unique([guildId, userId, roleId], map: "VoicePatrolRoleObtainedAt_guild_user_role_unique")
   @@index([guildId], map: "VoicePatrolRoleObtainedAt_guild_idx")
   @@index([userId], map: "VoicePatrolRoleObtainedAt_user_idx")
+}
+
+/// Staff blocklist: users who should never receive promotion suggestions.
+model VoicePatrolPromotionBlock {
+  id        Int      @id @default(autoincrement())
+  guildId   String
+  userId    String   // Discord User ID → User.discordId
+  user      User     @relation(fields: [userId], references: [discordId], onDelete: Cascade)
+  reason    String?
+  setBy     String?
+  createdAt DateTime @default(now())
+
+  @@unique([guildId, userId], map: "VoicePatrolPromotionBlock_guild_user_unique")
+  @@index([guildId], map: "VoicePatrolPromotionBlock_guild_idx")
+  @@index([userId], map: "VoicePatrolPromotionBlock_user_idx")
 }

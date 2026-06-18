@@ -35,7 +35,35 @@ export interface PromotionRule {
   nextRankRoleId: string;
   requiredHours: number;
   cooldownHours?: number;
+  declinedCooldownHours?: number;
 }
+
+export const DEFAULT_DECLINED_COOLDOWN_HOURS = 360;
+
+export function getDeclinedCooldownHours(rule: PromotionRule): number {
+  return rule.declinedCooldownHours ?? DEFAULT_DECLINED_COOLDOWN_HOURS;
+}
+
+type RoleObtainedRow = {
+  obtainedAt: Date;
+  cooldownPausedAt: Date | null;
+  cooldownPauseAccumulatedMs: bigint;
+};
+
+type PromotionNotificationSnapshot = {
+  status: string;
+  totalHoursAtNotify: number | null | undefined;
+  resolvedAt: Date | null;
+} | null;
+
+export type PromotionCooldownStatus = {
+  met: boolean;
+  unchecked: boolean;
+  kind: "none" | "normal" | "declined" | "unchecked";
+  line: string | null;
+  hoursSince: number | null;
+  requiredHours: number;
+};
 
 /** Per-rule eligibility breakdown for promotion check reporting */
 export interface RuleEligibilityEntry {
@@ -43,6 +71,7 @@ export interface RuleEligibilityEntry {
   nextRankName: string;
   requiredHours: number;
   cooldownHours: number | undefined;
+  declinedCooldownHours: number;
   hasCurrentRole: boolean;
   totalHours: number;
   hoursMet: boolean;
@@ -50,8 +79,17 @@ export interface RuleEligibilityEntry {
   cooldownObtainedAt: Date | null;
   hoursSinceCooldownStart: number | null;
   cooldownMet: boolean;
+  cooldownKind: PromotionCooldownStatus["kind"];
   alreadyNotified: boolean;
   eligible: boolean;
+}
+
+export interface PromotionEligibilityReport {
+  totalHours: number;
+  rules: RuleEligibilityEntry[];
+  onLOA: boolean;
+  blocked: boolean;
+  blockReason: string | null;
 }
 
 const MONTH_NAMES = [
@@ -206,13 +244,145 @@ export class PatrolTimerManager {
    * Returns null if we have no record (e.g. they had the role before the bot recorded it).
    */
   async getRoleObtainedAt(guildId: string, discordId: string, roleId: string): Promise<Date | null> {
+    const row = await this.getRoleObtainedRecord(guildId, discordId, roleId);
+    return row?.obtainedAt ?? null;
+  }
+
+  async getRoleObtainedRecord(
+    guildId: string,
+    discordId: string,
+    roleId: string,
+  ): Promise<RoleObtainedRow | null> {
     const row = await prisma.voicePatrolRoleObtainedAt.findUnique({
       where: {
         guildId_userId_roleId: { guildId, userId: discordId, roleId },
       },
-      select: { obtainedAt: true },
+      select: {
+        obtainedAt: true,
+        cooldownPausedAt: true,
+        cooldownPauseAccumulatedMs: true,
+      },
     });
-    return row?.obtainedAt ?? null;
+    return row ?? null;
+  }
+
+  getEffectiveHoursSinceRoleObtained(row: RoleObtainedRow, nowMs = Date.now()): number {
+    const accumulated = Number(row.cooldownPauseAccumulatedMs);
+    const activePause = row.cooldownPausedAt ? nowMs - row.cooldownPausedAt.getTime() : 0;
+    const elapsedMs = nowMs - row.obtainedAt.getTime() - accumulated - activePause;
+    return Math.max(0, elapsedMs) / (1000 * 60 * 60);
+  }
+
+  async pausePromotionCooldown(guildId: string, userId: string): Promise<void> {
+    const now = new Date();
+    await prisma.voicePatrolRoleObtainedAt.updateMany({
+      where: { guildId, userId, cooldownPausedAt: null },
+      data: { cooldownPausedAt: now },
+    });
+  }
+
+  async resumePromotionCooldown(guildId: string, userId: string): Promise<void> {
+    const rows = await prisma.voicePatrolRoleObtainedAt.findMany({
+      where: { guildId, userId, cooldownPausedAt: { not: null } },
+    });
+    const nowMs = Date.now();
+    for (const row of rows) {
+      if (!row.cooldownPausedAt) {
+        continue;
+      }
+      const pauseMs = nowMs - row.cooldownPausedAt.getTime();
+      await prisma.voicePatrolRoleObtainedAt.update({
+        where: { id: row.id },
+        data: {
+          cooldownPauseAccumulatedMs: row.cooldownPauseAccumulatedMs + BigInt(pauseMs),
+          cooldownPausedAt: null,
+        },
+      });
+    }
+  }
+
+  async isPromotionBlocked(guildId: string, userId: string): Promise<{ blocked: boolean; reason: string | null }> {
+    const block = await prisma.voicePatrolPromotionBlock.findUnique({
+      where: { guildId_userId: { guildId, userId } },
+      select: { reason: true },
+    });
+    return { blocked: block !== null, reason: block?.reason ?? null };
+  }
+
+  async getPromotionCooldownStatus(
+    guildId: string,
+    userId: string,
+    rule: PromotionRule,
+    currentRankName: string,
+    notification: PromotionNotificationSnapshot,
+    bypassCooldown: boolean,
+  ): Promise<PromotionCooldownStatus> {
+    if (bypassCooldown) {
+      return {
+        met: true,
+        unchecked: false,
+        kind: "none",
+        line: "Cooldown: bypassed (staff suggestion).",
+        hoursSince: null,
+        requiredHours: 0,
+      };
+    }
+
+    if (notification?.status === "DENIED" && notification.resolvedAt) {
+      const requiredHours = getDeclinedCooldownHours(rule);
+      const hoursSince = (Date.now() - notification.resolvedAt.getTime()) / (1000 * 60 * 60);
+      const met = hoursSince >= requiredHours;
+      const remaining = requiredHours - hoursSince;
+      const line = met
+        ? `Declined cooldown: ${hoursSince.toFixed(1)}h since denial for **${currentRankName}** promotion (required ${requiredHours}h). ✓`
+        : `Declined cooldown: ${hoursSince.toFixed(1)}h since denial (required ${requiredHours}h). **${remaining.toFixed(1)}h remaining.**`;
+      return {
+        met,
+        unchecked: false,
+        kind: "declined",
+        line,
+        hoursSince,
+        requiredHours,
+      };
+    }
+
+    if (rule.cooldownHours === undefined || rule.cooldownHours === null || rule.cooldownHours <= 0) {
+      return {
+        met: true,
+        unchecked: false,
+        kind: "none",
+        line: null,
+        hoursSince: null,
+        requiredHours: 0,
+      };
+    }
+
+    const row = await this.getRoleObtainedRecord(guildId, userId, rule.currentRankRoleId);
+    if (row === null) {
+      return {
+        met: true,
+        unchecked: true,
+        kind: "unchecked",
+        line: `Cooldown: no role-obtained data (unchecked). Required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`,
+        hoursSince: null,
+        requiredHours: rule.cooldownHours,
+      };
+    }
+
+    const hoursSince = this.getEffectiveHoursSinceRoleObtained(row);
+    const met = hoursSince >= rule.cooldownHours;
+    const remaining = rule.cooldownHours - hoursSince;
+    const line = met
+      ? `Cooldown: ${hoursSince.toFixed(1)}h since obtaining **${currentRankName}** (required ${rule.cooldownHours}h). ✓`
+      : `Cooldown: ${hoursSince.toFixed(1)}h since obtaining **${currentRankName}** (required ${rule.cooldownHours}h). **${remaining.toFixed(1)}h remaining.**`;
+    return {
+      met,
+      unchecked: false,
+      kind: "normal",
+      line,
+      hoursSince,
+      requiredHours: rule.cooldownHours,
+    };
   }
 
   async setBotuserRole(_guildId: string, _roleId: string | null) {
@@ -1371,7 +1541,7 @@ export class PatrolTimerManager {
   async getPromotionEligibilityReport(
     guildId: string,
     member: GuildMember,
-  ): Promise<{ totalHours: number; rules: RuleEligibilityEntry[] } | null> {
+  ): Promise<PromotionEligibilityReport | null> {
     const settings = await this.getSettings(guildId);
     const rules = this.getEffectivePromotionRules(settings);
     if (!rules || rules.length === 0) {
@@ -1379,29 +1549,39 @@ export class PatrolTimerManager {
     }
     const totalTime = await this.getUserTotal(guildId, member.id);
     const totalHours = totalTime / (1000 * 60 * 60);
+    const onLOA = (await loaManager.getActiveLOA(guildId, member.id)) !== null;
+    const block = await this.isPromotionBlocked(guildId, member.id);
     const entries: RuleEligibilityEntry[] = [];
     for (const rule of rules) {
       const hasCurrentRole = member.roles.cache.has(rule.currentRankRoleId);
       const hoursMet = totalHours >= rule.requiredHours;
       const hoursRemaining = Math.max(0, rule.requiredHours - totalHours);
-      let cooldownObtainedAt: Date | null = null;
-      let hoursSinceCooldownStart: number | null = null;
-      let cooldownMet = true;
-      if (rule.cooldownHours !== undefined && rule.cooldownHours !== null && rule.cooldownHours > 0 && hasCurrentRole) {
-        cooldownObtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
-        if (cooldownObtainedAt !== null) {
-          hoursSinceCooldownStart = (Date.now() - cooldownObtainedAt.getTime()) / (1000 * 60 * 60);
-          cooldownMet = hoursSinceCooldownStart >= rule.cooldownHours;
-        } else {
-          cooldownMet = false;
-        }
-      }
+      const currentRankName = scrubRoleDisplay(
+        member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? rule.currentRankRoleId,
+      );
+      const nextRankName = scrubRoleDisplay(
+        member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? rule.nextRankRoleId,
+      );
       const notificationForRule = await prisma.voicePatrolPromotionNotification.findUnique({
         where: {
           guildId_userId_nextRankRoleId: { guildId, userId: member.id, nextRankRoleId: rule.nextRankRoleId },
         },
-        select: { status: true, totalHoursAtNotify: true },
+        select: { status: true, totalHoursAtNotify: true, resolvedAt: true },
       });
+      const cooldownStatus = await this.getPromotionCooldownStatus(
+        guildId,
+        member.id,
+        rule,
+        currentRankName,
+        notificationForRule,
+        false,
+      );
+      const cooldownObtainedAt =
+        cooldownStatus.kind === "normal"
+          ? (await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId))
+          : notificationForRule?.status === "DENIED" && notificationForRule.resolvedAt
+            ? notificationForRule.resolvedAt
+            : null;
       const alreadyNotified = !!(
         notificationForRule &&
         (notificationForRule.status === "PENDING" ||
@@ -1409,30 +1589,32 @@ export class PatrolTimerManager {
           (notificationForRule.status === "DENIED" &&
             !hasEnoughHoursSinceLastNotification(totalHours, notificationForRule.totalHoursAtNotify)))
       );
-      const eligible = hasCurrentRole && hoursMet && cooldownMet && !alreadyNotified;
-      const currentRankName = scrubRoleDisplay(
-        member.guild.roles.cache.get(rule.currentRankRoleId)?.name ?? rule.currentRankRoleId,
-      );
-      const nextRankName = scrubRoleDisplay(
-        member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? rule.nextRankRoleId,
-      );
+      const eligible =
+        !onLOA &&
+        !block.blocked &&
+        hasCurrentRole &&
+        hoursMet &&
+        cooldownStatus.met &&
+        !alreadyNotified;
       entries.push({
         currentRankName,
         nextRankName,
         requiredHours: rule.requiredHours,
         cooldownHours: rule.cooldownHours,
+        declinedCooldownHours: getDeclinedCooldownHours(rule),
         hasCurrentRole,
         totalHours,
         hoursMet,
         hoursRemaining,
         cooldownObtainedAt,
-        hoursSinceCooldownStart,
-        cooldownMet,
+        hoursSinceCooldownStart: cooldownStatus.hoursSince,
+        cooldownMet: cooldownStatus.met,
+        cooldownKind: cooldownStatus.kind,
         alreadyNotified,
         eligible,
       });
     }
-    return { totalHours, rules: entries };
+    return { totalHours, rules: entries, onLOA, blocked: block.blocked, blockReason: block.reason };
   }
 
   /**
@@ -1457,6 +1639,13 @@ export class PatrolTimerManager {
       if (!rules || rules.length === 0) {
         return false;
       }
+      if (await loaManager.getActiveLOA(guildId, member.id)) {
+        return false;
+      }
+      const block = await this.isPromotionBlocked(guildId, member.id);
+      if (block.blocked) {
+        return false;
+      }
       const totalTime = await this.getUserTotal(guildId, member.id);
       const totalHours = totalTime / (1000 * 60 * 60);
       const channel = await member.guild.channels.fetch(settings.promotionChannelId);
@@ -1470,24 +1659,11 @@ export class PatrolTimerManager {
         if (totalHours < rule.requiredHours) {
           continue;
         }
-        let cooldownUnchecked = false;
-        if (!bypassCooldown && rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0) {
-          const obtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
-          if (obtainedAt === null) {
-            cooldownUnchecked = true;
-            // Continue with notification but mark cooldown as unchecked
-          } else {
-            const hoursSinceObtained = (Date.now() - obtainedAt.getTime()) / (1000 * 60 * 60);
-            if (hoursSinceObtained < rule.cooldownHours) {
-              continue;
-            }
-          }
-        }
         const notification = await prisma.voicePatrolPromotionNotification.findUnique({
           where: {
             guildId_userId_nextRankRoleId: { guildId, userId: member.id, nextRankRoleId: rule.nextRankRoleId },
           },
-          select: { id: true, status: true, totalHoursAtNotify: true },
+          select: { id: true, status: true, totalHoursAtNotify: true, resolvedAt: true },
         });
         if (notification) {
           if (notification.status === "PENDING" || notification.status === "APPROVED") {
@@ -1497,7 +1673,6 @@ export class PatrolTimerManager {
             if (!hasEnoughHoursSinceLastNotification(totalHours, notification.totalHoursAtNotify)) {
               continue;
             }
-            // Re-propose: will update this row after sending
           }
         }
         const currentRankName = scrubRoleDisplay(
@@ -1506,27 +1681,25 @@ export class PatrolTimerManager {
         const nextRankName = scrubRoleDisplay(
           member.guild.roles.cache.get(rule.nextRankRoleId)?.name ?? "Next",
         );
-        let hoursSinceCooldownStart: number | null = null;
-        if (rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0) {
-          const obtainedAt = await this.getRoleObtainedAt(guildId, member.id, rule.currentRankRoleId);
-          if (obtainedAt !== null) {
-            hoursSinceCooldownStart = (Date.now() - obtainedAt.getTime()) / (1000 * 60 * 60);
-          }
+        const cooldownStatus = await this.getPromotionCooldownStatus(
+          guildId,
+          member.id,
+          rule,
+          currentRankName,
+          notification,
+          bypassCooldown,
+        );
+        if (!cooldownStatus.met && !cooldownStatus.unchecked) {
+          continue;
         }
-        const cooldownLine =
-          bypassCooldown
-            ? `Cooldown: bypassed (staff suggestion).`
-            : rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
-              ? cooldownUnchecked
-                ? `Cooldown: no role-obtained data (unchecked). Required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`
-                : hoursSinceCooldownStart !== null
-                  ? `Cooldown: ${hoursSinceCooldownStart.toFixed(1)}h since obtaining **${currentRankName}** (required ${rule.cooldownHours}h). ✓`
-                  : `Cooldown: required ${rule.cooldownHours}h since obtaining **${currentRankName}**.`
-              : null;
+        const declinedStr =
+          rule.declinedCooldownHours !== undefined && rule.declinedCooldownHours !== null
+            ? `, declined cooldown ${rule.declinedCooldownHours}h`
+            : "";
         const ruleSummary =
           rule.cooldownHours !== null && rule.cooldownHours !== undefined && rule.cooldownHours > 0
-            ? `${rule.requiredHours}h patrol, ${rule.cooldownHours}h cooldown after current rank`
-            : `${rule.requiredHours}h patrol`;
+            ? `${rule.requiredHours}h patrol, ${rule.cooldownHours}h cooldown after current rank${declinedStr}`
+            : `${rule.requiredHours}h patrol${declinedStr}`;
         const mainAccount = await getMainVRChatAccountInfo(member.id);
         const lines: string[] = [
           "**Patrol promotion – 🟠 Pending**",
@@ -1546,13 +1719,15 @@ export class PatrolTimerManager {
           "**Total patrol hours**",
           `${totalHours.toFixed(1)}h (required: ${rule.requiredHours}h) ✓`,
         ];
-        if (cooldownLine) {
-          lines.push("", "**Cooldown**", cooldownLine);
+        if (cooldownStatus.line) {
+          lines.push("", "**Cooldown**", cooldownStatus.line);
         }
         lines.push(
           "",
           "**Why eligible**",
-          "Hours and cooldown met; first notification for this rank.",
+          notification?.status === "DENIED"
+            ? "Hours, declined cooldown, and extra patrol time met; re-proposing after denial."
+            : "Hours and cooldown met; first notification for this rank.",
           "",
           `<t:${Math.floor(Date.now() / 1000)}:F>`,
         );

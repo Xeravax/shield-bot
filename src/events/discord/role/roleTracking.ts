@@ -1,5 +1,5 @@
 import { ArgsOf, Discord, On } from "discordx";
-import { patrolTimer, prisma, roleTrackingManager } from "../../../main.js";
+import { patrolTimer, prisma, roleTrackingManager, loaManager } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
@@ -77,15 +77,15 @@ export class RoleTrackingEvents {
         const hasLOA = newRoles.has(loaRoleId);
 
         if (!hadLOA && hasLOA) {
-          // LOA role was added - tracking is paused (user will be skipped in scheduled checks)
+          await patrolTimer.pausePromotionCooldown(guildId, userId);
           loggers.bot.debug(
-            `LOA role added for user ${userId} in guild ${guildId} - tracking paused`,
+            `LOA role added for user ${userId} in guild ${guildId} - tracking and promotion cooldown paused`,
           );
         } else if (hadLOA && !hasLOA) {
-          // LOA role was removed - reset all timers
           await roleTrackingManager.handleLOARoleRemoval(guildId, userId);
+          await loaManager.handleLOARoleRemovedExternally(guildId, userId);
           loggers.bot.debug(
-            `LOA role removed for user ${userId} in guild ${guildId} - all timers reset`,
+            `LOA role removed for user ${userId} in guild ${guildId} - timers reset and LOA synced`,
           );
         }
       }
@@ -134,6 +134,7 @@ export class RoleTrackingEvents {
       if (rules && rules.length > 0) {
         const currentRankIds = new Set(rules.map((r) => r.currentRankRoleId));
         const now = new Date();
+        const onLOA = loaRoleId ? newRoles.has(loaRoleId) : false;
 
         for (const role of addedRoles.values()) {
           if (currentRankIds.has(role.id)) {
@@ -147,8 +148,17 @@ export class RoleTrackingEvents {
                 where: {
                   guildId_userId_roleId: { guildId, userId, roleId: role.id },
                 },
-                update: { obtainedAt: now },
-                create: { guildId, userId, roleId: role.id, obtainedAt: now },
+                update: {
+                  obtainedAt: now,
+                  ...(onLOA ? { cooldownPausedAt: now } : {}),
+                },
+                create: {
+                  guildId,
+                  userId,
+                  roleId: role.id,
+                  obtainedAt: now,
+                  ...(onLOA ? { cooldownPausedAt: now } : {}),
+                },
               });
               loggers.bot.debug(
                 `Promotion role obtained: user ${userId}, role ${role.id} in guild ${guildId}`,

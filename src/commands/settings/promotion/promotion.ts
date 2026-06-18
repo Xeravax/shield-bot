@@ -11,13 +11,80 @@ import {
 } from "discord.js";
 import { Prisma } from "../../../generated/prisma/index.js";
 import { prisma, patrolTimer } from "../../../main.js";
-import type { PromotionRule } from "../../../managers/patrol/patrolTimerManager.js";
+import type { PromotionRule, RuleEligibilityEntry, PromotionEligibilityReport } from "../../../managers/patrol/patrolTimerManager.js";
+import { DEFAULT_DECLINED_COOLDOWN_HOURS } from "../../../managers/patrol/patrolTimerManager.js";
 import { StaffGuard } from "../../../utility/guards.js";
 import { loggers } from "../../../utility/logger.js";
 
 /** Strip to only A-z and . so role names can't inject formatting. */
 function scrubRoleDisplay(name: string): string {
   return name.replace(/[^a-zA-Z.]/g, "") || name;
+}
+
+function formatRuleCooldownLabel(r: PromotionRule | RuleEligibilityEntry): string {
+  const cooldown =
+    r.cooldownHours !== null && r.cooldownHours !== undefined ? `, cooldown ${r.cooldownHours}h` : "";
+  const declined =
+    "declinedCooldownHours" in r && r.declinedCooldownHours !== DEFAULT_DECLINED_COOLDOWN_HOURS
+      ? `, declined ${r.declinedCooldownHours}h`
+      : "";
+  return `${cooldown}${declined}`;
+}
+
+function formatPromotionEligibilityReport(
+  header: string,
+  report: PromotionEligibilityReport | null,
+  totalHoursFallback: number,
+): string {
+  const totalHours = report?.totalHours ?? totalHoursFallback;
+  let content = `${header}\n**Total patrol hours:** ${totalHours.toFixed(2)}h\n\n`;
+  if (report?.onLOA) {
+    content += "⚠️ User is on **LOA** — promotion suggestions are paused.\n\n";
+  }
+  if (report?.blocked) {
+    content += `🚫 User is **blocked from promotion suggestions**${report.blockReason ? `: ${report.blockReason}` : ""}.\n\n`;
+  }
+  if (report && report.rules.length > 0) {
+    content += "**Why no promotion (per rule):**\n";
+    for (let i = 0; i < report.rules.length; i++) {
+      const r = report.rules[i];
+      const ruleTitle = `${i + 1}. ${r.currentRankName} → ${r.nextRankName} (requires ${r.requiredHours}h${formatRuleCooldownLabel(r)})`;
+      if (!r.hasCurrentRole) {
+        content += `• ${ruleTitle}\n  └ Not eligible: missing current rank role **${r.currentRankName}**.\n`;
+        continue;
+      }
+      const reasons: string[] = [];
+      if (!r.hoursMet) {
+        reasons.push(`hours: ${r.totalHours.toFixed(1)}h, need ${r.requiredHours}h (**${r.hoursRemaining.toFixed(1)}h more**)`);
+      } else {
+        reasons.push(`hours: ✓ (${r.totalHours.toFixed(1)}h ≥ ${r.requiredHours}h)`);
+      }
+      if (r.cooldownKind === "declined") {
+        if (!r.cooldownMet && r.hoursSinceCooldownStart !== null) {
+          const remaining = r.declinedCooldownHours - r.hoursSinceCooldownStart;
+          reasons.push(`declined cooldown: ${r.hoursSinceCooldownStart.toFixed(1)}h since denial (required ${r.declinedCooldownHours}h). **${remaining.toFixed(1)}h left**`);
+        } else if (r.hoursSinceCooldownStart !== null) {
+          reasons.push(`declined cooldown: ✓ (${r.hoursSinceCooldownStart.toFixed(1)}h since denial, required ${r.declinedCooldownHours}h)`);
+        }
+      } else if (r.cooldownHours !== undefined && r.cooldownHours !== null && r.cooldownHours > 0) {
+        if (r.cooldownKind === "unchecked") {
+          reasons.push(`cooldown: no data for when they got **${r.currentRankName}** (need ${r.cooldownHours}h since then)`);
+        } else if (!r.cooldownMet && r.hoursSinceCooldownStart !== null) {
+          const remaining = r.cooldownHours - r.hoursSinceCooldownStart;
+          reasons.push(`cooldown: ${r.hoursSinceCooldownStart.toFixed(1)}h since role (required ${r.cooldownHours}h). **${remaining.toFixed(1)}h left**`);
+        } else if (r.hoursSinceCooldownStart !== null) {
+          reasons.push(`cooldown: ✓ (${r.hoursSinceCooldownStart.toFixed(1)}h since role, required ${r.cooldownHours}h)`);
+        }
+      }
+      if (r.alreadyNotified) {
+        reasons.push(`already notified for **${r.nextRankName}** (denied users need **1+ extra hour** since last notification, or use \`reset-user\`)`);
+      }
+      content += `• ${ruleTitle}\n  └ ${reasons.join("; ")}\n`;
+    }
+  } else {
+    content += "No promotion rules are configured, or no detailed report could be generated.";
+  }
+  return content;
 }
 
 @Discord()
@@ -158,9 +225,13 @@ export class SettingsPatrolPromotionCommands {
     if (rules && rules.length > 0) {
       rulesBlock = "\n**Rules:**\n" + rules.map((r, i) => {
         const cooldown = r.cooldownHours !== null && r.cooldownHours !== undefined ? `, cooldown ${r.cooldownHours}h` : "";
+        const declined =
+          r.declinedCooldownHours !== undefined && r.declinedCooldownHours !== null
+            ? `, declined ${r.declinedCooldownHours}h`
+            : `, declined ${DEFAULT_DECLINED_COOLDOWN_HOURS}h (default)`;
         const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
         const nextLabel = scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId);
-        return `${i + 1}. ${currentName} → ${nextLabel} at ${r.requiredHours}h${cooldown}`;
+        return `${i + 1}. ${currentName} → ${nextLabel} at ${r.requiredHours}h${cooldown}${declined}`;
       }).join("\n");
     } else {
       rulesBlock = "\n**Rules:** No rules configured. Use add-rule.";
@@ -245,6 +316,15 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       maxValue: 5000,
     })
     cooldownHours: number | undefined,
+    @SlashOption({
+      name: "declined_cooldown_hours",
+      description: "Cooldown hours after denial for this rank (default 360h / 15 days)",
+      type: ApplicationCommandOptionType.Number,
+      required: false,
+      minValue: 0,
+      maxValue: 5000,
+    })
+    declinedCooldownHours: number | undefined,
     interaction: CommandInteraction,
   ) {
     if (!interaction.guildId) {return;}
@@ -258,6 +338,9 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       nextRankRoleId: nextRank.id,
       requiredHours,
       ...(cooldownHours !== null && cooldownHours !== undefined && cooldownHours >= 0 ? { cooldownHours } : {}),
+      ...(declinedCooldownHours !== null && declinedCooldownHours !== undefined && declinedCooldownHours >= 0
+        ? { declinedCooldownHours }
+        : {}),
     };
     const updated = [...existing, newRule];
     await prisma.guildSettings.upsert({
@@ -266,7 +349,11 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
       create: { guildId: interaction.guildId, promotionRules: updated as unknown as object },
     });
     const cooldownStr = cooldownHours !== null && cooldownHours !== undefined ? `, cooldown ${cooldownHours}h` : "";
-    const ruleDesc = `${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)} at ${requiredHours}h${cooldownStr}`;
+    const declinedStr =
+      declinedCooldownHours !== null && declinedCooldownHours !== undefined
+        ? `, declined ${declinedCooldownHours}h`
+        : "";
+    const ruleDesc = `${scrubRoleDisplay(currentRank.name)} → ${scrubRoleDisplay(nextRank.name)} at ${requiredHours}h${cooldownStr}${declinedStr}`;
     await patrolTimer.logCommandUsage(
       interaction.guildId,
       "promotion-add-rule",
@@ -436,9 +523,13 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
     const guild = interaction.guild;
     const lines = rules.map((r, i) => {
       const cooldown = r.cooldownHours !== null && r.cooldownHours !== undefined ? `, cooldown ${r.cooldownHours}h` : "";
+      const declined =
+        r.declinedCooldownHours !== undefined && r.declinedCooldownHours !== null
+          ? `, declined ${r.declinedCooldownHours}h`
+          : `, declined ${DEFAULT_DECLINED_COOLDOWN_HOURS}h (default)`;
       const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
       const next = scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId);
-      return `${i + 1}. ${currentName} → ${next} at ${r.requiredHours}h${cooldown}`;
+      return `${i + 1}. ${currentName} → ${next} at ${r.requiredHours}h${cooldown}${declined}`;
     });
     await interaction.reply({
       content: "**Promotion Rules**\n" + lines.join("\n"),
@@ -589,41 +680,13 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
           "No notification sent (not eligible or already notified).",
         );
         const report = await patrolTimer.getPromotionEligibilityReport(interaction.guildId, member);
-        const totalHours = report?.totalHours ?? (await patrolTimer.getUserTotal(interaction.guildId, user.id)) / (1000 * 60 * 60);
-        let content = `**Promotion check: <@${user.id}>**\n**Total patrol hours:** ${totalHours.toFixed(2)}h\n\n`;
-        if (report && report.rules.length > 0) {
-          content += "**Why no promotion (per rule):**\n";
-          for (let i = 0; i < report.rules.length; i++) {
-            const r = report.rules[i];
-            const ruleTitle = `${i + 1}. ${r.currentRankName} → ${r.nextRankName} (requires ${r.requiredHours}h${r.cooldownHours !== undefined && r.cooldownHours !== null ? `, cooldown ${r.cooldownHours}h` : ""})`;
-            if (!r.hasCurrentRole) {
-              content += `• ${ruleTitle}\n  └ Not eligible: you don't have the current rank role **${r.currentRankName}**. This rule only applies to members with that role.\n`;
-              continue;
-            }
-            const reasons: string[] = [];
-            if (!r.hoursMet) {
-              reasons.push(`hours: you have ${r.totalHours.toFixed(1)}h, need ${r.requiredHours}h (**${r.hoursRemaining.toFixed(1)}h more**)`);
-            } else {
-              reasons.push(`hours: ✓ (${r.totalHours.toFixed(1)}h ≥ ${r.requiredHours}h)`);
-            }
-            if (r.cooldownHours !== undefined && r.cooldownHours !== null && r.cooldownHours > 0) {
-              if (r.cooldownObtainedAt === null) {
-                reasons.push(`cooldown: no data for when you got **${r.currentRankName}** (need ${r.cooldownHours}h since then). Use role tracking or reset to fix.`);
-              } else if (!r.cooldownMet && r.hoursSinceCooldownStart !== null) {
-                const remaining = r.cooldownHours - r.hoursSinceCooldownStart;
-                reasons.push(`cooldown: ${r.hoursSinceCooldownStart.toFixed(1)}h since you got the role (required ${r.cooldownHours}h). **${remaining.toFixed(1)}h left** before eligible.`);
-              } else if (r.hoursSinceCooldownStart !== null) {
-                reasons.push(`cooldown: ✓ (${r.hoursSinceCooldownStart.toFixed(1)}h since role, required ${r.cooldownHours}h)`);
-              }
-            }
-            if (r.alreadyNotified) {
-              reasons.push(`already notified for **${r.nextRankName}** (denied users need **1+ extra hour** since last notification, or use \`reset-user\`)`);
-            }
-            content += `• ${ruleTitle}\n  └ ${reasons.join("; ")}\n`;
-          }
-        } else {
-          content += "No promotion rules are configured, or no detailed report could be generated.";
-        }
+        const totalHours =
+          report?.totalHours ?? (await patrolTimer.getUserTotal(interaction.guildId, user.id)) / (1000 * 60 * 60);
+        const content = formatPromotionEligibilityReport(
+          `**Promotion check: <@${user.id}>**`,
+          report,
+          totalHours,
+        );
         await interaction.editReply({ content });
       }
     } catch (err) {
@@ -707,30 +770,11 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
         const report = await patrolTimer.getPromotionEligibilityReport(interaction.guildId, member);
         const totalHours =
           report?.totalHours ?? (await patrolTimer.getUserTotal(interaction.guildId, user.id)) / (1000 * 60 * 60);
-        let content = `**Promotion suggest: <@${user.id}>** (cooldown bypassed)\n**Total patrol hours:** ${totalHours.toFixed(2)}h\n\n`;
-        if (report && report.rules.length > 0) {
-          content += "**Why no promotion (per rule):**\n";
-          for (let i = 0; i < report.rules.length; i++) {
-            const r = report.rules[i];
-            const ruleTitle = `${i + 1}. ${r.currentRankName} → ${r.nextRankName} (requires ${r.requiredHours}h${r.cooldownHours !== undefined && r.cooldownHours !== null ? `, cooldown ${r.cooldownHours}h` : ""})`;
-            if (!r.hasCurrentRole) {
-              content += `• ${ruleTitle}\n  └ Not eligible: they don't have the current rank role **${r.currentRankName}**.\n`;
-              continue;
-            }
-            const reasons: string[] = [];
-            if (!r.hoursMet) {
-              reasons.push(`hours: ${r.totalHours.toFixed(1)}h (need ${r.requiredHours}h, **${r.hoursRemaining.toFixed(1)}h more**)`);
-            } else {
-              reasons.push(`hours: ✓`);
-            }
-            if (r.alreadyNotified) {
-              reasons.push(`already notified for **${r.nextRankName}** (denied users need **1+ extra hour** since last notification, or use \`reset-user\`)`);
-            }
-            content += `• ${ruleTitle}\n  └ ${reasons.join("; ")}\n`;
-          }
-        } else {
-          content += "No promotion rules are configured, or no detailed report could be generated.";
-        }
+        const content = formatPromotionEligibilityReport(
+          `**Promotion suggest: <@${user.id}>** (cooldown bypassed)`,
+          report,
+          totalHours,
+        );
         await interaction.editReply({ content });
       }
     } catch (err) {
@@ -877,5 +921,105 @@ ${!settings.promotionChannelId ? "\n⚠️ Set channel to enable promotion notif
         content: "❌ An error occurred while resuggesting promotions. Please check the logs.",
       });
     }
+  }
+
+  @Slash({
+    name: "block-suggest",
+    description: "Block a user from promotion suggestions",
+  })
+  async blockSuggest(
+    @SlashOption({
+      name: "user",
+      description: "User to block",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    user: User,
+    @SlashOption({
+      name: "reason",
+      description: "Optional reason",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | undefined,
+    interaction: CommandInteraction,
+  ) {
+    if (!interaction.guildId) {
+      return;
+    }
+
+    await prisma.user.upsert({
+      where: { discordId: user.id },
+      create: { discordId: user.id },
+      update: {},
+    });
+
+    await prisma.voicePatrolPromotionBlock.upsert({
+      where: { guildId_userId: { guildId: interaction.guildId, userId: user.id } },
+      update: { reason: reason ?? null, setBy: interaction.user.id },
+      create: {
+        guildId: interaction.guildId,
+        userId: user.id,
+        reason: reason ?? null,
+        setBy: interaction.user.id,
+      },
+    });
+
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "promotion-block-suggest",
+      interaction.user.id,
+      user.id,
+      reason ?? "No reason provided",
+    );
+
+    await interaction.reply({
+      content: `✅ <@${user.id}> will no longer receive promotion suggestions.${reason ? `\n**Reason:** ${reason}` : ""}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
+    name: "unblock-suggest",
+    description: "Remove promotion suggestion block for a user",
+  })
+  async unblockSuggest(
+    @SlashOption({
+      name: "user",
+      description: "User to unblock",
+      type: ApplicationCommandOptionType.User,
+      required: true,
+    })
+    user: User,
+    interaction: CommandInteraction,
+  ) {
+    if (!interaction.guildId) {
+      return;
+    }
+
+    const deleted = await prisma.voicePatrolPromotionBlock.deleteMany({
+      where: { guildId: interaction.guildId, userId: user.id },
+    });
+
+    if (deleted.count === 0) {
+      await interaction.reply({
+        content: `ℹ️ <@${user.id}> was not blocked from promotion suggestions.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await patrolTimer.logCommandUsage(
+      interaction.guildId,
+      "promotion-unblock-suggest",
+      interaction.user.id,
+      user.id,
+      "Block removed",
+    );
+
+    await interaction.reply({
+      content: `✅ <@${user.id}> can receive promotion suggestions again.`,
+      flags: MessageFlags.Ephemeral,
+    });
   }
 }

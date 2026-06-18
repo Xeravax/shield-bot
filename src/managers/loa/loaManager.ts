@@ -1,4 +1,11 @@
-import { Client, Colors, EmbedBuilder } from "discord.js";
+import {
+  Client,
+  Colors,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} from "discord.js";
 import { prisma } from "../../main.js";
 import { formatDuration, parseRelativeTime } from "../../utility/timeParser.js";
 import { loggers } from "../../utility/logger.js";
@@ -7,6 +14,122 @@ import { LeaveOfAbsenceStatus } from "../../generated/prisma/client.js";
 
 const DEFAULT_LOA_COOLDOWN_DAYS = 14;
 const DEFAULT_MINIMUM_REQUEST_TIME_DAYS = 30;
+
+export type LOAEmbedStatus = "pending" | "approved" | "active" | "denied" | "expired" | "ended_early";
+
+export type LOAWithUser = LeaveOfAbsence & {
+  user: { discordId: string };
+};
+
+export function buildLOARequestEmbed(
+  loa: {
+    id?: number;
+    user: { discordId: string };
+    startDate: Date;
+    endDate: Date;
+    reason: string;
+    status?: string;
+    approvedBy?: string | null;
+    deniedBy?: string | null;
+    denialReason?: string | null;
+    endedEarlyAt?: Date | null;
+    cooldownEndDate?: Date | null;
+  },
+  status: LOAEmbedStatus,
+): EmbedBuilder {
+  const reasonDisplay = loa.reason.length > 1024 ? loa.reason.slice(0, 1021) + "…" : loa.reason;
+  const statusLabels: Record<LOAEmbedStatus, string> = {
+    pending: "**Status:** Pending Approval",
+    approved: "**Status:** ✅ Approved",
+    active: "**Status:** ✅ Active",
+    denied: "**Status:** ❌ Denied",
+    expired: "**Status:** ⏰ Ended (scheduled end reached)",
+    ended_early: "**Status:** ⚠️ Ended Early",
+  };
+
+  const embed = new EmbedBuilder()
+    .setTitle("Leave of Absence Request")
+    .setDescription(`**User:** <@${loa.user.discordId}>\n${statusLabels[status]}`)
+    .addFields({
+      name: "Duration",
+      value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
+      inline: true,
+    });
+
+  if (status === "expired" || status === "pending" || status === "approved" || status === "active" || status === "denied") {
+    embed.addFields(
+      {
+        name: "Start Date",
+        value: `<t:${Math.floor(loa.startDate.getTime() / 1000)}:F>`,
+        inline: true,
+      },
+      {
+        name: "End Date",
+        value: `<t:${Math.floor(loa.endDate.getTime() / 1000)}:F>`,
+        inline: true,
+      },
+    );
+  }
+
+  if (status === "ended_early") {
+    embed.addFields(
+      {
+        name: "Ended Early At",
+        value: loa.endedEarlyAt ? `<t:${Math.floor(loa.endedEarlyAt.getTime() / 1000)}:F>` : "N/A",
+        inline: true,
+      },
+      {
+        name: "Cooldown Until",
+        value: loa.cooldownEndDate ? `<t:${Math.floor(loa.cooldownEndDate.getTime() / 1000)}:F>` : "N/A",
+        inline: true,
+      },
+    );
+  }
+
+  embed.addFields({ name: "Reason", value: reasonDisplay });
+
+  if (loa.approvedBy && (status === "approved" || status === "active" || status === "expired" || status === "ended_early")) {
+    embed.addFields({
+      name: "Approved By",
+      value: `<@${loa.approvedBy}>`,
+      inline: true,
+    });
+  }
+
+  if (loa.deniedBy && status === "denied") {
+    embed.addFields({
+      name: "Denied By",
+      value: `<@${loa.deniedBy}>`,
+      inline: true,
+    });
+  }
+
+  if (loa.denialReason && status === "denied") {
+    embed.addFields({ name: "Denial Reason", value: loa.denialReason });
+  }
+
+  const colorMap: Record<LOAEmbedStatus, number> = {
+    pending: Colors.Orange,
+    approved: Colors.Green,
+    active: Colors.Green,
+    denied: Colors.Red,
+    expired: Colors.Blue,
+    ended_early: Colors.Orange,
+  };
+  embed.setColor(colorMap[status]).setTimestamp();
+  return embed;
+}
+
+export function getLOAMessageLink(loa: {
+  guildId: string;
+  announcementChannelId?: string | null;
+  announcementMessageId?: string | null;
+}): string | null {
+  if (!loa.announcementChannelId || !loa.announcementMessageId) {
+    return null;
+  }
+  return `https://discord.com/channels/${loa.guildId}/${loa.announcementChannelId}/${loa.announcementMessageId}`;
+}
 
 export interface LOA {
   id: number;
@@ -25,6 +148,11 @@ export class LOAManager {
 
   constructor(client: Client) {
     this.client = client;
+  }
+
+  private async getPatrolTimer() {
+    const { patrolTimer } = await import("../../main.js");
+    return patrolTimer;
   }
 
   /**
@@ -183,6 +311,8 @@ export class LOAManager {
       // Assign LOA role if status is ACTIVE
       if (status === "ACTIVE") {
         await this.assignLOARole(loa.guildId, loa.user.discordId);
+        const patrolTimer = await this.getPatrolTimer();
+        await patrolTimer.pausePromotionCooldown(loa.guildId, loa.user.discordId);
       }
 
       return { success: true };
@@ -277,6 +407,9 @@ export class LOAManager {
 
       // Remove LOA role
       await this.removeLOARole(loa.guildId, discordId);
+
+      const patrolTimer = await this.getPatrolTimer();
+      await patrolTimer.resumePromotionCooldown(loa.guildId, discordId);
 
       return { success: true };
     } catch (error) {
@@ -414,18 +547,7 @@ export class LOAManager {
    * Edit the original LOA request message to reflect natural expiry or end-early.
    */
   async updateAnnouncementToClosedState(
-    loa: {
-      guildId: string;
-      announcementChannelId: string | null;
-      announcementMessageId: string | null;
-      user: { discordId: string };
-      startDate: Date;
-      endDate: Date;
-      reason: string;
-      approvedBy: string | null;
-      endedEarlyAt?: Date | null;
-      cooldownEndDate?: Date | null;
-    },
+    loa: LOAWithUser,
     kind: "expired" | "ended_early",
     messageOverride?: { channelId: string; messageId: string },
   ): Promise<void> {
@@ -434,8 +556,6 @@ export class LOAManager {
     if (!channelId || !messageId) {
       return;
     }
-
-    const reasonDisplay = loa.reason.length > 1024 ? loa.reason.slice(0, 1021) + "…" : loa.reason;
 
     try {
       const guild = await this.client.guilds.fetch(loa.guildId);
@@ -449,59 +569,7 @@ export class LOAManager {
         return;
       }
 
-      const statusLine =
-        kind === "expired"
-          ? "**Status:** ⏰ Ended (scheduled end reached)"
-          : "**Status:** ⚠️ Ended Early";
-
-      const embed = new EmbedBuilder()
-        .setTitle("Leave of Absence Request")
-        .setDescription(`**User:** <@${loa.user.discordId}>\n${statusLine}`)
-        .addFields({
-          name: "Duration",
-          value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
-          inline: true,
-        });
-
-      if (kind === "expired") {
-        embed.addFields(
-          {
-            name: "Start Date",
-            value: `<t:${Math.floor(loa.startDate.getTime() / 1000)}:F>`,
-            inline: true,
-          },
-          {
-            name: "End Date",
-            value: `<t:${Math.floor(loa.endDate.getTime() / 1000)}:F>`,
-            inline: true,
-          },
-        );
-      } else {
-        embed.addFields(
-          {
-            name: "Ended Early At",
-            value: loa.endedEarlyAt ? `<t:${Math.floor(loa.endedEarlyAt.getTime() / 1000)}:F>` : "N/A",
-            inline: true,
-          },
-          {
-            name: "Cooldown Until",
-            value: loa.cooldownEndDate ? `<t:${Math.floor(loa.cooldownEndDate.getTime() / 1000)}:F>` : "N/A",
-            inline: true,
-          },
-        );
-      }
-
-      embed.addFields({ name: "Reason", value: reasonDisplay });
-
-      if (loa.approvedBy) {
-        embed.addFields({
-          name: "Approved By",
-          value: `<@${loa.approvedBy}>`,
-          inline: true,
-        });
-      }
-
-      embed.setColor(kind === "expired" ? Colors.Blue : Colors.Orange).setTimestamp();
+      const embed = buildLOARequestEmbed(loa, kind === "expired" ? "expired" : "ended_early");
 
       await message.edit({
         embeds: [embed],
@@ -509,6 +577,142 @@ export class LOAManager {
       });
     } catch (error) {
       loggers.bot.debug("Could not update LOA announcement message", error);
+    }
+  }
+
+  /**
+   * Edit the original LOA request message to show active status with End Early button.
+   */
+  async updateAnnouncementToActiveState(loa: LOAWithUser): Promise<void> {
+    if (!loa.announcementChannelId || !loa.announcementMessageId) {
+      return;
+    }
+
+    try {
+      const guild = await this.client.guilds.fetch(loa.guildId);
+      const channel = await guild.channels.fetch(loa.announcementChannelId);
+      if (!channel?.isTextBased() || channel.isDMBased()) {
+        return;
+      }
+
+      const message = await channel.messages.fetch(loa.announcementMessageId).catch(() => null);
+      if (!message) {
+        return;
+      }
+
+      const embed = buildLOARequestEmbed(loa, "active");
+      const endEarlyButton = new ButtonBuilder()
+        .setCustomId(`loa:end-early:${loa.id}`)
+        .setLabel("End Early")
+        .setStyle(ButtonStyle.Danger);
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(endEarlyButton);
+
+      await message.edit({
+        embeds: [embed],
+        components: [row],
+      });
+    } catch (error) {
+      loggers.bot.debug("Could not update LOA announcement to active state", error);
+    }
+  }
+
+  /**
+   * Notify user via DM and update the original LOA message when an LOA ends.
+   */
+  async notifyLOAEnded(
+    loa: LOAWithUser,
+    kind: "expired" | "ended_early",
+    messageOverride?: { channelId: string; messageId: string },
+  ): Promise<void> {
+    await this.updateAnnouncementToClosedState(loa, kind, messageOverride);
+
+    const messageLink = getLOAMessageLink(loa);
+    const linkLine = messageLink ? `\n\n[View your LOA request](${messageLink})` : "";
+
+    let dmContent: string;
+    if (kind === "expired") {
+      dmContent = `⏰ Your LOA has expired and the LOA role has been removed.${linkLine}`;
+    } else {
+      const cooldownLine = loa.cooldownEndDate
+        ? `\n\nYou are in a cooldown period until <t:${Math.floor(loa.cooldownEndDate.getTime() / 1000)}:F>.`
+        : "";
+      dmContent = `⚠️ Your LOA has ended early and the LOA role has been removed.${cooldownLine}${linkLine}`;
+    }
+
+    try {
+      const user = await this.client.users.fetch(loa.user.discordId);
+      await user.send({ content: dmContent });
+    } catch (_error) {
+      loggers.bot.debug(`Could not DM user ${loa.user.discordId} about LOA ending (${kind})`);
+    }
+  }
+
+  /**
+   * Sync LOA state when the LOA role is removed outside the normal bot flow.
+   */
+  async handleLOARoleRemovedExternally(guildId: string, discordId: string): Promise<void> {
+    try {
+      const user = await prisma.user.findUnique({ where: { discordId } });
+      if (!user) {
+        return;
+      }
+
+      const loa = await prisma.leaveOfAbsence.findFirst({
+        where: {
+          userId: user.id,
+          guildId,
+          status: { in: ["ACTIVE", "APPROVED"] },
+        },
+        include: { user: true },
+        orderBy: { id: "desc" },
+      });
+
+      if (!loa) {
+        const patrolTimer = await this.getPatrolTimer();
+        await patrolTimer.resumePromotionCooldown(guildId, discordId);
+        return;
+      }
+
+      const now = new Date();
+      let updatedLoa: LOAWithUser;
+
+      if (loa.endDate <= now) {
+        updatedLoa = await prisma.leaveOfAbsence.update({
+          where: { id: loa.id },
+          data: { status: "EXPIRED" },
+          include: { user: true },
+        });
+        await this.notifyLOAEnded(updatedLoa, "expired");
+      } else if (loa.status === "ACTIVE") {
+        const settings = await prisma.guildSettings.findUnique({
+          where: { guildId },
+          select: { leaveOfAbsenceCooldownDays: true },
+        });
+        const cooldownDays = settings?.leaveOfAbsenceCooldownDays ?? DEFAULT_LOA_COOLDOWN_DAYS;
+        const cooldownEndDate = new Date(now.getTime() + cooldownDays * 24 * 60 * 60 * 1000);
+        updatedLoa = await prisma.leaveOfAbsence.update({
+          where: { id: loa.id },
+          data: {
+            status: "ENDED_EARLY",
+            endedEarlyAt: now,
+            cooldownEndDate,
+          },
+          include: { user: true },
+        });
+        await this.notifyLOAEnded(updatedLoa, "ended_early");
+      } else {
+        updatedLoa = await prisma.leaveOfAbsence.update({
+          where: { id: loa.id },
+          data: { status: "EXPIRED" },
+          include: { user: true },
+        });
+        await this.notifyLOAEnded(updatedLoa, "expired");
+      }
+
+      const patrolTimer = await this.getPatrolTimer();
+      await patrolTimer.resumePromotionCooldown(guildId, discordId);
+    } catch (error) {
+      loggers.bot.error(`Error handling external LOA role removal for ${discordId} in guild ${guildId}`, error);
     }
   }
 
@@ -708,7 +912,17 @@ export class LOAManager {
         data: { status: "EXPIRED" },
       });
 
-      await this.updateAnnouncementToClosedState(loa, "expired");
+      const updatedLoa = await prisma.leaveOfAbsence.findUnique({
+        where: { id: loaId },
+        include: { user: true },
+      });
+
+      if (updatedLoa) {
+        await this.notifyLOAEnded(updatedLoa, "expired");
+      }
+
+      const patrolTimer = await this.getPatrolTimer();
+      await patrolTimer.resumePromotionCooldown(loa.guildId, loa.user.discordId);
 
       return { success: true };
     } catch (error) {
@@ -745,10 +959,42 @@ export class LOAManager {
         });
 
         await this.assignLOARole(loa.guildId, loa.user.discordId);
+
+        const updatedLoa = await prisma.leaveOfAbsence.findUnique({
+          where: { id: loa.id },
+          include: { user: true },
+        });
+
+        if (updatedLoa) {
+          await this.updateAnnouncementToActiveState(updatedLoa);
+          await this.notifyLOAActivated(updatedLoa);
+        }
+
+        const patrolTimer = await this.getPatrolTimer();
+        await patrolTimer.pausePromotionCooldown(loa.guildId, loa.user.discordId);
       } catch (error) {
         loggers.bot.error(`Error activating LOA ${loa.id} for user ${loa.user.discordId} in guild ${loa.guildId}`, error);
         // Continue to next LOA instead of stopping
       }
+    }
+  }
+
+  /**
+   * DM user when their approved LOA becomes active via cron.
+   */
+  async notifyLOAActivated(loa: LOAWithUser): Promise<void> {
+    const messageLink = getLOAMessageLink(loa);
+    const linkLine = messageLink ? `\n\n[View your LOA request](${messageLink})` : "";
+
+    try {
+      const user = await this.client.users.fetch(loa.user.discordId);
+      const embed = buildLOARequestEmbed(loa, "active");
+      await user.send({
+        content: `✅ Your LOA is now **active**. Your patrol time and promotion cooldowns are paused until your LOA ends.${linkLine}`,
+        embeds: [embed],
+      });
+    } catch (_error) {
+      loggers.bot.debug(`Could not DM user ${loa.user.discordId} about LOA activation`);
     }
   }
 }

@@ -3,16 +3,14 @@ import {
   CommandInteraction,
   ApplicationCommandOptionType,
   MessageFlags,
-  EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
   ActionRowBuilder,
-  Colors,
   User,
 } from "discord.js";
 import { GuildGuard, StaffGuard } from "../../utility/guards.js";
 import { loaManager, patrolTimer } from "../../main.js";
-import { formatDuration } from "../../utility/timeParser.js";
+import { buildLOARequestEmbed } from "../../managers/loa/loaManager.js";
 
 @Discord()
 @SlashGroup({
@@ -79,33 +77,10 @@ export class LOACommands {
 
     const loa = result.loa;
 
-    // Create embed
-    const embed = new EmbedBuilder()
-      .setTitle("Leave of Absence Request")
-      .setDescription(`**User:** <@${interaction.user.id}>\n**Status:** Pending Approval`)
-      .addFields(
-        {
-          name: "Duration",
-          value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
-          inline: true,
-        },
-        {
-          name: "Start Date",
-          value: `<t:${Math.floor(loa.startDate.getTime() / 1000)}:F>`,
-          inline: true,
-        },
-        {
-          name: "End Date",
-          value: `<t:${Math.floor(loa.endDate.getTime() / 1000)}:F>`,
-          inline: true,
-        },
-        {
-          name: "Reason",
-          value: loa.reason.length > 1024 ? loa.reason.slice(0, 1021) + "…" : loa.reason,
-        },
-      )
-      .setColor(Colors.Orange)
-      .setTimestamp();
+    const embed = buildLOARequestEmbed(
+      { ...loa, user: { discordId: interaction.user.id } },
+      "pending",
+    );
 
     // Create buttons
     const approveButton = new ButtonBuilder()

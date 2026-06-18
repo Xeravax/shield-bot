@@ -6,7 +6,7 @@ import { loaManager } from "../../main.js";
 /**
  * Check for expired LOAs and remove roles
  */
-export async function checkLOAExpiration(client: Client): Promise<void> {
+export async function checkLOAExpiration(_client: Client): Promise<void> {
   try {
     loggers.schedules.info("Starting LOA expiration check...");
 
@@ -32,16 +32,6 @@ export async function checkLOAExpiration(client: Client): Promise<void> {
           loggers.schedules.info(
             `Expired LOA ${loa.id} for user ${loa.user.discordId} in guild ${loa.guildId}`,
           );
-
-          // Optionally notify user
-          try {
-            const user = await client.users.fetch(loa.user.discordId);
-            await user.send({
-              content: `⏰ Your LOA has expired and the LOA role has been removed.`,
-            });
-          } catch (_error) {
-            loggers.bot.debug(`Could not DM user ${loa.user.discordId} about LOA expiration`);
-          }
         } else {
           loggers.schedules.warn(
             `Failed to expire LOA ${loa.id} for user ${loa.user.discordId}: ${result.error}`,
