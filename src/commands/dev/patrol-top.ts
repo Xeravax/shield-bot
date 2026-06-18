@@ -6,6 +6,7 @@ import { bot, patrolTimer } from "../../main.js";
 import { postPatrolTop } from "../../schedules/patrol/patrolTop.js";
 import { checkRoleTracking } from "../../schedules/roleTracking/roleTrackingCheck.js";
 import { broadcastHostWeeklyEventReminder } from "../../schedules/events/hostWeeklyEventReminder.js";
+import { checkLOAExpiration } from "../../schedules/loa/loaExpiration.js";
 
 @Discord()
 @SlashGroup({
@@ -93,6 +94,34 @@ export class ScheduleCommand {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await interaction.editReply(`❌ Failed to trigger inactivity check schedule: ${errorMessage}`);
+    }
+  }
+
+  @Slash({
+    name: "loa-expiration",
+    description:
+      "Force trigger the LOA expiration check (activates due LOAs, expires ended ones) (Bot Owner only)",
+  })
+  async loaExpiration(interaction: CommandInteraction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      await checkLOAExpiration(bot);
+      if (interaction.guildId) {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "bot-owner-trigger-loa-expiration",
+          interaction.user.id,
+          undefined,
+          "schedule triggered",
+        );
+      }
+      await interaction.editReply("✅ LOA expiration check triggered successfully.");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await interaction.editReply(
+        `❌ Failed to trigger LOA expiration check: ${errorMessage}`,
+      );
     }
   }
 }

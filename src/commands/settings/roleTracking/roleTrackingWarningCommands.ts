@@ -26,10 +26,15 @@ import { parseDurationToMs, isValidDuration } from "../../../utility/roleTrackin
 
 @Discord()
 @SlashGroup({
-  name: "role-tracking-warn",
-  description: "Role tracking warnings",
+  name: "role-tracking",
+  description: "Role tracking",
 })
-@SlashGroup("role-tracking-warn")
+@SlashGroup({
+  name: "settings",
+  description: "Settings",
+  root: "role-tracking",
+})
+@SlashGroup("settings", "role-tracking")
 @Guard(StaffGuard)
 export class SettingsRoleTrackingWarnCommands {
 

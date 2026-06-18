@@ -1080,7 +1080,7 @@ export class SettingsRoleTrackingCommands {
           description += `Warnings: ${roleConfig.warnings.length}\n`;
           description += `Staff Ping: ${roleConfig.staffPingOffset}\n`;
           description += `\nUse \`/role-tracking settings toggle-role\` to enable/disable.\n`;
-          description += `Use \`/role-tracking-warn configure-warning\` to edit warnings.\n\n`;
+          description += `Use \`/role-tracking settings configure-warning\` to edit warnings.\n\n`;
         }
 
         const embed = new EmbedBuilder()
@@ -2232,7 +2232,7 @@ export class SettingsRoleTrackingCommands {
       if (hasCustomMessage) {
         message = "**Custom Message:** ✅ Configured (embeds/components)";
       } else if (isEmbedTemplate) {
-        message = "**Default Template:** ✅ Embed template (supports placeholders)\n\nUse `/role-tracking-warn configure-staff-ping` to customize.";
+        message = "**Default Template:** ✅ Embed template (supports placeholders)\n\nUse `/role-tracking settings configure-staff-ping` to customize.";
       } else {
         message = `**Default Template (Legacy String):**\n\`\`\`\n${roleConfig.staffPingMessage}\`\`\``;
       }
