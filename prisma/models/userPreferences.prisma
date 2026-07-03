@@ -4,6 +4,7 @@ model UserPreferences {
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   patrolDmDisabled                 Boolean @default(false)
   patrolNoShieldMemberDmDisabled   Boolean @default(false)
+  timezone                         String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

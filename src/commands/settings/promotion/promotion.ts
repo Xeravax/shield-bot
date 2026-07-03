@@ -13,7 +13,7 @@ import { Prisma } from "../../../generated/prisma/index.js";
 import { prisma, patrolTimer } from "../../../main.js";
 import type { PromotionRule, RuleEligibilityEntry, PromotionEligibilityReport } from "../../../managers/patrol/patrolTimerManager.js";
 import { DEFAULT_DECLINED_COOLDOWN_HOURS } from "../../../managers/patrol/patrolTimerManager.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { loggers } from "../../../utility/logger.js";
 
 /** Strip to only A-z and . so role names can't inject formatting. */
@@ -118,7 +118,7 @@ function formatPromotionEligibilityReport(
   root: "patrol",
 })
 @SlashGroup("settings", "patrol")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.promotion"))
 export class SettingsPatrolPromotionCommands {
   @Slash({
     name: "set-channel",

@@ -5,9 +5,7 @@ import {
   MessageFlags,
   GuildBasedChannel,
 } from "discord.js";
-import {
-  StaffGuard,
-} from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { prisma } from "../../../main.js";
 
 @Discord()
@@ -17,7 +15,7 @@ import { prisma } from "../../../main.js";
   root: "settings",
 })
 @SlashGroup("attendance", "settings")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.attendance"))
 export class SettingsAttendanceSubGroup {
   @Slash({
     name: "add-channel",

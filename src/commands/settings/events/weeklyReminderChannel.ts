@@ -6,7 +6,7 @@ import {
   GuildBasedChannel,
   MessageFlags,
 } from "discord.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
@@ -17,7 +17,7 @@ import { loggers } from "../../../utility/logger.js";
   root: "settings",
 })
 @SlashGroup("events", "settings")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.events"))
 export class SettingsEventsWeeklyReminderChannelCommand {
   @Slash({
     name: "weekly-reminder-channel",

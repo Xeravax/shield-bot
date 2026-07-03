@@ -8,12 +8,9 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
-import { AttendanceHostGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { prisma } from "../../main.js";
-import {
-  PermissionLevel,
-  userHasSpecificRole,
-} from "../../utility/permissionUtils.js";
+import { hasNode } from "../../utility/permissionNodes.js";
 
 const attendanceManager = new AttendanceManager();
 
@@ -23,7 +20,7 @@ const attendanceManager = new AttendanceManager();
   description: "VRChat attendance tracking commands.",
 })
 @SlashGroup("attendance")
-@Guard(AttendanceHostGuard)
+@Guard(PermissionNodeGuard("attendance.command.autofill"))
 export class VRChatAttendanceAutofillCommand {
   @Slash({
     name: "autofill",
@@ -132,7 +129,7 @@ export class VRChatAttendanceAutofillCommand {
 
     // Check if host has staff role and add them as staff
     const hostMember = await guild.members.fetch(interaction.user.id);
-    const isHostStaff = await userHasSpecificRole(hostMember, PermissionLevel.STAFF);
+    const isHostStaff = await hasNode(hostMember, "attendance.manage.staff-host");
     if (isHostStaff) {
       await attendanceManager.addStaff(eventId, user.id);
     }
@@ -183,7 +180,7 @@ export class VRChatAttendanceAutofillCommand {
 
       const members = channel.members;
       for (const [memberId, member] of members) {
-        const isStaff = await userHasSpecificRole(member, PermissionLevel.STAFF);
+        const isStaff = await hasNode(member, "attendance.manage.staff-host");
         if (isStaff) {
           staffMembersInCategories.add(memberId);
         }

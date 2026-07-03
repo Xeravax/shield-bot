@@ -15,10 +15,7 @@ import {
 import { Discord, ButtonComponent, ModalComponent } from "discordx";
 import { patrolTimer } from "../../../../main.js";
 import { loggers } from "../../../../utility/logger.js";
-import {
-  PermissionFlags,
-  userHasPermission,
-} from "../../../../utility/permissionUtils.js";
+import { hasNode } from "../../../../utility/permissionNodes.js";
 import { respondWithError } from "../../../../utility/generalUtils.js";
 
 const BUTTON_PREFIX = "patrol-session-remove:";
@@ -191,10 +188,10 @@ export class PatrolSessionRemoveButtonHandlers {
       return;
     }
 
-    if (!(await userHasPermission(member, PermissionFlags.STAFF))) {
+    if (!(await hasNode(member, "patrol.manage.session-remove"))) {
       await respondWithError(
         interaction,
-        "You don't have permission to use this. Staff access required.",
+        "You don't have permission to use this. Missing node: patrol.manage.session-remove",
       );
       return;
     }

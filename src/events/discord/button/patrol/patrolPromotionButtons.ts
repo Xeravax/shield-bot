@@ -10,10 +10,7 @@ import {
 import { Discord, ButtonComponent } from "discordx";
 import { prisma, patrolTimer } from "../../../../main.js";
 import { loggers } from "../../../../utility/logger.js";
-import {
-  PermissionFlags,
-  userHasPermission,
-} from "../../../../utility/permissionUtils.js";
+import { hasNode } from "../../../../utility/permissionNodes.js";
 import {
   buildPromotionThreadName,
   formatPromotionUserLines,
@@ -61,7 +58,7 @@ async function editPromotionMessage(
 @Discord()
 export class PatrolPromotionButtonHandlers {
   /**
-   * No @Guard on buttons — StaffGuard hits Prisma before deferUpdate and breaks
+   * No @Guard on buttons — PermissionNodeGuard hits Prisma before deferUpdate and breaks
    * thread/channel component interactions. Staff is checked after deferUpdate.
    */
   @ButtonComponent({ id: /^patrol-promo:approve:/ })
@@ -77,9 +74,9 @@ export class PatrolPromotionButtonHandlers {
     await interaction.deferUpdate();
 
     const member = interaction.member as GuildMember | null;
-    if (!member || !(await userHasPermission(member, PermissionFlags.STAFF))) {
+    if (!member || !(await hasNode(member, "patrol.manage.promotion"))) {
       await interaction.followUp({
-        content: "You don't have permission to use this. Staff access required.",
+        content: "You don't have permission to use this. Missing node: patrol.manage.promotion",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -229,9 +226,9 @@ export class PatrolPromotionButtonHandlers {
     await interaction.deferUpdate();
 
     const member = interaction.member as GuildMember | null;
-    if (!member || !(await userHasPermission(member, PermissionFlags.STAFF))) {
+    if (!member || !(await hasNode(member, "patrol.manage.promotion"))) {
       await interaction.followUp({
-        content: "You don't have permission to use this. Staff access required.",
+        content: "You don't have permission to use this. Missing node: patrol.manage.promotion",
         flags: MessageFlags.Ephemeral,
       });
       return;
