@@ -1,6 +1,7 @@
 import {
   ActionRowBuilder,
   ButtonInteraction,
+  GuildMember,
   MessageFlags,
   ModalBuilder,
   TextInputBuilder,
@@ -12,6 +13,7 @@ import { prisma } from "../../../../main.js";
 import {
   refreshDraftPanel,
   runEventValidation,
+  setEventForceOverride,
   submitEventForApproval,
   editDraftPanelMessage,
 } from "../../../../managers/events/eventPlanningManager.js";
@@ -22,6 +24,7 @@ import {
 } from "../../../../managers/events/eventType.js";
 import { isDraftPlaceholderTime } from "../../../../managers/events/eventDraftDefaults.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
+import { hasNode } from "../../../../utility/permissionNodes.js";
 
 const EVENT_PANEL_TITLE_PATTERN = /^event-panel:title:(\d+)$/;
 const EVENT_PANEL_TIME_PATTERN = /^event-panel:time:(\d+)$/;
@@ -29,6 +32,7 @@ const EVENT_PANEL_TOGGLE_DUTY_PATTERN = /^event-panel:toggle-duty:(\d+)$/;
 const EVENT_PANEL_TOGGLE_TYPE_PATTERN = /^event-panel:toggle-type:(\d+)$/;
 const EVENT_PANEL_TOGGLE_DURATION_PATTERN = /^event-panel:toggle-duration:(\d+)$/;
 const EVENT_PANEL_TOGGLE_COHOST_OPEN_PATTERN = /^event-panel:toggle-cohost-open:(\d+)$/;
+const EVENT_PANEL_TOGGLE_FORCE_PATTERN = /^event-panel:toggle-force:(\d+)$/;
 const EVENT_PANEL_SUBMIT_PATTERN = /^event-panel:submit:(\d+)$/;
 const EVENT_PANEL_CANCEL_PATTERN = /^event-panel:cancel:(\d+)$/;
 
@@ -246,6 +250,47 @@ export class EventPanelButtonHandlers {
         ...(coHostOpen ? { coHostId: null } : {}),
       },
     });
+
+    const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
+    await editDraftPanelMessage(interaction, embed, components);
+  }
+
+  @ButtonComponent({ id: EVENT_PANEL_TOGGLE_FORCE_PATTERN })
+  async handleToggleForce(interaction: ButtonInteraction): Promise<void> {
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_FORCE_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
+    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+      await interaction.reply({
+        content: "❌ Event not found or not editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (interaction.user.id !== event.hostId) {
+      await interaction.reply({
+        content: "❌ Only the event host can edit this panel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const enabling = !event.forceOverride;
+    if (enabling) {
+      const member = interaction.member as GuildMember | null;
+      if (!member || !(await hasNode(member, "events.schedule.force"))) {
+        await interaction.reply({
+          content: "❌ You need the `events.schedule.force` permission to enable force.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+    }
+
+    await interaction.deferUpdate();
+    await setEventForceOverride(eventId, enabling);
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
