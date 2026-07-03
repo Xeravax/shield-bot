@@ -33,6 +33,7 @@
     "@koa/router": "^15.3.0",
     "@prisma/adapter-mariadb": "^7.3.0",
     "@prisma/client": "7.3.0",
+    "chrono-node": "^2.9.1",
     "discord.js": "^14.25.1",
     "discordx": "^11.13.3",
     "dotenv": "^17.2.3",

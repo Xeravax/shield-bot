@@ -6,7 +6,7 @@ import {
 import { Discord, Slash, SlashGroup, SlashOption, Guard } from "discordx";
 import { prisma } from "../../main.js";
 import { GitHubPublisher } from "../../managers/whitelist/githubPublisher.js";
-import { StaffGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
 
 @Discord()
@@ -15,7 +15,7 @@ import { loggers } from "../../utility/logger.js";
   description: "Rooftop file management commands",
 })
 @SlashGroup("rooftop")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("rooftop.command.force-update"))
 export class RooftopCommands {
   private githubPublisher = new GitHubPublisher();
 

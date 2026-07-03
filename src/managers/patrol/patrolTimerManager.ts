@@ -24,10 +24,7 @@ import {
   hasEnoughHoursSinceLastNotification,
 } from "../../utility/vrchat/promotionAccountInfo.js";
 import { loaManager } from "../../main.js";
-import {
-  PermissionLevel,
-  userHasSpecificRole,
-} from "../../utility/permissionUtils.js";
+import { hasNode } from "../../utility/permissionNodes.js";
 
 /** Single rank-based promotion rule (current rank -> next rank at required hours, optional cooldown) */
 export interface PromotionRule {
@@ -2170,7 +2167,7 @@ export class PatrolTimerManager {
 
   /** Whether the member has a configured Shield Member Discord role. */
   private async memberHasShieldMemberRole(member: GuildMember): Promise<boolean> {
-    return userHasSpecificRole(member, PermissionLevel.SHIELD_MEMBER);
+    return hasNode(member, "patrol.tracked");
   }
 
   /** Remove in-memory and persisted patrol session without recording time. */

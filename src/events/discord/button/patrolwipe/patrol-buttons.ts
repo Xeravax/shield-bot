@@ -1,20 +1,18 @@
 import { ButtonComponent, Discord, Guard } from "discordx";
 import { ButtonInteraction, GuildMember, MessageFlags } from "discord.js";
 import { patrolTimer } from "../../../../main.js";
-import { StaffGuard } from "../../../../utility/guards.js";
-import { userHasPermission, PermissionFlags } from "../../../../utility/permissionUtils.js";
+import { hasNode, PermissionNodeGuard } from "../../../../utility/permissionNodes.js";
 
 @Discord()
 export class PatrolButtonHandlers {
   @ButtonComponent({ id: /patrol-wipe-confirm:(\d+):(true|false)/ })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("patrol.manage.wipe"))
   async handleWipeConfirm(interaction: ButtonInteraction) {
     if (!interaction.guildId) {return;}    
     const [, userId] = interaction.customId.split(":");
     
-    // Check permissions again
     const member = interaction.member as GuildMember;
-    if (!(await userHasPermission(member, PermissionFlags.STAFF))) {
+    if (!(await hasNode(member, "patrol.manage.wipe"))) {
       await interaction.reply({
         content: "❌ You don't have permission to wipe patrol data.",
         flags: MessageFlags.Ephemeral,
@@ -22,10 +20,8 @@ export class PatrolButtonHandlers {
       return;
     }
     
-    // Perform the wipe for the specific user
     await patrolTimer.reset(interaction.guildId, userId);
     
-    // Log the command usage
     await patrolTimer.logCommandUsage(interaction.guildId, "wipe", interaction.user.id, userId);
 
     await interaction.update({

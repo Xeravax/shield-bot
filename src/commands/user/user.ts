@@ -11,11 +11,12 @@ import {
 } from "discord.js";
 import { Pagination } from "@discordx/pagination";
 import {
-  getUserPermissionLevelFromRoles,
-  PermissionLevel,
-} from "../../utility/permissionUtils.js";
+  getMemberNodeGrants,
+  PermissionNodeGuard,
+  PERMISSION_NODE_REGISTRY,
+} from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
-import { GuildGuard, StaffGuard } from "../../utility/guards.js";
+import { GuildGuard } from "../../utility/guards.js";
 import { getUserExportData } from "../../utility/userDataExport.js";
 import { patrolTimer } from "../../main.js";
 
@@ -88,22 +89,19 @@ export class UserCommands {
   ) {
     // If no user provided, list all permissions
     if (!user) {
-      const permissions = [
-        "🔴 **BOT_OWNER** (100) - Full bot access (configured via BOT_OWNER_ID environment variable)",
-        "🟠 **STAFF** (80) - Staff-level administrative access (requires Staff role)",
-        "🟡 **DEV_GUARD** (75) - Development and administrative access (requires Dev Guard role)",
-        "🟢 **TRAINER** (60) - Training and mentoring access (requires Trainer role) - *Cannot access Host Attendance commands*",
-        "🟢 **HOST_ATTENDANCE** (50) - Can manage attendance events (requires Host Attendance role) - *Cannot access Trainer commands*",
-        "🔵 **SHIELD_MEMBER** (25) - Shield member access (requires Shield Member role)",
-        "⚪ **USER** (0) - Basic user access (default)",
-      ];
+      const areas = Object.entries(PERMISSION_NODE_REGISTRY)
+        .map(([area, defs]) => {
+          const lines = defs.map((d) => `  • \`${d.node}\` — ${d.description}`);
+          return `**${area}**\n${lines.join("\n")}`;
+        })
+        .join("\n\n");
 
       await interaction.reply({
         content:
-          `📋 **Role-Based Permission System**\n\n` +
-          `Permissions are automatically assigned based on Discord roles:\n\n` +
-          `${permissions.join("\n")}\n\n` +
-          `💡 **Note:** To change a user's permissions, assign/remove the appropriate Discord roles using server settings.`,
+          `📋 **Permission Node System**\n\n` +
+          `Permissions are granted to Discord roles via \`/permissions grant\`.\n\n` +
+          `${areas}\n\n` +
+          `💡 **Tip:** Use \`/user permission @user\` to see a member's effective node grants.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -125,12 +123,16 @@ export class UserCommands {
       }
 
       // Get the user's permission level based on their roles
-      const permissionLevel =
-        await getUserPermissionLevelFromRoles(targetMember);
-      const levelValue = this.getPermissionLevelValue(permissionLevel);
+      const grants = await getMemberNodeGrants(targetMember);
+      const grantList =
+        grants.length > 0
+          ? grants.map((g) => `• \`${g}\``).join("\n")
+          : "_No permission nodes granted via roles_";
 
       await interaction.reply({
-        content: `👤 **${targetMember.displayName}**\nPermission Level: **${permissionLevel}** (${levelValue})`,
+        content:
+          `👤 **${targetMember.displayName}**\n` +
+          `**Effective permission nodes:**\n${grantList}`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
@@ -146,7 +148,7 @@ export class UserCommands {
     name: "list",
     description: "List all members with a specific role, or members with no roles if no role is selected",
   })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("user.command.list"))
   async list(
     @SlashOption({
       name: "role",
@@ -276,7 +278,7 @@ export class UserCommands {
     name: "role",
     description: "Manage user roles (status, cancel, or assign roles)",
   })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("user.command.role"))
   async role(
     @SlashChoice({ name: "Status", value: "status" })
     @SlashChoice({ name: "Cancel", value: "cancel" })
@@ -523,25 +525,4 @@ export class UserCommands {
     }
   }
 
-  // Helper method to get numeric value (duplicate from permissionUtils for simplicity)
-  private getPermissionLevelValue(level: PermissionLevel): number {
-    switch (level) {
-      case PermissionLevel.BOT_OWNER:
-        return 100;
-      case PermissionLevel.DEV_GUARD:
-        return 99;
-      case PermissionLevel.STAFF:
-        return 75;
-      case PermissionLevel.TRAINER:
-        return 60;
-      case PermissionLevel.HOST_ATTENDANCE:
-        return 50;
-      case PermissionLevel.SHIELD_MEMBER:
-        return 25;
-      case PermissionLevel.USER:
-        return 0;
-      default:
-        return 0;
-    }
-  }
 }

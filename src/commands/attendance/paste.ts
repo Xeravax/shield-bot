@@ -7,7 +7,7 @@ import {
   BaseInteraction,
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
-import { AttendanceHostGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 
 const attendanceManager = new AttendanceManager();
 
@@ -17,7 +17,7 @@ const attendanceManager = new AttendanceManager();
   description: "VRChat attendance tracking commands.",
 })
 @SlashGroup("attendance")
-@Guard(AttendanceHostGuard)
+@Guard(PermissionNodeGuard("attendance.command.paste"))
 export class VRChatAttendancePasteCommand {
   @Slash({
     name: "paste",

@@ -18,11 +18,10 @@ import {
   ButtonStyle,
 } from "discord.js";
 import { patrolTimer } from "../../main.js";
-import { StaffGuard } from "../../utility/guards.js";
 import {
-  userHasPermissionFromRoles,
-  PermissionLevel,
-} from "../../utility/permissionUtils.js";
+  hasNode,
+  PermissionNodeGuard,
+} from "../../utility/permissionNodes.js";
 import { prisma } from "../../main.js";
 
 const MONTH_NAMES = [
@@ -51,7 +50,7 @@ export class PatrolTimerCommands {
     name: "current",
     description: "Show tracked users in voice",
   })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("patrol.command.current"))
   async current(
     @SlashOption({
       name: "ephemeral",
@@ -82,7 +81,7 @@ export class PatrolTimerCommands {
   }
 
   @Slash({ name: "top", description: "Show patrol time leaderboard" })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("patrol.command.top"))
   async top(
     @SlashOption({
       name: "limit",
@@ -233,7 +232,7 @@ export class PatrolTimerCommands {
     name: "manage",
     description: "Manage patrol data",
   })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("patrol.command.manage"))
   async manage(
     @SlashChoice({ name: "Wipe", value: "wipe" })
     @SlashChoice({ name: "Adjust", value: "adjust" })
@@ -543,12 +542,12 @@ export class PatrolTimerCommands {
     const member = interaction.member as GuildMember;
 
     // Check if user is staff
-    const isStaff = await userHasPermissionFromRoles(member, PermissionLevel.STAFF);
+    const canViewOthers = await hasNode(member, "patrol.manage.view-others");
 
     // Determine if response should be ephemeral
     // Staff can control it, others always get ephemeral
     let shouldBeEphemeral = true;
-    if (isStaff && ephemeralOption !== undefined) {
+    if (canViewOthers && ephemeralOption !== undefined) {
       shouldBeEphemeral = ephemeralOption;
     }
 
@@ -562,9 +561,7 @@ export class PatrolTimerCommands {
     const isCheckingOwnTime = targetUserId === member.id;
     if (!isCheckingOwnTime) {
       // Check if user has staff permissions to view others' time
-      if (
-        !(await userHasPermissionFromRoles(member, PermissionLevel.STAFF))
-      ) {
+      if (!(await hasNode(member, "patrol.manage.view-others"))) {
         await interaction.reply({
           content: "You can only check your own patrol time. Staff members can check others' time.",
           flags: MessageFlags.Ephemeral,
@@ -572,10 +569,7 @@ export class PatrolTimerCommands {
         return;
       }
     } else {
-      // Check if user has SHIELD_MEMBER permission to view their own time
-      if (
-        !(await userHasPermissionFromRoles(member, PermissionLevel.SHIELD_MEMBER))
-      ) {
+      if (!(await hasNode(member, "patrol.tracked"))) {
         await interaction.reply({
           content: "You need SHIELD_MEMBER role or higher to check patrol time.",
           flags: MessageFlags.Ephemeral,
@@ -638,11 +632,11 @@ export class PatrolTimerCommands {
     }
 
     // Check if user is staff - if not, only show their own data
-    const isStaff = await userHasPermissionFromRoles(member, PermissionLevel.STAFF);
+    const canViewOthers = await hasNode(member, "patrol.manage.view-others");
 
     let years: Array<{ year: number; userCount: number; totalHours: number }>;
 
-    if (isStaff) {
+    if (canViewOthers) {
       // Staff can see all years
       years = await (patrolTimer as { getAvailableYears: (guildId: string) => Promise<Array<{ year: number; userCount: number; totalHours: number }>> }).getAvailableYears(interaction.guildId);
     } else {
@@ -681,7 +675,7 @@ export class PatrolTimerCommands {
     }
 
     const choices = years.map((y) => ({
-      name: isStaff 
+      name: canViewOthers
         ? `${y.year} — ${y.userCount} users, ${y.totalHours}h`
         : `${y.year} — ${y.totalHours}h (your time)`,
       value: y.year.toString(),
@@ -709,11 +703,11 @@ export class PatrolTimerCommands {
     const year = yearOption?.value ? parseInt(yearOption.value as string) : undefined;
 
     // Check if user is staff - if not, only show their own data
-    const isStaff = await userHasPermissionFromRoles(member, PermissionLevel.STAFF);
+    const canViewOthers = await hasNode(member, "patrol.manage.view-others");
 
     let months: Array<{ year: number; month: number; userCount: number; totalHours: number }>;
 
-    if (isStaff) {
+    if (canViewOthers) {
       // Staff can see all months
       months = await (patrolTimer as { getAvailableMonths: (guildId: string, year?: number) => Promise<Array<{ year: number; month: number; userCount: number; totalHours: number }>> }).getAvailableMonths(
         interaction.guildId,
@@ -770,7 +764,7 @@ export class PatrolTimerCommands {
     }
 
     const choices = months.map((m) => ({
-      name: isStaff
+      name: canViewOthers
         ? `${MONTH_NAMES[m.month - 1]} ${m.year} — ${m.userCount} users, ${m.totalHours}h`
         : `${MONTH_NAMES[m.month - 1]} ${m.year} — ${m.totalHours}h (your time)`,
       value: m.month.toString(),

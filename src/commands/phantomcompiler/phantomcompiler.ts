@@ -6,7 +6,8 @@ import {
   TextChannel,
   User,
 } from "discord.js";
-import { GuildGuard, StaffGuard } from "../../utility/guards.js";
+import { GuildGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
 import {
   REASON_OPTION_DESCRIPTION,
@@ -31,7 +32,7 @@ export class PhantomCompilerCommands {
     name: "panel",
     description: "Post a self-service phantom compiler enrollment panel in this channel",
   })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("phantomcompiler.command.panel"))
   async panel(interaction: CommandInteraction): Promise<void> {
     if (!interaction.guildId) {
       return;
@@ -121,7 +122,7 @@ export class PhantomCompilerCommands {
     name: "add",
     description: "Enroll a member on the phantom compiler list (staff)",
   })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("phantomcompiler.command.add"))
   async add(
     @SlashOption({
       name: "user",

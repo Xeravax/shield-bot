@@ -6,7 +6,7 @@ import {
   Colors,
   MessageFlags,
 } from "discord.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { groupRoleSyncManager } from "../../../managers/groupRoleSync/groupRoleSyncManager.js";
 import { loggers } from "../../../utility/logger.js";
@@ -14,7 +14,7 @@ import { loggers } from "../../../utility/logger.js";
 @Discord()
 @SlashGroup({ name: "group", description: "VRChat group management" })
 @SlashGroup("group")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("vrchat.command.bulkrolesync"))
 export class GroupBulkRoleSyncCommand {
   @Slash({
     name: "bulkrolesync",

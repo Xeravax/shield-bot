@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `PlannedEvent` MODIFY `title` VARCHAR(200) NOT NULL;
+ALTER TABLE `PlannedEvent` ADD COLUMN `eventType` ENUM('PATROL', 'GAME', 'SPECIAL', 'OTHER') NULL,
+    ADD COLUMN `durationMinutes` INTEGER NOT NULL DEFAULT 120;

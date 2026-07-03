@@ -8,7 +8,7 @@ import {
   ButtonStyle,
 } from "discord.js";
 import { Discord, ButtonComponent, Guard } from "discordx";
-import { StaffGuard } from "../../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../../utility/permissionNodes.js";
 import { loaManager, patrolTimer, prisma } from "../../../../main.js";
 import { formatDuration } from "../../../../utility/timeParser.js";
 import { loggers } from "../../../../utility/logger.js";
@@ -17,7 +17,7 @@ import { buildLOARequestEmbed, getLOAMessageLink } from "../../../../managers/lo
 @Discord()
 export class LOAButtonHandlers {
   @ButtonComponent({ id: /^loa:approve:(\d+)$/ })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("loa.manage.approve"))
   async handleApprove(interaction: ButtonInteraction) {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -109,7 +109,7 @@ export class LOAButtonHandlers {
   }
 
   @ButtonComponent({ id: /^loa:deny:(\d+)$/ })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("loa.manage.approve"))
   async handleDeny(interaction: ButtonInteraction) {
     if (!interaction.guildId) {
       await interaction.reply({
