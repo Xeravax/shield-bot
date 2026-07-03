@@ -232,8 +232,12 @@ export class EventApprovalButtonHandlers {
       .setStyle(ButtonStyle.Danger);
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(acceptBtn, denyBtn);
 
-    const channel = await interaction.client.channels.fetch(settings.eventPlanningChannelId);
+    const channel = await interaction.client.channels.fetch(settings.eventPlanningChannelId).catch(() => null);
     if (!channel?.isTextBased() || channel.isDMBased()) {
+      await interaction.followUp({
+        content: "❌ Planning channel is not accessible or invalid.",
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
 
@@ -244,7 +248,7 @@ export class EventApprovalButtonHandlers {
     });
 
     const claim = await prisma.plannedEvent.updateMany({
-      where: { id: eventId, pendingCoHostUserId: null },
+      where: { id: eventId, pendingCoHostUserId: null, coHostId: null },
       data: { pendingCoHostUserId: requesterId, coHostRequestMessageId: reqMsg.id },
     });
     if (claim.count === 0) {
