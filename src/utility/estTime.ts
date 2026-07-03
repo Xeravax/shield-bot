@@ -50,6 +50,21 @@ function getTimezoneOffsetMs(timeZone: string, date: Date): number {
   return asUtc - date.getTime();
 }
 
+/** Convert a local date/time in the given IANA timezone to a UTC Date. */
+export function timezoneLocalToUtc(
+  timeZone: string,
+  year: number,
+  month: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+): Date {
+  const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const offset = getTimezoneOffsetMs(timeZone, guess);
+  return new Date(guess.getTime() - offset);
+}
+
 /** Convert a local date/time in EVENT_TIMEZONE to a UTC Date. */
 export function estLocalToUtc(
   year: number,
@@ -59,14 +74,12 @@ export function estLocalToUtc(
   minute = 0,
   second = 0,
 ): Date {
-  const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
-  const offset = getTimezoneOffsetMs(EVENT_TIMEZONE, guess);
-  return new Date(guess.getTime() - offset);
+  return timezoneLocalToUtc(EVENT_TIMEZONE, year, month, day, hour, minute, second);
 }
 
-export function getESTDateParts(date: Date): ESTDateParts {
+export function getTimezoneDateParts(date: Date, timeZone: string): ESTDateParts {
   const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone: EVENT_TIMEZONE,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -93,6 +106,10 @@ export function getESTDateParts(date: Date): ESTDateParts {
     second: +map.second,
     weekday: WEEKDAY_MAP[weekdayShort] ?? 0,
   };
+}
+
+export function getESTDateParts(date: Date): ESTDateParts {
+  return getTimezoneDateParts(date, EVENT_TIMEZONE);
 }
 
 export function isMondayEST(date: Date): boolean {

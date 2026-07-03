@@ -3,7 +3,14 @@ import {
   EVENT_TIMEZONE,
   formatRelativeFromNow,
   formatTimezoneLabel,
+  getESTDateParts,
+  getTimezoneDateParts,
+  timezoneLocalToUtc,
 } from "../../utility/estTime.js";
+import {
+  getSchedulableEventWeekRange,
+  isWithinSchedulableEventWeek,
+} from "./eventWeek.js";
 
 const MAX_AUTOCOMPLETE = 25;
 
@@ -22,8 +29,65 @@ function isAbsoluteTimestampInput(trimmed: string): boolean {
   return /^\d{10,13}$/.test(trimmed) || DISCORD_TS_RE.test(trimmed);
 }
 
-function ensureForwardDate(parsed: Date, _refDate: Date): Date {
-  return parsed;
+interface ParsedWallTime {
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+function wallTimeFromChrono(start: chrono.ParsedComponents, timezone: string): ParsedWallTime {
+  const parsed = start.date();
+  const fallback = getTimezoneDateParts(parsed, timezone);
+  return {
+    hour: start.get("hour") ?? fallback.hour,
+    minute: start.get("minute") ?? fallback.minute,
+    second: start.get("second") ?? fallback.second,
+  };
+}
+
+/**
+ * Snap natural-language parses into the schedulable event week (Tue–Sun).
+ * chrono's forwardDate picks the nearest future weekday, which is often the
+ * current week — but Tue–Sun planning only allows the next event week.
+ */
+function ensureForwardDate(
+  parsed: Date,
+  refDate: Date,
+  timezone: string,
+  wallTime: ParsedWallTime,
+): Date {
+  const parsedEst = getESTDateParts(parsed);
+  if (parsedEst.weekday === 0) {
+    return timezoneLocalToUtc(
+      timezone,
+      parsedEst.year,
+      parsedEst.month,
+      parsedEst.day,
+      wallTime.hour,
+      wallTime.minute,
+      wallTime.second,
+    );
+  }
+
+  let { year, month, day } = parsedEst;
+
+  if (!isWithinSchedulableEventWeek(parsed, refDate)) {
+    const { start: weekStart } = getSchedulableEventWeekRange(refDate);
+    const weekStartEst = getESTDateParts(weekStart);
+    year = weekStartEst.year;
+    month = weekStartEst.month;
+    day = weekStartEst.day + (parsedEst.weekday - 1);
+  }
+
+  return timezoneLocalToUtc(
+    timezone,
+    year,
+    month,
+    day,
+    wallTime.hour,
+    wallTime.minute,
+    wallTime.second,
+  );
 }
 
 function parseNaturalLanguageTime(
@@ -40,7 +104,8 @@ function parseNaturalLanguageTime(
     return null;
   }
 
-  return ensureForwardDate(results[0].start.date(), refDate);
+  const start = results[0].start;
+  return ensureForwardDate(start.date(), refDate, timezone, wallTimeFromChrono(start, timezone));
 }
 
 export function parseEventTime(
@@ -103,7 +168,7 @@ export function buildTimeAutocompleteChoices(
     { forwardDate: true },
   );
   return results.slice(0, MAX_AUTOCOMPLETE).map((r) => {
-    const d = ensureForwardDate(r.start.date(), refDate);
+    const d = ensureForwardDate(r.start.date(), refDate, tz, wallTimeFromChrono(r.start, tz));
     const unix = Math.floor(d.getTime() / 1000);
     return {
       name: `${formatTimezoneLabel(d, tz)} — ${formatRelativeFromNow(d, refDate)}`,
