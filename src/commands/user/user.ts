@@ -20,6 +20,54 @@ import { GuildGuard } from "../../utility/guards.js";
 import { getUserExportData } from "../../utility/userDataExport.js";
 import { patrolTimer } from "../../main.js";
 
+const PERMISSION_LIST_HEADER =
+  `📋 **Permission Node System**\n\n` +
+  `Permissions are granted to Discord roles via \`/permissions grant\`.\n\n`;
+const PERMISSION_LIST_FOOTER =
+  `\n\n💡 **Tip:** Use \`/user permission @user\` to see a member's effective node grants.`;
+const PERMISSION_LIST_MAX = 1900;
+
+function buildPermissionListMessages(): string[] {
+  const areaBlocks = Object.entries(PERMISSION_NODE_REGISTRY).map(
+    ([area, defs]) => {
+      const lines = defs.map((d) => `  • \`${d.node}\` — ${d.description}`);
+      return `**${area}**\n${lines.join("\n")}`;
+    },
+  );
+
+  const bodyLimit =
+    PERMISSION_LIST_MAX -
+    Math.max(PERMISSION_LIST_HEADER.length, PERMISSION_LIST_FOOTER.length);
+  const bodyChunks: string[] = [];
+  let current = "";
+
+  for (const block of areaBlocks) {
+    const next = current ? `${current}\n\n${block}` : block;
+    if (next.length > bodyLimit && current) {
+      bodyChunks.push(current);
+      current = block;
+    } else {
+      current = next;
+    }
+  }
+  if (current) {
+    bodyChunks.push(current);
+  }
+
+  return bodyChunks.map((body, index) => {
+    if (index === 0 && bodyChunks.length === 1) {
+      return PERMISSION_LIST_HEADER + body + PERMISSION_LIST_FOOTER;
+    }
+    if (index === 0) {
+      return PERMISSION_LIST_HEADER + body;
+    }
+    if (index === bodyChunks.length - 1) {
+      return body + PERMISSION_LIST_FOOTER;
+    }
+    return body;
+  });
+}
+
 @Discord()
 @SlashGroup({
   name: "user",
@@ -89,21 +137,17 @@ export class UserCommands {
   ) {
     // If no user provided, list all permissions
     if (!user) {
-      const areas = Object.entries(PERMISSION_NODE_REGISTRY)
-        .map(([area, defs]) => {
-          const lines = defs.map((d) => `  • \`${d.node}\` — ${d.description}`);
-          return `**${area}**\n${lines.join("\n")}`;
-        })
-        .join("\n\n");
-
+      const messages = buildPermissionListMessages();
       await interaction.reply({
-        content:
-          `📋 **Permission Node System**\n\n` +
-          `Permissions are granted to Discord roles via \`/permissions grant\`.\n\n` +
-          `${areas}\n\n` +
-          `💡 **Tip:** Use \`/user permission @user\` to see a member's effective node grants.`,
+        content: messages[0],
         flags: MessageFlags.Ephemeral,
       });
+      for (let i = 1; i < messages.length; i++) {
+        await interaction.followUp({
+          content: messages[i],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
       return;
     }
 

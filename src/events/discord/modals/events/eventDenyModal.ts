@@ -39,6 +39,8 @@ export class EventDenyModalHandlers {
       return;
     }
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     try {
       const result = await denyPlannedEvent(
         eventId,
@@ -47,22 +49,15 @@ export class EventDenyModalHandlers {
         interaction.guild,
       );
       if (!result.success) {
-        await interaction.reply({
-          content: `❌ ${result.error}`,
-          flags: MessageFlags.Ephemeral,
-        });
+        await interaction.editReply({ content: `❌ ${result.error}` });
         return;
       }
 
-      await interaction.reply({
-        content: "✅ Event denied.",
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.editReply({ content: "✅ Event denied." });
     } catch (error) {
       loggers.bot.error("Error denying event", error);
-      await interaction.reply({
+      await interaction.editReply({
         content: "❌ An error occurred while denying the event.",
-        flags: MessageFlags.Ephemeral,
       });
     }
   }

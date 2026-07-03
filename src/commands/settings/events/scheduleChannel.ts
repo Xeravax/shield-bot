@@ -62,12 +62,10 @@ export class SettingsEventsScheduleChannelCommand {
         where: { guildId: interaction.guildId },
         update: {
           eventScheduleChannelId: channel.id,
-          eventOnDutyScheduleChannelId: channel.id,
         },
         create: {
           guildId: interaction.guildId,
           eventScheduleChannelId: channel.id,
-          eventOnDutyScheduleChannelId: channel.id,
         },
       });
 
@@ -80,7 +78,7 @@ export class SettingsEventsScheduleChannelCommand {
       );
 
       await interaction.reply({
-        content: `✅ On-duty schedule channel set to <#${channel.id}>. \`/event export\` will post the on-duty weekly schedule there.`,
+        content: `✅ Legacy event schedule channel set to <#${channel.id}>. The on-duty schedule channel is unchanged — use \`/settings events on-duty-schedule-channel\` to configure it.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error: unknown) {

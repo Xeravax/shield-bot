@@ -11,6 +11,7 @@ import {
   buildPlanningMessageUrl,
   formatSchedulableWeekRangeLabel,
   getEventWeekRangeForDate,
+  getSchedulableEventWeekRange,
   isWithinSchedulableEventWeek,
 } from "./eventWeek.js";
 import { isDurationAllowedForDuty, defaultDurationMinutes } from "./eventType.js";
@@ -173,6 +174,12 @@ export async function validateEventRules(
     return results;
   }
 
+  const newDurationMs = eventDurationMs(
+    durationMinutes ?? defaultDurationMinutes(duty),
+  );
+  const newStartMs = startTime.getTime();
+  const newEndMs = newStartMs + newDurationMs;
+
   const estTimeLabel = formatESTLabel(startTime);
 
   if (isMondayEST(startTime)) {
@@ -191,7 +198,11 @@ export async function validateEventRules(
     });
   }
 
-  if (!isWithinSchedulableEventWeek(startTime)) {
+  const schedulableWeek = getSchedulableEventWeekRange();
+  const startInWindow = isWithinSchedulableEventWeek(startTime);
+  const endInWindow = newEndMs <= schedulableWeek.end.getTime();
+
+  if (!startInWindow || !endInWindow) {
     results.push({
       id: "scheduling-window",
       label: "Scheduling window",
@@ -269,12 +280,6 @@ export async function validateEventRules(
       message: `Host has ${currentCount}/3 ${limitDuty} events this week.`,
     });
   }
-
-  const newDurationMs = eventDurationMs(
-    durationMinutes ?? defaultDurationMinutes(duty),
-  );
-  const newStartMs = startTime.getTime();
-  const newEndMs = newStartMs + newDurationMs;
 
   const approvedEvents = await prisma.plannedEvent.findMany({
     where: {
@@ -437,6 +442,17 @@ export async function validateEventRules(
   return results;
 }
 
+const POLICY_RULE_IDS = new Set([
+  "monday-ban",
+  "scheduling-window",
+  "host-weekly-limit",
+  "overlap",
+  "fcfs-queue",
+  "jr-host-cohost",
+  "duration-3h",
+  "duration-2h-offduty",
+]);
+
 export function applyForceOverride(
   results: EventRuleResult[],
   force: boolean,
@@ -446,7 +462,7 @@ export function applyForceOverride(
   }
   const overriddenIds: string[] = [];
   const adjusted = results.map((r) => {
-    if (r.severity === "fail") {
+    if (r.severity === "fail" && POLICY_RULE_IDS.has(r.id)) {
       overriddenIds.push(r.id);
       return {
         ...r,
@@ -483,7 +499,7 @@ export async function jrHostMissingFullCoHost(
   coHostId: string | null | undefined,
 ): Promise<boolean> {
   if (!guild) {
-    return false;
+    return true;
   }
   const hostMember = await fetchHostMember(guild, hostId);
   if (!hostMember || !(await memberIsJrHostOnly(hostMember))) {

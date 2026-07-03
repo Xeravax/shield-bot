@@ -77,11 +77,12 @@ export async function seedPermissionNodesFromLegacyRoles(): Promise<void> {
   let seededGuilds = 0;
   let totalGrants = 0;
 
+  const seededGuildIds = new Set(
+    (await prisma.rolePermission.groupBy({ by: ["guildId"] })).map((g) => g.guildId),
+  );
+
   for (const settings of settingsRows) {
-    const existing = await prisma.rolePermission.count({
-      where: { guildId: settings.guildId },
-    });
-    if (existing > 0) {
+    if (seededGuildIds.has(settings.guildId)) {
       continue;
     }
 

@@ -56,6 +56,10 @@ export function isEventLocked(event: PlannedEvent): boolean {
   return event.discordEventId != null;
 }
 
+function assertEventInGuild(event: PlannedEvent, guildId: string): boolean {
+  return event.guildId === guildId;
+}
+
 export const EVENT_COLORS = {
   draft: Colors.Blurple,
   pending: Colors.Orange,
@@ -103,6 +107,9 @@ export async function editDraftPanelMessage(
 
 /** In-memory force flags set when /event schedule is run with force. */
 const forceOverrides = new Map<number, boolean>();
+
+/** Prevent concurrent double-export per guild. */
+const exportLocks = new Set<string>();
 
 export function setEventForceOverride(eventId: number, force: boolean): void {
   if (force) {
@@ -352,6 +359,37 @@ export function buildDraftPanelComponents(
   return rows;
 }
 
+function appendCoHostRequestComponents(
+  rows: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+  event: PlannedEvent,
+): void {
+  if (isEventLocked(event) || !event.coHostOpen || event.coHostId) {
+    return;
+  }
+
+  if (!event.pendingCoHostUserId) {
+    rows.push(
+      new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`event:cohost:${event.id}`)
+          .setLabel("Request Co-host")
+          .setStyle(ButtonStyle.Primary),
+      ),
+    );
+    return;
+  }
+
+  rows.push(
+    new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`event:cohost:${event.id}`)
+        .setLabel("Request Co-host")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true),
+    ),
+  );
+}
+
 export function buildPlanningComponents(
   event: PlannedEvent,
 ): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
@@ -379,29 +417,7 @@ export function buildPlanningComponents(
       ),
     );
 
-    const showCoHostRequest =
-      event.coHostOpen && !event.coHostId && !event.pendingCoHostUserId;
-
-    if (showCoHostRequest) {
-      rows.push(
-        new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`event:cohost:${event.id}`)
-            .setLabel("Request Co-host")
-            .setStyle(ButtonStyle.Primary),
-        ),
-      );
-    } else if (event.coHostOpen && event.pendingCoHostUserId) {
-      rows.push(
-        new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`event:cohost:${event.id}`)
-            .setLabel("Request Co-host")
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(true),
-        ),
-      );
-    }
+    appendCoHostRequestComponents(rows, event);
   } else if (event.status === PlannedEventStatus.DENIED) {
     if (!isEventLocked(event)) {
       rows.push(
@@ -422,6 +438,8 @@ export function buildPlanningComponents(
           .setStyle(ButtonStyle.Danger),
       ),
     );
+
+    appendCoHostRequestComponents(rows, event);
   }
 
   return rows;
@@ -575,6 +593,7 @@ export async function notifyHost(
           await channel.send({
             content: `<@${event.hostId}> ${textParts.join("")}`,
             embeds: [embed],
+            allowedMentions: { users: [event.hostId], parse: [] },
           });
         }
       }
@@ -590,6 +609,9 @@ export async function submitEventForApproval(
 ): Promise<{ success: boolean; error?: string; event?: PlannedEvent }> {
   const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
   if (!event) {
+    return { success: false, error: "Event not found." };
+  }
+  if (!assertEventInGuild(event, guild.id)) {
     return { success: false, error: "Event not found." };
   }
 
@@ -676,9 +698,20 @@ export async function approvePlannedEvent(
   if (!event || event.status !== PlannedEventStatus.PENDING) {
     return { success: false, error: "Event is not pending approval." };
   }
+  if (!assertEventInGuild(event, guild.id)) {
+    return { success: false, error: "Event not found." };
+  }
 
   if (isEventLocked(event)) {
     return { success: false, error: "This event has been exported and is locked." };
+  }
+
+  const { results } = await runEventValidation(event, guild);
+  if (hasBlockingFailures(results)) {
+    return {
+      success: false,
+      error: "Blocking validation failures must be resolved before approval.",
+    };
   }
 
   if (await jrHostMissingFullCoHost(guild, event.hostId, event.coHostId)) {
@@ -716,6 +749,9 @@ export async function denyPlannedEvent(
   const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
   if (!event || event.status !== PlannedEventStatus.PENDING) {
     return { success: false, error: "Event is not pending approval." };
+  }
+  if (!assertEventInGuild(event, guild.id)) {
+    return { success: false, error: "Event not found." };
   }
 
   if (isEventLocked(event)) {
@@ -768,7 +804,7 @@ export async function beginEventEditForHost(
     return { success: false, error: "Exported events cannot be edited." };
   }
 
-  const reopened = await reopenUnapprovedEventForEdit(eventId);
+  const reopened = await reopenUnapprovedEventForEdit(eventId, guild.id);
   if (!reopened) {
     return { success: false, error: "Could not reopen event for editing." };
   }
@@ -783,9 +819,10 @@ export async function beginEventEditForHost(
 
 export async function reopenUnapprovedEventForEdit(
   eventId: number,
+  guildId: string,
 ): Promise<PlannedEvent | null> {
   const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-  if (!event || isEventLocked(event)) {
+  if (!event || !assertEventInGuild(event, guildId) || isEventLocked(event)) {
     return null;
   }
   if (
@@ -805,8 +842,9 @@ export async function reopenUnapprovedEventForEdit(
 
 export async function reopenDeniedEventForEdit(
   eventId: number,
+  guildId: string,
 ): Promise<PlannedEvent | null> {
-  return reopenUnapprovedEventForEdit(eventId);
+  return reopenUnapprovedEventForEdit(eventId, guildId);
 }
 
 export function getUpcomingWeekRange(now = new Date()): { start: Date; end: Date } {
@@ -845,6 +883,9 @@ export async function cancelPlannedEvent(
   if (!event) {
     return { success: false, error: "Event not found." };
   }
+  if (!assertEventInGuild(event, guild.id)) {
+    return { success: false, error: "Event not found." };
+  }
   if (
     event.status !== PlannedEventStatus.PENDING &&
     event.status !== PlannedEventStatus.APPROVED
@@ -872,6 +913,11 @@ export async function cancelPlannedEvent(
         `Could not delete Discord scheduled event ${event.discordEventId} for planned event ${event.id}`,
         error,
       );
+      return {
+        success: false,
+        error:
+          "Could not delete the Discord scheduled event. The event was not cancelled.",
+      };
     }
   }
 
@@ -1027,10 +1073,18 @@ export async function createDiscordScheduledEvent(
       description: `Host: <@${event.hostId}>\n${coHostLine}\nDuty: ${dutyLabel(event.duty)}`,
     });
 
-    await prisma.plannedEvent.update({
-      where: { id: event.id },
+    const updated = await prisma.plannedEvent.updateMany({
+      where: { id: event.id, discordEventId: null },
       data: { discordEventId: scheduled.id },
     });
+
+    if (updated.count === 0) {
+      await scheduled.delete().catch(() => null);
+      return {
+        success: false,
+        error: "Event was already exported or locked.",
+      };
+    }
 
     return { success: true, discordEventId: scheduled.id };
   } catch (error) {
@@ -1069,6 +1123,15 @@ export async function exportApprovedEvents(
   manualTemplates?: { onDuty: string; offDuty: string };
   results?: { eventId: number; title: string; success: boolean; error?: string }[];
 }> {
+  if (exportLocks.has(guild.id)) {
+    return {
+      success: false,
+      error: "An export is already in progress for this server. Please wait.",
+    };
+  }
+  exportLocks.add(guild.id);
+
+  try {
   const manualPost = options.manualPost ?? false;
   const settings = await prisma.guildSettings.findUnique({
     where: { guildId: guild.id },
@@ -1120,6 +1183,64 @@ export async function exportApprovedEvents(
     };
   }
 
+  const location = settings?.eventDefaultLocation ?? "See event description";
+
+  const results: {
+    eventId: number;
+    title: string;
+    success: boolean;
+    error?: string;
+    discordEventId?: string;
+  }[] = [];
+
+  for (const event of events) {
+    const result = await createDiscordScheduledEvent(
+      guild,
+      event,
+      location,
+      event.durationMinutes,
+    );
+    results.push({
+      eventId: event.id,
+      title: event.title,
+      success: result.success,
+      error: result.error,
+      discordEventId: result.discordEventId,
+    });
+  }
+
+  const allSucceeded = results.every((r) => r.success);
+  if (!allSucceeded) {
+    for (const result of results) {
+      if (!result.success || !result.discordEventId) {
+        continue;
+      }
+      try {
+        const scheduled = await guild.scheduledEvents.fetch(result.discordEventId);
+        await scheduled.delete();
+      } catch (error) {
+        loggers.bot.warn(
+          `Failed to roll back Discord scheduled event ${result.discordEventId} during export`,
+          error,
+        );
+      }
+      await prisma.plannedEvent.updateMany({
+        where: { id: result.eventId, discordEventId: result.discordEventId },
+        data: { discordEventId: null },
+      });
+    }
+
+    const failed = results.filter((r) => !r.success);
+    const errorLines = failed
+      .map((r) => `• **${r.title}**: ${r.error ?? "Unknown error"}`)
+      .join("\n");
+    return {
+      success: false,
+      error: `Failed to create Discord scheduled events:\n${errorLines}`,
+      results,
+    };
+  }
+
   const deniedPending = await denyPendingEventsForSchedulableWeek(
     guild,
     exporterUserId,
@@ -1149,24 +1270,6 @@ export async function exportApprovedEvents(
     }
   }
 
-  const location = settings?.eventDefaultLocation ?? "See event description";
-
-  const results = [];
-  for (const event of events) {
-    const result = await createDiscordScheduledEvent(
-      guild,
-      event,
-      location,
-      event.durationMinutes,
-    );
-    results.push({
-      eventId: event.id,
-      title: event.title,
-      success: result.success,
-      error: result.error,
-    });
-  }
-
   return {
     success: true,
     schedulePosted: !manualPost,
@@ -1175,6 +1278,9 @@ export async function exportApprovedEvents(
     deniedPendingCount: deniedPending.length,
     results,
   };
+  } finally {
+    exportLocks.delete(guild.id);
+  }
 }
 
 export function buildExportConfirmPayload(

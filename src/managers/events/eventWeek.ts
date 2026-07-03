@@ -10,12 +10,18 @@ export function getEventWeekRangeForDate(date: Date): { start: Date; end: Date }
 
   if (parts.weekday === 0) {
     const start = estLocalToUtc(parts.year, parts.month, parts.day + 1, 0, 0, 0);
-    return { start, end: new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000) };
+    return {
+      start,
+      end: estLocalToUtc(parts.year, parts.month, parts.day + 8, 0, 0, 0),
+    };
   }
 
   const tuesdayDay = parts.day - (parts.weekday - 1);
   const start = estLocalToUtc(parts.year, parts.month, tuesdayDay, 0, 0, 0);
-  return { start, end: new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000) };
+  return {
+    start,
+    end: estLocalToUtc(parts.year, parts.month, tuesdayDay + 7, 0, 0, 0),
+  };
 }
 
 /**
@@ -37,7 +43,10 @@ export function getSchedulableEventWeekRange(now = new Date()): { start: Date; e
 
   const tuesdayDay = parts.day + daysUntilTuesday;
   const start = estLocalToUtc(parts.year, parts.month, tuesdayDay, 0, 0, 0);
-  return { start, end: new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000) };
+  return {
+    start,
+    end: estLocalToUtc(parts.year, parts.month, tuesdayDay + 7, 0, 0, 0),
+  };
 }
 
 export function isWithinSchedulableEventWeek(

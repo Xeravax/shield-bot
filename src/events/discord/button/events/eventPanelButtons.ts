@@ -21,13 +21,25 @@ import {
   nextEventType,
 } from "../../../../managers/events/eventType.js";
 import { isDraftPlaceholderTime } from "../../../../managers/events/eventDraftDefaults.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
+
+const EVENT_PANEL_TITLE_PATTERN = /^event-panel:title:(\d+)$/;
+const EVENT_PANEL_TIME_PATTERN = /^event-panel:time:(\d+)$/;
+const EVENT_PANEL_TOGGLE_DUTY_PATTERN = /^event-panel:toggle-duty:(\d+)$/;
+const EVENT_PANEL_TOGGLE_TYPE_PATTERN = /^event-panel:toggle-type:(\d+)$/;
+const EVENT_PANEL_TOGGLE_DURATION_PATTERN = /^event-panel:toggle-duration:(\d+)$/;
+const EVENT_PANEL_TOGGLE_COHOST_OPEN_PATTERN = /^event-panel:toggle-cohost-open:(\d+)$/;
+const EVENT_PANEL_SUBMIT_PATTERN = /^event-panel:submit:(\d+)$/;
+const EVENT_PANEL_CANCEL_PATTERN = /^event-panel:cancel:(\d+)$/;
 
 @Discord()
 export class EventPanelButtonHandlers {
   /** No @Guard before showModal — Discord 3s ack window. */
-  @ButtonComponent({ id: /^event-panel:title:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_PANEL_TITLE_PATTERN })
   async handleEditTitle(interaction: ButtonInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_TITLE_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.status !== PlannedEventStatus.DRAFT) {
       await interaction.reply({
@@ -61,9 +73,11 @@ export class EventPanelButtonHandlers {
     await interaction.showModal(modal);
   }
 
-  @ButtonComponent({ id: /^event-panel:time:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_PANEL_TIME_PATTERN })
   async handleEditTime(interaction: ButtonInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_TIME_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.status !== PlannedEventStatus.DRAFT) {
       await interaction.reply({
@@ -99,9 +113,11 @@ export class EventPanelButtonHandlers {
     await interaction.showModal(modal);
   }
 
-  @ButtonComponent({ id: /^event-panel:toggle-duty:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_PANEL_TOGGLE_DUTY_PATTERN })
   async handleToggleDuty(interaction: ButtonInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_DUTY_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.status !== PlannedEventStatus.DRAFT) {
       await interaction.reply({
@@ -135,9 +151,11 @@ export class EventPanelButtonHandlers {
     await editDraftPanelMessage(interaction, embed, components);
   }
 
-  @ButtonComponent({ id: /^event-panel:toggle-type:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_PANEL_TOGGLE_TYPE_PATTERN })
   async handleToggleType(interaction: ButtonInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_TYPE_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.status !== PlannedEventStatus.DRAFT) {
       await interaction.reply({
@@ -165,9 +183,11 @@ export class EventPanelButtonHandlers {
     await editDraftPanelMessage(interaction, embed, components);
   }
 
-  @ButtonComponent({ id: /^event-panel:toggle-duration:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_PANEL_TOGGLE_DURATION_PATTERN })
   async handleToggleDuration(interaction: ButtonInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_DURATION_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.status !== PlannedEventStatus.DRAFT) {
       await interaction.reply({
@@ -195,9 +215,11 @@ export class EventPanelButtonHandlers {
     await editDraftPanelMessage(interaction, embed, components);
   }
 
-  @ButtonComponent({ id: /^event-panel:toggle-cohost-open:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_PANEL_TOGGLE_COHOST_OPEN_PATTERN })
   async handleToggleCoHostOpen(interaction: ButtonInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_COHOST_OPEN_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.status !== PlannedEventStatus.DRAFT) {
       await interaction.reply({
@@ -229,9 +251,11 @@ export class EventPanelButtonHandlers {
     await editDraftPanelMessage(interaction, embed, components);
   }
 
-  @ButtonComponent({ id: /^event-panel:submit:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_PANEL_SUBMIT_PATTERN })
   async handleSubmit(interaction: ButtonInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_SUBMIT_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event) {
       await interaction.reply({
@@ -284,9 +308,11 @@ export class EventPanelButtonHandlers {
     });
   }
 
-  @ButtonComponent({ id: /^event-panel:cancel:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_PANEL_CANCEL_PATTERN })
   async handleCancel(interaction: ButtonInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_CANCEL_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event) {
       await interaction.reply({

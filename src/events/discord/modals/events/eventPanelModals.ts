@@ -5,6 +5,7 @@ import { parseEventTime } from "../../../../managers/events/eventTimeParser.js";
 import { getUserTimezone } from "../../../../utility/userPreferences.js";
 import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import { refreshDraftPanel, editDraftPanelMessage } from "../../../../managers/events/eventPlanningManager.js";
+import { loggers } from "../../../../utility/logger.js";
 
 @Discord()
 export class EventPanelModalHandlers {
@@ -37,14 +38,23 @@ export class EventPanelModalHandlers {
       return;
     }
 
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
-      data: { title },
-    });
-
     await interaction.deferUpdate();
-    const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
-    await editDraftPanelMessage(interaction, embed, components);
+
+    try {
+      await prisma.plannedEvent.update({
+        where: { id: eventId },
+        data: { title },
+      });
+
+      const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
+      await editDraftPanelMessage(interaction, embed, components);
+    } catch (error) {
+      loggers.bot.error("Error updating event title", error);
+      await interaction.followUp({
+        content: "❌ Failed to update event title.",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   }
 
   @ModalComponent({ id: /^event-modal:time:(\d+)$/ })
@@ -79,13 +89,22 @@ export class EventPanelModalHandlers {
       return;
     }
 
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
-      data: { startTime },
-    });
-
     await interaction.deferUpdate();
-    const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
-    await editDraftPanelMessage(interaction, embed, components);
+
+    try {
+      await prisma.plannedEvent.update({
+        where: { id: eventId },
+        data: { startTime },
+      });
+
+      const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
+      await editDraftPanelMessage(interaction, embed, components);
+    } catch (error) {
+      loggers.bot.error("Error updating event time", error);
+      await interaction.followUp({
+        content: "❌ Failed to update event time.",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   }
 }

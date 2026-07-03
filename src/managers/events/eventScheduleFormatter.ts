@@ -222,5 +222,5 @@ export function resolveOnDutyScheduleChannelId(
 export function resolveOffDutyScheduleChannelId(
   settings: GuildSettings | null,
 ): string | null {
-  return settings?.eventOffDutyScheduleChannelId ?? null;
+  return settings?.eventOffDutyScheduleChannelId ?? settings?.eventScheduleChannelId ?? null;
 }

@@ -31,16 +31,14 @@ export async function resolveHostLabels(
     return labels;
   }
 
-  await Promise.all(
-    uniqueIds.map(async (hostId) => {
-      try {
-        const member = await guild.members.fetch(hostId);
-        labels.set(hostId, member.displayName || member.user.username);
-      } catch {
-        labels.set(hostId, "Unknown host");
-      }
-    }),
-  );
+  for (const hostId of uniqueIds) {
+    const cached = guild.members.cache.get(hostId);
+    if (cached) {
+      labels.set(hostId, cached.displayName || cached.user.username);
+    } else {
+      labels.set(hostId, "Unknown host");
+    }
+  }
 
   return labels;
 }
@@ -99,7 +97,6 @@ export async function respondPlannedEventAutocomplete(
       ...(restrict ? { hostId: interaction.user.id } : {}),
     },
     orderBy: { startTime: "asc" },
-    take: 50,
   });
 
   const hostLabels = await resolveHostLabels(
@@ -107,9 +104,12 @@ export async function respondPlannedEventAutocomplete(
     events.map((e) => e.hostId),
   );
   const filtered = filterEventsByAutocompleteQuery(events, focused, hostLabels);
+  const sorted = [...filtered].sort(
+    (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+  );
 
   await interaction.respond(
-    filtered.slice(0, 25).map((event) => ({
+    sorted.slice(0, 25).map((event) => ({
       name: formatEventAutocompleteLabel(
         event,
         hostLabels.get(event.hostId) ?? "Unknown host",
