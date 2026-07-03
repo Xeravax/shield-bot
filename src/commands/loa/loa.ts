@@ -9,7 +9,7 @@ import {
   User,
 } from "discord.js";
 import { GuildGuard } from "../../utility/guards.js";
-import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
+import { PermissionNodeGuard } from "../../utility/guards.js";
 import { loaManager, patrolTimer } from "../../main.js";
 import { buildLOARequestEmbed } from "../../managers/loa/loaManager.js";
 

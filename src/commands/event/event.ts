@@ -10,7 +10,6 @@ import {
   ApplicationCommandOptionType,
   AutocompleteInteraction,
   CommandInteraction,
-  GuildMember,
   MessageFlags,
   User,
   ButtonBuilder,
@@ -19,7 +18,7 @@ import {
   EmbedBuilder,
   Colors,
 } from "discord.js";
-import { GuildGuard } from "../../utility/guards.js";
+import { GuildGuard, resolveGuildMember } from "../../utility/guards.js";
 import { PermissionNodeGuard, hasNode } from "../../utility/permissionNodes.js";
 import { prisma } from "../../main.js";
 import { buildTimeAutocompleteChoices } from "../../managers/events/eventTimeParser.js";
@@ -405,16 +404,15 @@ export class EventCommands {
       return;
     }
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const { results } = await runEventValidation(event, interaction.guild);
     if (results.some((r) => r.severity === "fail")) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "❌ Blocking validation failures must be resolved before submitting.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
-
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const result = await submitEventForApproval(eventId, interaction.guild);
     if (!result.success) {
@@ -551,7 +549,7 @@ export class EventCommands {
       return;
     }
 
-    const member = interaction.member as GuildMember | null;
+    const member = await resolveGuildMember(interaction);
     const isHost = interaction.user.id === event.hostId;
     const isLead = member ? await hasNode(member, "events.manage.approve") : false;
     if (!isHost && !isLead) {
@@ -581,7 +579,7 @@ export class EventCommands {
   }
 
   async autocompleteCancelEvent(interaction: AutocompleteInteraction): Promise<void> {
-    const member = interaction.member as GuildMember | null;
+    const member = await resolveGuildMember(interaction);
     const isLead = member ? await hasNode(member, "events.manage.approve") : false;
     await respondPlannedEventAutocomplete(
       interaction,

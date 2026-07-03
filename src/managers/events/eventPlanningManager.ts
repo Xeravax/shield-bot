@@ -646,19 +646,17 @@ export async function submitEventForApproval(
     return { success: false, error: "Event planning channel is invalid." };
   }
 
-  const pendingEvent = await prisma.plannedEvent.update({
-    where: { id: eventId },
-    data: {
-      status: PlannedEventStatus.PENDING,
-      denialReason: null,
-      reviewedById: null,
-    },
-  });
+  const pendingPreview: PlannedEvent = {
+    ...event,
+    status: PlannedEventStatus.PENDING,
+    denialReason: null,
+    reviewedById: null,
+  };
+  const embed = buildPlanningEmbed(pendingPreview, { overriddenIds });
+  const components = buildPlanningComponents(pendingPreview);
 
-  const embed = buildPlanningEmbed(pendingEvent, { overriddenIds });
-  const components = buildPlanningComponents(pendingEvent);
-
-  let messageId = pendingEvent.planningMessageId;
+  let messageId = event.planningMessageId;
+  let createdNewMessage = false;
   if (messageId) {
     try {
       const existing = await channel.messages.fetch(messageId);
@@ -671,17 +669,37 @@ export async function submitEventForApproval(
   if (!messageId) {
     const msg = await channel.send({ embeds: [embed], components });
     messageId = msg.id;
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
-      data: { planningMessageId: messageId },
-    });
+    createdNewMessage = true;
   }
 
-  const finalEvent = { ...pendingEvent, planningMessageId: messageId };
+  const submitted = await prisma.plannedEvent.updateMany({
+    where: {
+      id: eventId,
+      guildId: guild.id,
+      status: { in: [PlannedEventStatus.DRAFT, PlannedEventStatus.DENIED] },
+    },
+    data: {
+      status: PlannedEventStatus.PENDING,
+      denialReason: null,
+      reviewedById: null,
+      planningMessageId: messageId,
+    },
+  });
+  if (submitted.count === 0) {
+    if (createdNewMessage && messageId) {
+      await channel.messages.delete(messageId).catch(() => null);
+    }
+    return { success: false, error: "This event is no longer editable." };
+  }
+
+  const finalEvent = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+  if (!finalEvent) {
+    return { success: false, error: "Event not found after submission." };
+  }
   await notifyHost(
     guild,
     finalEvent,
-    `📋 Your event **${pendingEvent.title}** was submitted for approval.`,
+    `📋 Your event **${finalEvent.title}** was submitted for approval.`,
     { overriddenIds },
   );
 

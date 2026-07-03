@@ -1,14 +1,11 @@
 import {
-  Client,
   GuildMember,
-  Interaction,
   PermissionFlagsBits,
 } from "discord.js";
-import { Next } from "koa";
 import { prisma } from "../main.js";
 import { getEnv } from "../config/env.js";
-import { respondWithError } from "./generalUtils.js";
 import { loggers } from "./logger.js";
+export { PermissionNodeGuard, resolveGuildMember } from "./guards.js";
 
 /**
  * Granular permission node system.
@@ -273,53 +270,3 @@ export async function getMemberNodeGrants(
   }
 }
 
-/**
- * Guard factory: require the given permission node.
- * Usage: @Guard(PermissionNodeGuard("events.command.schedule"))
- */
-export function PermissionNodeGuard(node: string) {
-  return async function permissionNodeGuard(
-    interaction: Interaction,
-    _client: Client,
-    next: Next,
-  ): Promise<unknown> {
-    if (!interaction.guildId || !interaction.guild) {
-      await respondWithError(
-        interaction,
-        "This command can only be used in a server.",
-      );
-      return undefined;
-    }
-
-    const member = interaction.member;
-    if (!member || typeof member === "string") {
-      await respondWithError(
-        interaction,
-        "Unable to verify your permissions.",
-      );
-      return undefined;
-    }
-
-    if (
-      !("roles" in member) ||
-      Array.isArray(member.roles) ||
-      !("cache" in member.roles)
-    ) {
-      await respondWithError(
-        interaction,
-        "Unable to verify your permissions.",
-      );
-      return undefined;
-    }
-
-    if (await hasNode(member as GuildMember, node)) {
-      return next();
-    }
-
-    await respondWithError(
-      interaction,
-      `You don't have permission to use this command. Missing permission node: \`${node}\``,
-    );
-    return undefined;
-  };
-}

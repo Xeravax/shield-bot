@@ -5,7 +5,7 @@ import {
   MessageFlags,
   Role,
 } from "discord.js";
-import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
+import { PermissionNodeGuard } from "../../../utility/guards.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import { getScheduleExportSettings } from "../../../managers/events/eventScheduleFormatter.js";
@@ -41,6 +41,20 @@ export class SettingsEventsScheduleExportConfigCommand {
     })
     offDutyPingRole2: Role | null,
     @SlashOption({
+      name: "clear-on-duty-ping-role",
+      description: "Clear the configured on-duty ping role",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    clearOnDutyPingRole: boolean | null,
+    @SlashOption({
+      name: "clear-off-duty-ping-roles",
+      description: "Clear all configured off-duty ping roles",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    clearOffDutyPingRoles: boolean | null,
+    @SlashOption({
       name: "patrol-emoji-name",
       description: "Custom emoji name for patrol events (e.g. EventHosts)",
       type: ApplicationCommandOptionType.String,
@@ -69,6 +83,8 @@ export class SettingsEventsScheduleExportConfigCommand {
         onDutyPingRole !== null ||
         offDutyPingRole1 !== null ||
         offDutyPingRole2 !== null ||
+        clearOnDutyPingRole === true ||
+        clearOffDutyPingRoles === true ||
         patrolEmojiName !== null ||
         patrolEmojiId !== null;
 
@@ -105,6 +121,23 @@ export class SettingsEventsScheduleExportConfigCommand {
         return;
       }
 
+      if (clearOnDutyPingRole && onDutyPingRole) {
+        await interaction.reply({
+          content: "❌ Use either `on-duty-ping-role` or `clear-on-duty-ping-role`, not both.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (clearOffDutyPingRoles && (offDutyPingRole1 || offDutyPingRole2)) {
+        await interaction.reply({
+          content:
+            "❌ Use either off-duty role options or `clear-off-duty-ping-roles`, not both.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
       const existing = await prisma.guildSettings.findUnique({
         where: { guildId: interaction.guildId },
       });
@@ -112,16 +145,22 @@ export class SettingsEventsScheduleExportConfigCommand {
         ? (existing.eventOffDutyPingRoleIds as string[])
         : [];
 
-      const offDutyPingRoleIds = [
-        offDutyPingRole1?.id ?? currentOffDuty[0] ?? null,
-        offDutyPingRole2?.id ?? currentOffDuty[1] ?? null,
-      ].filter((id): id is string => Boolean(id));
+      const offDutyPingRoleIds = clearOffDutyPingRoles
+        ? []
+        : [
+          offDutyPingRole1?.id ?? currentOffDuty[0] ?? null,
+          offDutyPingRole2?.id ?? currentOffDuty[1] ?? null,
+        ].filter((id): id is string => Boolean(id));
 
       await prisma.guildSettings.upsert({
         where: { guildId: interaction.guildId },
         update: {
-          ...(onDutyPingRole ? { eventOnDutyPingRoleId: onDutyPingRole.id } : {}),
-          ...(offDutyPingRole1 !== null || offDutyPingRole2 !== null
+          ...(clearOnDutyPingRole
+            ? { eventOnDutyPingRoleId: null }
+            : onDutyPingRole
+              ? { eventOnDutyPingRoleId: onDutyPingRole.id }
+              : {}),
+          ...(clearOffDutyPingRoles || offDutyPingRole1 !== null || offDutyPingRole2 !== null
             ? { eventOffDutyPingRoleIds: offDutyPingRoleIds }
             : {}),
           ...(patrolEmojiName !== null ? { eventPatrolEmojiName: patrolEmojiName || null } : {}),
@@ -129,7 +168,7 @@ export class SettingsEventsScheduleExportConfigCommand {
         },
         create: {
           guildId: interaction.guildId,
-          eventOnDutyPingRoleId: onDutyPingRole?.id ?? null,
+          eventOnDutyPingRoleId: clearOnDutyPingRole ? null : onDutyPingRole?.id ?? null,
           eventOffDutyPingRoleIds: offDutyPingRoleIds,
           eventPatrolEmojiName: patrolEmojiName,
           eventPatrolEmojiId: patrolEmojiId,

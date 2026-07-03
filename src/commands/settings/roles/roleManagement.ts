@@ -40,16 +40,16 @@ export class SettingsRolesManagementSubGroup {
       name: "type",
       description: "Permission level type",
       type: ApplicationCommandOptionType.String,
-      required: true,
+      required: false,
     })
-    _type: string,
+    _type: string | undefined,
     @SlashOption({
       name: "role",
       description: "Discord role to add",
       type: ApplicationCommandOptionType.Role,
-      required: true,
+      required: false,
     })
-    _role: Role,
+    _role: Role | undefined,
     interaction: CommandInteraction,
   ) {
     await interaction.reply({
@@ -74,16 +74,16 @@ export class SettingsRolesManagementSubGroup {
       name: "type",
       description: "Permission level type",
       type: ApplicationCommandOptionType.String,
-      required: true,
+      required: false,
     })
-    _type: string,
+    _type: string | undefined,
     @SlashOption({
       name: "role",
       description: "Discord role to remove",
       type: ApplicationCommandOptionType.Role,
-      required: true,
+      required: false,
     })
-    _role: Role,
+    _role: Role | undefined,
     interaction: CommandInteraction,
   ) {
     await interaction.reply({

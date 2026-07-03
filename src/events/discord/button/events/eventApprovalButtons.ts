@@ -187,82 +187,89 @@ export class EventApprovalButtonHandlers {
       return;
     }
 
-    const hasHost = await memberHasHostNode(member);
-    const hasJr = await memberHasJrHostNode(member);
-    if (!hasHost && !hasJr) {
-      await interaction.reply({
-        content: "❌ You need the Host or Jr. Host role to request co-host.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const hostMember = await interaction.guild.members.fetch(event.hostId).catch(() => null);
-    if (hostMember && (await memberIsJrHostOnly(hostMember))) {
-      if (!(await memberIsFullHost(member))) {
-        await interaction.reply({
-          content: "❌ Jr. Host events only accept a full Host as co-host.",
+    await interaction.deferUpdate();
+    try {
+      const hasHost = await memberHasHostNode(member);
+      const hasJr = await memberHasJrHostNode(member);
+      if (!hasHost && !hasJr) {
+        await interaction.followUp({
+          content: "❌ You need the Host or Jr. Host role to request co-host.",
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
-    }
 
-    await interaction.deferUpdate();
+      const hostMember = await interaction.guild.members.fetch(event.hostId).catch(() => null);
+      if (hostMember && (await memberIsJrHostOnly(hostMember))) {
+        if (!(await memberIsFullHost(member))) {
+          await interaction.followUp({
+            content: "❌ Jr. Host events only accept a full Host as co-host.",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+      }
 
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId: event.guildId },
-    });
-    if (!settings?.eventPlanningChannelId) {
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId: event.guildId },
+      });
+      if (!settings?.eventPlanningChannelId) {
+        await interaction.followUp({
+          content: "❌ Planning channel not configured.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const requesterId = interaction.user.id;
+      const acceptBtn = new ButtonBuilder()
+        .setCustomId(`event:cohost-accept:${eventId}:${requesterId}`)
+        .setLabel("Accept")
+        .setStyle(ButtonStyle.Success);
+      const denyBtn = new ButtonBuilder()
+        .setCustomId(`event:cohost-deny:${eventId}:${requesterId}`)
+        .setLabel("Deny")
+        .setStyle(ButtonStyle.Danger);
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(acceptBtn, denyBtn);
+
+      const channel = await interaction.client.channels.fetch(settings.eventPlanningChannelId).catch(() => null);
+      if (!channel?.isTextBased() || channel.isDMBased()) {
+        await interaction.followUp({
+          content: "❌ Planning channel is not accessible or invalid.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const reqMsg = await channel.send({
+        content: `<@${requesterId}> requested to become co-host for **${event.title}**. <@${event.hostId}>, do you accept?`,
+        components: [row],
+        allowedMentions: { users: [event.hostId, requesterId] },
+      });
+
+      const claim = await prisma.plannedEvent.updateMany({
+        where: { id: eventId, pendingCoHostUserId: null, coHostId: null },
+        data: { pendingCoHostUserId: requesterId, coHostRequestMessageId: reqMsg.id },
+      });
+      if (claim.count === 0) {
+        await reqMsg.delete().catch(() => null);
+        await interaction.followUp({
+          content: "❌ Another co-host request is already pending.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const refreshed = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+      if (refreshed) {
+        await updatePlanningChannelMessage(interaction.guild, refreshed);
+      }
+    } catch (error) {
+      loggers.bot.error("Error handling co-host request", error);
       await interaction.followUp({
-        content: "❌ Planning channel not configured.",
+        content: "❌ An error occurred while processing the co-host request.",
         flags: MessageFlags.Ephemeral,
       });
-      return;
-    }
-
-    const requesterId = interaction.user.id;
-    const acceptBtn = new ButtonBuilder()
-      .setCustomId(`event:cohost-accept:${eventId}:${requesterId}`)
-      .setLabel("Accept")
-      .setStyle(ButtonStyle.Success);
-    const denyBtn = new ButtonBuilder()
-      .setCustomId(`event:cohost-deny:${eventId}:${requesterId}`)
-      .setLabel("Deny")
-      .setStyle(ButtonStyle.Danger);
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(acceptBtn, denyBtn);
-
-    const channel = await interaction.client.channels.fetch(settings.eventPlanningChannelId).catch(() => null);
-    if (!channel?.isTextBased() || channel.isDMBased()) {
-      await interaction.followUp({
-        content: "❌ Planning channel is not accessible or invalid.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const reqMsg = await channel.send({
-      content: `<@${requesterId}> requested to become co-host for **${event.title}**. <@${event.hostId}>, do you accept?`,
-      components: [row],
-      allowedMentions: { users: [event.hostId, requesterId] },
-    });
-
-    const claim = await prisma.plannedEvent.updateMany({
-      where: { id: eventId, pendingCoHostUserId: null, coHostId: null },
-      data: { pendingCoHostUserId: requesterId, coHostRequestMessageId: reqMsg.id },
-    });
-    if (claim.count === 0) {
-      await reqMsg.delete().catch(() => null);
-      await interaction.followUp({
-        content: "❌ Another co-host request is already pending.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const refreshed = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (refreshed) {
-      await updatePlanningChannelMessage(interaction.guild, refreshed);
     }
   }
 
@@ -289,22 +296,28 @@ export class EventApprovalButtonHandlers {
       return;
     }
 
-    const result = await beginEventEditForHost(
-      eventId,
-      interaction.guild,
-      interaction.user.id,
-    );
-    if (!result.success) {
-      await interaction.reply({
-        content: `❌ ${result.error}`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
-    await interaction.editReply({ embeds: [embed], components });
+    try {
+      const result = await beginEventEditForHost(
+        eventId,
+        interaction.guild,
+        interaction.user.id,
+      );
+      if (!result.success) {
+        await interaction.editReply({
+          content: `❌ ${result.error}`,
+        });
+        return;
+      }
+
+      const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
+      await interaction.editReply({ embeds: [embed], components });
+    } catch (error) {
+      loggers.bot.error("Error opening draft edit panel", error);
+      await interaction.editReply({
+        content: "❌ An error occurred while opening the draft panel.",
+      });
+    }
   }
 
   @ButtonComponent({ id: EVENT_CANCEL_PATTERN })

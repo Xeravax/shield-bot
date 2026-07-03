@@ -1,12 +1,15 @@
 import {
   Interaction,
+  BaseInteraction,
   Client,
+  GuildMember,
 } from "discord.js";
 import { Next } from "koa";
 import { respondWithError } from "./generalUtils.js";
 import { isLoggedInAndVerified } from "./vrchat.js";
 import { getEnv } from "../config/env.js";
 import { loggers } from "./logger.js";
+import { hasNode } from "./permissionNodes.js";
 
 /**
  * Helper function to check if interaction is in a guild
@@ -55,6 +58,69 @@ export async function VRChatLoginGuard(
     interaction,
     "Please inform staff of the following error: `VRChat is not logged in or otp verified`",
   );
+}
+
+/**
+ * Resolve a full GuildMember for permission checks.
+ * Fetches from guild API when interaction.member is partial or missing role cache.
+ */
+export async function resolveGuildMember(
+  interaction: BaseInteraction,
+): Promise<GuildMember | null> {
+  if (!interaction.guild) {
+    return null;
+  }
+
+  const member = interaction.member;
+  if (member instanceof GuildMember && member.roles.cache.size > 0) {
+    return member;
+  }
+
+  const memberId = interaction.user?.id;
+  if (!memberId) {
+    return null;
+  }
+
+  return interaction.guild.members.fetch(memberId).catch(() => null);
+}
+
+/**
+ * Guard factory: require the given permission node.
+ * Usage: @Guard(PermissionNodeGuard("events.command.schedule"))
+ */
+export function PermissionNodeGuard(node: string) {
+  return async function permissionNodeGuard(
+    interaction: Interaction,
+    _client: Client,
+    next: Next,
+  ): Promise<unknown> {
+    if (!interaction.guildId || !interaction.guild) {
+      await respondWithError(
+        interaction,
+        "This command can only be used in a server.",
+      );
+      return undefined;
+    }
+
+    const member = await resolveGuildMember(interaction);
+    if (!member) {
+      await respondWithError(
+        interaction,
+        "Unable to verify your permissions.",
+      );
+      return undefined;
+    }
+
+    if (await hasNode(member, node)) {
+      return next();
+    }
+
+    await respondWithError(
+      interaction,
+      `You don't have permission to use this command. Missing permission node: \`${node}\``,
+    );
+    return undefined;
+  };
 }
 
 /**

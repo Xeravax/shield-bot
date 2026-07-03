@@ -6,7 +6,7 @@ import {
   GuildBasedChannel,
   MessageFlags,
 } from "discord.js";
-import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
+import { PermissionNodeGuard } from "../../../utility/guards.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
@@ -27,6 +27,13 @@ export class SettingsEventsOnDutyScheduleChannelCommand {
       required: false,
     })
     channel: GuildBasedChannel | null,
+    @SlashOption({
+      name: "clear",
+      description: "Clear on-duty override and fall back to legacy schedule channel",
+      type: ApplicationCommandOptionType.Boolean,
+      required: false,
+    })
+    clear: boolean | null,
     interaction: CommandInteraction,
   ): Promise<void> {
     try {
@@ -38,7 +45,16 @@ export class SettingsEventsOnDutyScheduleChannelCommand {
         return;
       }
 
-      if (!channel) {
+      const shouldClear = clear === true;
+      if (shouldClear && channel) {
+        await interaction.reply({
+          content: "❌ Use either `channel` or `clear`, not both.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (!channel && !shouldClear) {
         const settings = await prisma.guildSettings.findUnique({
           where: { guildId: interaction.guildId },
         });
@@ -60,33 +76,46 @@ export class SettingsEventsOnDutyScheduleChannelCommand {
         return;
       }
 
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
       await prisma.guildSettings.upsert({
         where: { guildId: interaction.guildId },
-        update: { eventOnDutyScheduleChannelId: channel.id },
+        update: { eventOnDutyScheduleChannelId: shouldClear ? null : channel!.id },
         create: {
           guildId: interaction.guildId,
-          eventOnDutyScheduleChannelId: channel.id,
+          eventOnDutyScheduleChannelId: shouldClear ? null : channel!.id,
         },
       });
 
-      await patrolTimer.logCommandUsage(
-        interaction.guildId,
-        "settings-events-on-duty-schedule-channel",
-        interaction.user.id,
-        undefined,
-        channel.id,
-      );
+      try {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "settings-events-on-duty-schedule-channel",
+          interaction.user.id,
+          undefined,
+          shouldClear ? undefined : channel!.id,
+        );
+      } catch (logError) {
+        loggers.bot.warn("Failed to log on-duty-schedule-channel usage", logError);
+      }
 
-      await interaction.reply({
-        content: `✅ On-duty schedule channel set to <#${channel.id}>.`,
-        flags: MessageFlags.Ephemeral,
+      await interaction.editReply({
+        content: shouldClear
+          ? "✅ Cleared on-duty schedule channel override. Exports will now use the legacy schedule channel."
+          : `✅ On-duty schedule channel set to <#${channel!.id}>.`,
       });
     } catch (error: unknown) {
       loggers.bot.error("Error setting on-duty schedule channel", error);
-      await interaction.reply({
-        content: `❌ Failed to set channel: ${error instanceof Error ? error.message : "Unknown error"}`,
-        flags: MessageFlags.Ephemeral,
-      });
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: `❌ Failed to set channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      } else {
+        await interaction.reply({
+          content: `❌ Failed to set channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
     }
   }
 }

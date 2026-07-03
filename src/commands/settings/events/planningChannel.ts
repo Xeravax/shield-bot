@@ -6,7 +6,7 @@ import {
   GuildBasedChannel,
   MessageFlags,
 } from "discord.js";
-import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
+import { PermissionNodeGuard } from "../../../utility/guards.js";
 import {
   handleGuildSettingsError,
   readGuildSetting,

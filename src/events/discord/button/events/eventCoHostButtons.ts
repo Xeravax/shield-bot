@@ -1,6 +1,5 @@
 import {
   ButtonInteraction,
-  GuildMember,
   MessageFlags,
 } from "discord.js";
 import { Discord, ButtonComponent } from "discordx";
@@ -9,6 +8,7 @@ import { memberIsFullHost, memberIsJrHostOnly } from "../../../../managers/event
 import { updatePlanningChannelMessage } from "../../../../managers/events/eventPlanningManager.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
+import { resolveGuildMember } from "../../../../utility/guards.js";
 
 const EVENT_COHOST_ACCEPT_PATTERN = /^event:cohost-accept:(\d+):(\d+)$/;
 const EVENT_COHOST_DENY_PATTERN = /^event:cohost-deny:(\d+):(\d+)$/;
@@ -40,7 +40,14 @@ export class EventCoHostButtonHandlers {
       return;
     }
 
-    const member = interaction.member as GuildMember;
+    const member = await resolveGuildMember(interaction);
+    if (!member) {
+      await interaction.reply({
+        content: "❌ Unable to verify your permissions.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const canApprove =
       interaction.user.id === event.hostId ||
       (await hasNode(member, "events.manage.approve"));
@@ -53,13 +60,10 @@ export class EventCoHostButtonHandlers {
       return;
     }
 
-    const requesterMember = await interaction.guild.members
-      .fetch(requesterId)
-      .catch(() => null);
-
-    const hostMember = await interaction.guild.members
-      .fetch(event.hostId)
-      .catch(() => null);
+    const [requesterMember, hostMember] = await Promise.all([
+      interaction.guild.members.fetch(requesterId).catch(() => null),
+      interaction.guild.members.fetch(event.hostId).catch(() => null),
+    ]);
 
     if (hostMember && requesterMember) {
       const hostIsJrOnly = await memberIsJrHostOnly(hostMember);
@@ -75,7 +79,7 @@ export class EventCoHostButtonHandlers {
     await interaction.deferUpdate();
 
     const claim = await prisma.plannedEvent.updateMany({
-      where: { id: eventId, pendingCoHostUserId: requesterId },
+      where: { id: eventId, pendingCoHostUserId: requesterId, coHostId: null },
       data: {
         coHostId: requesterId,
         pendingCoHostUserId: null,
@@ -127,7 +131,14 @@ export class EventCoHostButtonHandlers {
       return;
     }
 
-    const member = interaction.member as GuildMember;
+    const member = await resolveGuildMember(interaction);
+    if (!member) {
+      await interaction.reply({
+        content: "❌ Unable to verify your permissions.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const canDeny =
       interaction.user.id === event.hostId ||
       (await hasNode(member, "events.manage.approve"));

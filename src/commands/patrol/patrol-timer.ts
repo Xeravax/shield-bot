@@ -20,8 +20,8 @@ import {
 import { patrolTimer } from "../../main.js";
 import {
   hasNode,
-  PermissionNodeGuard,
 } from "../../utility/permissionNodes.js";
+import { PermissionNodeGuard } from "../../utility/guards.js";
 import { prisma } from "../../main.js";
 
 const MONTH_NAMES = [
@@ -560,8 +560,7 @@ export class PatrolTimerCommands {
     // Permission check: if checking someone else's time, must be staff or higher
     const isCheckingOwnTime = targetUserId === member.id;
     if (!isCheckingOwnTime) {
-      // Check if user has staff permissions to view others' time
-      if (!(await hasNode(member, "patrol.manage.view-others"))) {
+      if (!canViewOthers) {
         await interaction.reply({
           content: "You can only check your own patrol time. Staff members can check others' time.",
           flags: MessageFlags.Ephemeral,
@@ -571,7 +570,8 @@ export class PatrolTimerCommands {
     } else {
       if (!(await hasNode(member, "patrol.tracked"))) {
         await interaction.reply({
-          content: "You need SHIELD_MEMBER role or higher to check patrol time.",
+          content:
+            "You need the `patrol.tracked` node (or `patrol.manage.view-others`) to check patrol time.",
           flags: MessageFlags.Ephemeral,
         });
         return;

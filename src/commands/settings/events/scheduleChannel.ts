@@ -6,7 +6,7 @@ import {
   GuildBasedChannel,
   MessageFlags,
 } from "discord.js";
-import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
+import { PermissionNodeGuard } from "../../../utility/guards.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
@@ -58,6 +58,8 @@ export class SettingsEventsScheduleChannelCommand {
         return;
       }
 
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
       await prisma.guildSettings.upsert({
         where: { guildId: interaction.guildId },
         update: {
@@ -69,24 +71,33 @@ export class SettingsEventsScheduleChannelCommand {
         },
       });
 
-      await patrolTimer.logCommandUsage(
-        interaction.guildId,
-        "settings-events-schedule-channel",
-        interaction.user.id,
-        undefined,
-        channel.id,
-      );
+      try {
+        await patrolTimer.logCommandUsage(
+          interaction.guildId,
+          "settings-events-schedule-channel",
+          interaction.user.id,
+          undefined,
+          channel.id,
+        );
+      } catch (logError) {
+        loggers.bot.warn("Failed to log schedule-channel usage", logError);
+      }
 
-      await interaction.reply({
+      await interaction.editReply({
         content: `✅ Legacy event schedule channel set to <#${channel.id}>. The on-duty schedule channel is unchanged — use \`/settings events on-duty-schedule-channel\` to configure it.`,
-        flags: MessageFlags.Ephemeral,
       });
     } catch (error: unknown) {
       loggers.bot.error("Error setting event schedule channel", error);
-      await interaction.reply({
-        content: `❌ Failed to set channel: ${error instanceof Error ? error.message : "Unknown error"}`,
-        flags: MessageFlags.Ephemeral,
-      });
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: `❌ Failed to set channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      } else {
+        await interaction.reply({
+          content: `❌ Failed to set channel: ${error instanceof Error ? error.message : "Unknown error"}`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
     }
   }
 }

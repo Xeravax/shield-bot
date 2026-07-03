@@ -59,8 +59,7 @@ async function grantNodes(
 
 /**
  * One-time migration: convert legacy GuildSettings role arrays into
- * RolePermission wildcard grants. Idempotent — skips guilds that already
- * have any RolePermission rows.
+ * RolePermission wildcard grants. Idempotent via createMany(skipDuplicates).
  */
 export async function seedPermissionNodesFromLegacyRoles(): Promise<void> {
   const settingsRows = await prisma.guildSettings.findMany({
@@ -77,15 +76,7 @@ export async function seedPermissionNodesFromLegacyRoles(): Promise<void> {
   let seededGuilds = 0;
   let totalGrants = 0;
 
-  const seededGuildIds = new Set(
-    (await prisma.rolePermission.groupBy({ by: ["guildId"] })).map((g) => g.guildId),
-  );
-
   for (const settings of settingsRows) {
-    if (seededGuildIds.has(settings.guildId)) {
-      continue;
-    }
-
     let guildGrants = 0;
     guildGrants += await grantNodes(
       settings.guildId,

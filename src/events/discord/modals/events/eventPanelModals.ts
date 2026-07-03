@@ -6,12 +6,24 @@ import { getUserTimezone } from "../../../../utility/userPreferences.js";
 import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import { refreshDraftPanel, editDraftPanelMessage } from "../../../../managers/events/eventPlanningManager.js";
 import { loggers } from "../../../../utility/logger.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
+
+const EVENT_MODAL_TITLE_PATTERN = /^event-modal:title:(\d+)$/;
+const EVENT_MODAL_TIME_PATTERN = /^event-modal:time:(\d+)$/;
 
 @Discord()
 export class EventPanelModalHandlers {
-  @ModalComponent({ id: /^event-modal:title:(\d+)$/ })
+  @ModalComponent({ id: EVENT_MODAL_TITLE_PATTERN })
   async handleTitleModal(interaction: ModalSubmitInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_MODAL_TITLE_PATTERN);
+    if (!match) {
+      await interaction.reply({
+        content: "❌ Invalid modal data.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const eventId = parseInt(match[1], 10);
     const title = interaction.fields.getTextInputValue("title").trim();
     if (!title) {
       await interaction.reply({
@@ -41,10 +53,21 @@ export class EventPanelModalHandlers {
     await interaction.deferUpdate();
 
     try {
-      await prisma.plannedEvent.update({
-        where: { id: eventId },
+      const updated = await prisma.plannedEvent.updateMany({
+        where: {
+          id: eventId,
+          hostId: interaction.user.id,
+          status: PlannedEventStatus.DRAFT,
+        },
         data: { title },
       });
+      if (updated.count === 0) {
+        await interaction.followUp({
+          content: "❌ This event is no longer editable.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
 
       const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
       await editDraftPanelMessage(interaction, embed, components);
@@ -57,9 +80,17 @@ export class EventPanelModalHandlers {
     }
   }
 
-  @ModalComponent({ id: /^event-modal:time:(\d+)$/ })
+  @ModalComponent({ id: EVENT_MODAL_TIME_PATTERN })
   async handleTimeModal(interaction: ModalSubmitInteraction): Promise<void> {
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_MODAL_TIME_PATTERN);
+    if (!match) {
+      await interaction.reply({
+        content: "❌ Invalid modal data.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const eventId = parseInt(match[1], 10);
     const timeRaw = interaction.fields.getTextInputValue("time").trim();
     const timezone = await getUserTimezone(interaction.user.id);
     const startTime = parseEventTime(timeRaw, { timezone });
@@ -92,10 +123,21 @@ export class EventPanelModalHandlers {
     await interaction.deferUpdate();
 
     try {
-      await prisma.plannedEvent.update({
-        where: { id: eventId },
+      const updated = await prisma.plannedEvent.updateMany({
+        where: {
+          id: eventId,
+          hostId: interaction.user.id,
+          status: PlannedEventStatus.DRAFT,
+        },
         data: { startTime },
       });
+      if (updated.count === 0) {
+        await interaction.followUp({
+          content: "❌ This event is no longer editable.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
 
       const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
       await editDraftPanelMessage(interaction, embed, components);

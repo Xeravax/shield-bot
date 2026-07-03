@@ -5,12 +5,12 @@ import {
   Colors,
   ContainerBuilder,
   TextDisplayBuilder,
-  GuildMember,
 } from "discord.js";
 import { Discord, ButtonComponent } from "discordx";
 import { prisma, patrolTimer } from "../../../../main.js";
 import { loggers } from "../../../../utility/logger.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
+import { resolveGuildMember } from "../../../../utility/guards.js";
 import {
   buildPromotionThreadName,
   formatPromotionUserLines,
@@ -73,7 +73,7 @@ export class PatrolPromotionButtonHandlers {
 
     await interaction.deferUpdate();
 
-    const member = interaction.member as GuildMember | null;
+    const member = await resolveGuildMember(interaction);
     if (!member || !(await hasNode(member, "patrol.manage.promotion"))) {
       await interaction.followUp({
         content: "You don't have permission to use this. Missing node: patrol.manage.promotion",
@@ -225,7 +225,7 @@ export class PatrolPromotionButtonHandlers {
 
     await interaction.deferUpdate();
 
-    const member = interaction.member as GuildMember | null;
+    const member = await resolveGuildMember(interaction);
     if (!member || !(await hasNode(member, "patrol.manage.promotion"))) {
       await interaction.followUp({
         content: "You don't have permission to use this. Missing node: patrol.manage.promotion",

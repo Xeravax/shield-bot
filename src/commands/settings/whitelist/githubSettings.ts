@@ -8,7 +8,7 @@ import {
   ChannelType,
   GuildBasedChannel,
 } from "discord.js";
-import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
+import { PermissionNodeGuard } from "../../../utility/guards.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import { encrypt, decrypt } from "../../../utility/encryption.js";

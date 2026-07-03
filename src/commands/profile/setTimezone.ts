@@ -52,6 +52,7 @@ export class ProfileTimezoneCommands {
         return;
       }
 
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await setUserTimezone(interaction.user.id, timezone);
 
       const display = formatTimezoneDisplay(timezone);
@@ -60,20 +61,25 @@ export class ProfileTimezoneCommands {
           ? ""
           : `\nEvent scheduling rules (Monday ban, weekly limits) still use **EST**.`;
 
-      await interaction.reply({
+      await interaction.editReply({
         content:
           `✅ Your timezone is set to **${display}**.\n` +
           `Natural-language times (e.g. "Saturday 8pm") will be interpreted in this timezone. ` +
           `Unix timestamps are always absolute.${defaultNote}\n\n` +
           `Use \`/profile settings\` to manage all your preferences.`,
-        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       loggers.bot.error("Error setting user timezone", error);
-      await interaction.reply({
-        content: "❌ Failed to save your timezone. Please try again.",
-        flags: MessageFlags.Ephemeral,
-      });
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: "❌ Failed to save your timezone. Please try again.",
+        });
+      } else {
+        await interaction.reply({
+          content: "❌ Failed to save your timezone. Please try again.",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
     }
   }
 

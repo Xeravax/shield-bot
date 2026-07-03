@@ -6,7 +6,7 @@ import {
 import { Discord, Slash, SlashGroup, SlashOption, Guard } from "discordx";
 import { prisma } from "../../main.js";
 import { GitHubPublisher } from "../../managers/whitelist/githubPublisher.js";
-import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
+import { PermissionNodeGuard } from "../../utility/guards.js";
 import { loggers } from "../../utility/logger.js";
 
 @Discord()

@@ -9,12 +9,24 @@ import {
   updateUserPreferences,
 } from "../../../../utility/userPreferences.js";
 import { loggers } from "../../../../utility/logger.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
 
 @Discord()
 export class ProfileSettingsModalHandlers {
   @ModalComponent({ id: /^profile-settings-modal:timezone:(\d+)$/ })
   async handleTimezoneModal(interaction: ModalSubmitInteraction): Promise<void> {
-    const discordId = interaction.customId.split(":")[2];
+    const match = matchComponentId(
+      interaction.customId,
+      /^profile-settings-modal:timezone:(\d+)$/,
+    );
+    if (!match) {
+      await interaction.reply({
+        content: "❌ Invalid modal data.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const discordId = match[1];
     if (!isProfileSettingsOwner(interaction, discordId)) {
       await interaction.reply({
         content: "❌ These settings are not yours.",

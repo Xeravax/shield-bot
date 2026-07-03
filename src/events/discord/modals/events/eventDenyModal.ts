@@ -1,5 +1,4 @@
 import {
-  GuildMember,
   MessageFlags,
   ModalSubmitInteraction,
 } from "discord.js";
@@ -7,6 +6,8 @@ import { Discord, ModalComponent } from "discordx";
 import { denyPlannedEvent } from "../../../../managers/events/eventPlanningManager.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
 import { loggers } from "../../../../utility/logger.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
+import { resolveGuildMember } from "../../../../utility/guards.js";
 
 @Discord()
 export class EventDenyModalHandlers {
@@ -20,7 +21,7 @@ export class EventDenyModalHandlers {
       return;
     }
 
-    const member = interaction.member as GuildMember | null;
+    const member = await resolveGuildMember(interaction);
     if (!member || !(await hasNode(member, "events.manage.approve"))) {
       await interaction.reply({
         content: "❌ You don't have permission to deny events.",
@@ -29,7 +30,15 @@ export class EventDenyModalHandlers {
       return;
     }
 
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, /^event-modal:deny:(\d+)$/);
+    if (!match) {
+      await interaction.reply({
+        content: "❌ Invalid modal data.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const eventId = parseInt(match[1], 10);
     const reason = interaction.fields.getTextInputValue("reason").trim();
     if (!reason) {
       await interaction.reply({

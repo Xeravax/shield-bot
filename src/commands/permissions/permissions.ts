@@ -19,7 +19,9 @@ import {
   invalidatePermissionNodeCache,
   isValidGrantNode,
   PermissionNodeGuard,
+  hasNode,
 } from "../../utility/permissionNodes.js";
+import { resolveGuildMember } from "../../utility/guards.js";
 import { loggers } from "../../utility/logger.js";
 
 const MAX_CHOICES = 25;
@@ -39,6 +41,17 @@ function nodeChoices(query: string): { name: string; value: string }[] {
 @SlashGroup("permissions")
 @Guard(PermissionNodeGuard("permissions.manage"))
 export class PermissionsCommands {
+  private async canAutocompleteManage(interaction: AutocompleteInteraction): Promise<boolean> {
+    if (!interaction.guildId || !interaction.guild) {
+      return false;
+    }
+    const member = await resolveGuildMember(interaction);
+    if (!member) {
+      return false;
+    }
+    return hasNode(member, "permissions.manage");
+  }
+
   @Slash({
     name: "grant",
     description: "Grant a permission node to a role",
@@ -258,6 +271,10 @@ export class PermissionsCommands {
   }
 
   async autocompleteNode(interaction: AutocompleteInteraction): Promise<void> {
+    if (!(await this.canAutocompleteManage(interaction))) {
+      await interaction.respond([]);
+      return;
+    }
     const query = String(interaction.options.getFocused() ?? "");
     await interaction.respond(nodeChoices(query));
   }
@@ -266,6 +283,10 @@ export class PermissionsCommands {
   async autocompleteGrantedNode(
     interaction: AutocompleteInteraction,
   ): Promise<void> {
+    if (!(await this.canAutocompleteManage(interaction))) {
+      await interaction.respond([]);
+      return;
+    }
     const query = String(interaction.options.getFocused() ?? "").toLowerCase();
     const roleId = interaction.options.get("role")?.value;
 

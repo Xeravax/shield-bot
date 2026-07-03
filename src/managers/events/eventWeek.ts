@@ -9,10 +9,10 @@ export function getEventWeekRangeForDate(date: Date): { start: Date; end: Date }
   const parts = getESTDateParts(date);
 
   if (parts.weekday === 0) {
-    const start = estLocalToUtc(parts.year, parts.month, parts.day + 1, 0, 0, 0);
+    const start = estLocalToUtc(parts.year, parts.month, parts.day - 6, 0, 0, 0);
     return {
       start,
-      end: estLocalToUtc(parts.year, parts.month, parts.day + 8, 0, 0, 0),
+      end: estLocalToUtc(parts.year, parts.month, parts.day + 1, 0, 0, 0),
     };
   }
 

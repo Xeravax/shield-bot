@@ -51,10 +51,21 @@ export class EventPanelSelectHandlers {
     }
 
     await interaction.deferUpdate();
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const updated = await prisma.plannedEvent.updateMany({
+      where: {
+        id: eventId,
+        hostId: interaction.user.id,
+        status: PlannedEventStatus.DRAFT,
+      },
       data: { hostId },
     });
+    if (updated.count === 0) {
+      await interaction.followUp({
+        content: "❌ This event is no longer editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
   }
@@ -85,10 +96,21 @@ export class EventPanelSelectHandlers {
     }
 
     await interaction.deferUpdate();
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const updated = await prisma.plannedEvent.updateMany({
+      where: {
+        id: eventId,
+        hostId: interaction.user.id,
+        status: PlannedEventStatus.DRAFT,
+      },
       data: { coHostId },
     });
+    if (updated.count === 0) {
+      await interaction.followUp({
+        content: "❌ This event is no longer editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
   }
