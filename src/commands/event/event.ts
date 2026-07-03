@@ -31,7 +31,6 @@ import {
   getPendingEventsForSchedulableWeek,
   formatExportPendingWarning,
   refreshDraftPanel,
-  setEventForceOverride,
   cancelPlannedEvent,
   beginEventEditForHost,
   approvePlannedEvent,
@@ -191,12 +190,9 @@ export class EventCommands {
           duty: eventDuty,
           eventType,
           durationMinutes,
+          forceOverride: useForce,
         },
       });
-
-      if (useForce) {
-        setEventForceOverride(event.id, true);
-      }
 
       const { embed, components } = await refreshDraftPanel(
         event.id,

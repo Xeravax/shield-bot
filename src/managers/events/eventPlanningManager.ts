@@ -105,27 +105,27 @@ export async function editDraftPanelMessage(
   }
 }
 
-/** In-memory force flags set when /event schedule is run with force. */
-const forceOverrides = new Map<number, boolean>();
+/** Persisted per draft; cleared after submit for approval. */
+export async function setEventForceOverride(
+  eventId: number,
+  force: boolean,
+): Promise<void> {
+  await prisma.plannedEvent.update({
+    where: { id: eventId },
+    data: { forceOverride: force },
+  });
+}
+
+export function getEventForceOverride(event: PlannedEvent): boolean {
+  return event.forceOverride;
+}
+
+export async function clearEventForceOverride(eventId: number): Promise<void> {
+  await setEventForceOverride(eventId, false);
+}
 
 /** Prevent concurrent double-export per guild. */
 const exportLocks = new Set<string>();
-
-export function setEventForceOverride(eventId: number, force: boolean): void {
-  if (force) {
-    forceOverrides.set(eventId, true);
-  } else {
-    forceOverrides.delete(eventId);
-  }
-}
-
-export function getEventForceOverride(eventId: number): boolean {
-  return forceOverrides.get(eventId) ?? false;
-}
-
-export function clearEventForceOverride(eventId: number): void {
-  forceOverrides.delete(eventId);
-}
 
 function dutyLabel(duty: EventDuty): string {
   return duty === EventDuty.ON_DUTY ? "On-duty" : "Off-duty";
@@ -146,7 +146,7 @@ export async function runEventValidation(
   guild: Guild | null,
   force?: boolean,
 ): Promise<{ results: EventRuleResult[]; overriddenIds: string[] }> {
-  const useForce = force ?? getEventForceOverride(event.id);
+  const useForce = force ?? getEventForceOverride(event);
   const settings = await prisma.guildSettings.findUnique({
     where: { guildId: event.guildId },
     select: { eventPlanningChannelId: true },
@@ -317,6 +317,10 @@ export function buildDraftPanelComponents(
         .setCustomId(`event-panel:toggle-duration:${event.id}`)
         .setLabel(`Duration: ${formatDurationLabel(event.durationMinutes)}`)
         .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`event-panel:toggle-force:${event.id}`)
+        .setLabel(event.forceOverride ? "Force: On" : "Force: Off")
+        .setStyle(event.forceOverride ? ButtonStyle.Danger : ButtonStyle.Secondary),
     ),
   );
 
@@ -673,7 +677,7 @@ export async function submitEventForApproval(
     });
   }
 
-  clearEventForceOverride(eventId);
+  await clearEventForceOverride(eventId);
 
   const finalEvent = { ...pendingEvent, planningMessageId: messageId };
   await notifyHost(

@@ -35,6 +35,7 @@ model PlannedEvent {
   pendingCoHostUserId    String? // locks the co-host button while a request is open
   coHostRequestMessageId String?
   discordEventId         String? // set on export
+  forceOverride          Boolean            @default(false) // bypass policy rule failures while drafting
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 
