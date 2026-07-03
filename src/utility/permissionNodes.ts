@@ -95,6 +95,8 @@ export const PERMISSION_NODE_REGISTRY: Record<
   ],
   rooftop: [
     { node: "rooftop.command.force-update", description: "/rooftop force-update — force update rooftop files on GitHub" },
+    { node: "rooftop.command.announcement", description: "/rooftop announcement — add a rooftop announcement" },
+    { node: "rooftop.command.spinthebottle", description: "/rooftop spinthebottle — add a spin the bottle response" },
   ],
   phantomcompiler: [
     { node: "phantomcompiler.command.panel", description: "/phantomcompiler panel — post the phantom compiler panel" },
@@ -256,14 +258,19 @@ export async function hasNode(
 export async function getMemberNodeGrants(
   member: GuildMember,
 ): Promise<string[]> {
-  const byRole = await getGuildRoleNodes(member.guild.id);
-  const grants = new Set<string>();
-  for (const roleId of member.roles.cache.keys()) {
-    for (const node of byRole.get(roleId) ?? []) {
-      grants.add(node);
+  try {
+    const byRole = await getGuildRoleNodes(member.guild.id);
+    const grants = new Set<string>();
+    for (const roleId of member.roles.cache.keys()) {
+      for (const node of byRole.get(roleId) ?? []) {
+        grants.add(node);
+      }
     }
+    return [...grants].sort();
+  } catch (error) {
+    loggers.bot.error("Failed to get member node grants", error);
+    return [];
   }
-  return [...grants].sort();
 }
 
 /**
@@ -284,8 +291,8 @@ export function PermissionNodeGuard(node: string) {
       return undefined;
     }
 
-    const member = interaction.member as GuildMember | null;
-    if (!member || !("roles" in member) || typeof member.roles === "string") {
+    const member = interaction.member;
+    if (!member || typeof member === "string") {
       await respondWithError(
         interaction,
         "Unable to verify your permissions.",
@@ -293,7 +300,19 @@ export function PermissionNodeGuard(node: string) {
       return undefined;
     }
 
-    if (await hasNode(member, node)) {
+    if (
+      !("roles" in member) ||
+      Array.isArray(member.roles) ||
+      !("cache" in member.roles)
+    ) {
+      await respondWithError(
+        interaction,
+        "Unable to verify your permissions.",
+      );
+      return undefined;
+    }
+
+    if (await hasNode(member as GuildMember, node)) {
       return next();
     }
 

@@ -113,7 +113,7 @@ export class PermissionsCommands {
     } catch (error: unknown) {
       loggers.bot.error("Error granting permission node", error);
       await interaction.reply({
-        content: `❌ Failed to grant node: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: "❌ Failed to grant permission node. Please try again.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -175,7 +175,7 @@ export class PermissionsCommands {
     } catch (error: unknown) {
       loggers.bot.error("Error revoking permission node", error);
       await interaction.reply({
-        content: `❌ Failed to revoke node: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: "❌ Failed to revoke permission node. Please try again.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -251,7 +251,7 @@ export class PermissionsCommands {
     } catch (error: unknown) {
       loggers.bot.error("Error listing permission nodes", error);
       await interaction.reply({
-        content: `❌ Failed to list nodes: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: "❌ Failed to list permission nodes. Please try again.",
         flags: MessageFlags.Ephemeral,
       });
     }

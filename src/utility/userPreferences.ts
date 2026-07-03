@@ -87,19 +87,12 @@ export async function getUserTimezone(discordId: string): Promise<string> {
 }
 
 async function ensureUser(discordId: string) {
-  let user = await prisma.user.findUnique({
+  return prisma.user.upsert({
     where: { discordId },
+    create: { discordId },
+    update: {},
     include: { userPreferences: true },
   });
-
-  if (!user) {
-    user = await prisma.user.create({
-      data: { discordId },
-      include: { userPreferences: true },
-    });
-  }
-
-  return user;
 }
 
 export async function updateUserPreferences(
@@ -112,19 +105,14 @@ export async function updateUserPreferences(
 
   const user = await ensureUser(discordId);
 
-  if (user.userPreferences) {
-    await prisma.userPreferences.update({
-      where: { userId: user.id },
-      data,
-    });
-  } else {
-    await prisma.userPreferences.create({
-      data: {
-        userId: user.id,
-        ...data,
-      },
-    });
-  }
+  await prisma.userPreferences.upsert({
+    where: { userId: user.id },
+    create: {
+      userId: user.id,
+      ...data,
+    },
+    update: data,
+  });
 
   return getResolvedUserPreferences(discordId);
 }

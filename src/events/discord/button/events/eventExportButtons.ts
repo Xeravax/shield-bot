@@ -2,8 +2,10 @@ import { ButtonInteraction, GuildMember, MessageFlags } from "discord.js";
 import { Discord, ButtonComponent } from "discordx";
 import { exportApprovedEvents } from "../../../../managers/events/eventPlanningManager.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
+const EVENT_EXPORT_CONFIRM_PATTERN = /^event:export:confirm:(\d+)(?::(manual|channel))?$/;
 
 function chunkText(text: string, maxLength = DISCORD_MESSAGE_LIMIT): string[] {
   if (text.length <= maxLength) {
@@ -31,9 +33,15 @@ function formatManualTemplateBlock(label: string, content: string): string {
   return `**${label}**\n\`\`\`\n${content}\n\`\`\``;
 }
 
+function chunkAndFormatManualTemplate(label: string, content: string): string {
+  return chunkText(content)
+    .map((chunk) => formatManualTemplateBlock(label, chunk))
+    .join("\n\n");
+}
+
 @Discord()
 export class EventExportButtonHandlers {
-  @ButtonComponent({ id: /^event:export:confirm:(\d+)(?::(manual|channel))?$/ })
+  @ButtonComponent({ id: EVENT_EXPORT_CONFIRM_PATTERN })
   async handleExportConfirm(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guild) {
       await interaction.reply({
@@ -52,10 +60,21 @@ export class EventExportButtonHandlers {
       return;
     }
 
+    const match = matchComponentId(interaction.customId, EVENT_EXPORT_CONFIRM_PATTERN);
+    if (!match) return;
+
+    const guildId = match[1];
+    if (guildId !== interaction.guild.id) {
+      await interaction.reply({
+        content: "❌ This export confirmation is for a different server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     await interaction.deferUpdate();
 
-    const parts = interaction.customId.split(":");
-    const mode = parts[4] === "channel" ? "channel" : "manual";
+    const mode = match[2] === "channel" ? "channel" : "manual";
     const manualPost = mode === "manual";
 
     const result = await exportApprovedEvents(interaction.guild, interaction.user.id, {
@@ -87,12 +106,12 @@ export class EventExportButtonHandlers {
       const templateParts: string[] = [];
       if (result.manualTemplates.onDuty) {
         templateParts.push(
-          formatManualTemplateBlock("On-duty schedule", result.manualTemplates.onDuty),
+          chunkAndFormatManualTemplate("On-duty schedule", result.manualTemplates.onDuty),
         );
       }
       if (result.manualTemplates.offDuty) {
         templateParts.push(
-          formatManualTemplateBlock("Off-duty schedule", result.manualTemplates.offDuty),
+          chunkAndFormatManualTemplate("Off-duty schedule", result.manualTemplates.offDuty),
         );
       }
 

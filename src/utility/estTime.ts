@@ -104,8 +104,7 @@ export function getESTWeekRange(date: Date): { start: Date; end: Date } {
   const parts = getESTDateParts(date);
   const mondayDay = parts.day - parts.weekday;
   const start = estLocalToUtc(parts.year, parts.month, mondayDay, 0, 0, 0);
-  const endParts = getESTDateParts(new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000));
-  const end = estLocalToUtc(endParts.year, endParts.month, endParts.day, 0, 0, 0);
+  const end = estLocalToUtc(parts.year, parts.month, mondayDay + 7, 0, 0, 0);
   return { start, end };
 }
 

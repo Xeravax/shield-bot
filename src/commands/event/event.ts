@@ -147,15 +147,26 @@ export class EventCommands {
     }
 
     const useForce = force === true;
-    if (useForce && interaction.member && "roles" in interaction.member) {
-      const member = interaction.member as import("discord.js").GuildMember;
-      if (!(await hasNode(member, "events.schedule.force"))) {
+    if (useForce) {
+      const member = interaction.member
+        ? await interaction.guild!.members.fetch(interaction.user.id).catch(() => null)
+        : null;
+      if (!member || !(await hasNode(member, "events.schedule.force"))) {
         await interaction.reply({
           content: "❌ You need the `events.schedule.force` permission to use force.",
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
+    }
+
+    if (host && host.id !== interaction.user.id) {
+      await interaction.reply({
+        content:
+          "❌ Event drafts can only be created for yourself. You cannot schedule on behalf of another member.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
     }
 
     const hostId = host?.id ?? interaction.user.id;
@@ -220,14 +231,15 @@ export class EventCommands {
       return;
     }
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const manualPost = ephemeral !== false;
 
     const events = await getExportableEvents(interaction.guildId);
 
     if (events.length === 0) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "ℹ️ No approved, unexported events found for the upcoming week.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -242,9 +254,8 @@ export class EventCommands {
       }
     }
     if (blocked.length > 0) {
-      await interaction.reply({
+      await interaction.editReply({
         content: `❌ Cannot export — these Jr. Host events need a full Host co-host:\n${blocked.join("\n")}`,
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -298,10 +309,9 @@ export class EventCommands {
       .setStyle(ButtonStyle.Secondary);
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(confirm, cancel);
 
-    await interaction.reply({
+    await interaction.editReply({
       embeds: [embed],
       components: [row],
-      flags: MessageFlags.Ephemeral,
     });
   }
 

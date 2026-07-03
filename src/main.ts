@@ -150,8 +150,12 @@ bot.once("clientReady", async () => {
   }
 
   loggers.bot.info("Seeding permission nodes from legacy role arrays...");
-  await seedPermissionNodesFromLegacyRoles();
-  loggers.bot.info("Permission node seeding complete.");
+  try {
+    await seedPermissionNodesFromLegacyRoles();
+    loggers.bot.info("Permission node seeding complete.");
+  } catch (error) {
+    loggers.bot.error("Permission node seeding failed (continuing startup)", error);
+  }
 
   loggers.schedules.info("Initializing schedules...");
   initializeSchedules(bot);

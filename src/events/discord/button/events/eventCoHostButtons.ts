@@ -8,10 +8,14 @@ import { prisma } from "../../../../main.js";
 import { memberIsFullHost, memberIsJrHostOnly } from "../../../../managers/events/eventRules.js";
 import { updatePlanningChannelMessage } from "../../../../managers/events/eventPlanningManager.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
+
+const EVENT_COHOST_ACCEPT_PATTERN = /^event:cohost-accept:(\d+):(\d+)$/;
+const EVENT_COHOST_DENY_PATTERN = /^event:cohost-deny:(\d+):(\d+)$/;
 
 @Discord()
 export class EventCoHostButtonHandlers {
-  @ButtonComponent({ id: /^event:cohost-accept:(\d+):(\d+)$/ })
+  @ButtonComponent({ id: EVENT_COHOST_ACCEPT_PATTERN })
   async handleCoHostAccept(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guild) {
       await interaction.reply({
@@ -21,9 +25,11 @@ export class EventCoHostButtonHandlers {
       return;
     }
 
-    const parts = interaction.customId.split(":");
-    const eventId = parseInt(parts[2], 10);
-    const requesterId = parts[3];
+    const match = matchComponentId(interaction.customId, EVENT_COHOST_ACCEPT_PATTERN);
+    if (!match) return;
+
+    const eventId = parseInt(match[1], 10);
+    const requesterId = match[2];
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.pendingCoHostUserId !== requesterId) {
@@ -68,8 +74,8 @@ export class EventCoHostButtonHandlers {
 
     await interaction.deferUpdate();
 
-    const updated = await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const claim = await prisma.plannedEvent.updateMany({
+      where: { id: eventId, pendingCoHostUserId: requesterId },
       data: {
         coHostId: requesterId,
         pendingCoHostUserId: null,
@@ -77,8 +83,18 @@ export class EventCoHostButtonHandlers {
         coHostRequestMessageId: null,
       },
     });
+    if (claim.count === 0) {
+      await interaction.followUp({
+        content: "❌ This co-host request was already processed.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
-    await updatePlanningChannelMessage(interaction.guild, updated);
+    const updated = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+    if (updated) {
+      await updatePlanningChannelMessage(interaction.guild, updated);
+    }
 
     await interaction.message.edit({
       content: `✅ <@${requesterId}> accepted as co-host for **${event.title}**.`,
@@ -86,7 +102,7 @@ export class EventCoHostButtonHandlers {
     });
   }
 
-  @ButtonComponent({ id: /^event:cohost-deny:(\d+):(\d+)$/ })
+  @ButtonComponent({ id: EVENT_COHOST_DENY_PATTERN })
   async handleCoHostDeny(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guild) {
       await interaction.reply({
@@ -96,9 +112,11 @@ export class EventCoHostButtonHandlers {
       return;
     }
 
-    const parts = interaction.customId.split(":");
-    const eventId = parseInt(parts[2], 10);
-    const requesterId = parts[3];
+    const match = matchComponentId(interaction.customId, EVENT_COHOST_DENY_PATTERN);
+    if (!match) return;
+
+    const eventId = parseInt(match[1], 10);
+    const requesterId = match[2];
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.pendingCoHostUserId !== requesterId) {
@@ -124,15 +142,25 @@ export class EventCoHostButtonHandlers {
 
     await interaction.deferUpdate();
 
-    const updated = await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const claim = await prisma.plannedEvent.updateMany({
+      where: { id: eventId, pendingCoHostUserId: requesterId },
       data: {
         pendingCoHostUserId: null,
         coHostRequestMessageId: null,
       },
     });
+    if (claim.count === 0) {
+      await interaction.followUp({
+        content: "❌ This co-host request was already processed.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
-    await updatePlanningChannelMessage(interaction.guild, updated);
+    const updated = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+    if (updated) {
+      await updatePlanningChannelMessage(interaction.guild, updated);
+    }
 
     await interaction.message.edit({
       content: `❌ Co-host request from <@${requesterId}> was denied for **${event.title}**.`,

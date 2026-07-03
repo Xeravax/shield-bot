@@ -22,11 +22,8 @@ function isAbsoluteTimestampInput(trimmed: string): boolean {
   return /^\d{10,13}$/.test(trimmed) || DISCORD_TS_RE.test(trimmed);
 }
 
-function ensureForwardDate(parsed: Date, refDate: Date): Date {
-  if (parsed.getTime() > refDate.getTime()) {
-    return parsed;
-  }
-  return new Date(parsed.getTime() + 7 * 24 * 60 * 60 * 1000);
+function ensureForwardDate(parsed: Date, _refDate: Date): Date {
+  return parsed;
 }
 
 function parseNaturalLanguageTime(

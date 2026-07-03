@@ -94,6 +94,17 @@ export class SettingsEventsScheduleExportConfigCommand {
         return;
       }
 
+      const hasPatrolName = patrolEmojiName !== null;
+      const hasPatrolId = patrolEmojiId !== null;
+      if (hasPatrolName !== hasPatrolId) {
+        await interaction.reply({
+          content:
+            "❌ Patrol emoji name and ID must both be provided together, or neither.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
       const existing = await prisma.guildSettings.findUnique({
         where: { guildId: interaction.guildId },
       });

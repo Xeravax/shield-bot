@@ -13,10 +13,12 @@ import { Discord, ButtonComponent } from "discordx";
 import { prisma } from "../../../../main.js";
 import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
 import {
   approvePlannedEvent,
   beginEventEditForHost,
   cancelPlannedEvent,
+  isEventLocked,
   refreshDraftPanel,
   updatePlanningChannelMessage,
 } from "../../../../managers/events/eventPlanningManager.js";
@@ -28,13 +30,21 @@ import {
 } from "../../../../managers/events/eventRules.js";
 import { loggers } from "../../../../utility/logger.js";
 
+const EVENT_APPROVE_PATTERN = /^event:approve:(\d+)$/;
+const EVENT_DENY_PATTERN = /^event:deny:(\d+)$/;
+const EVENT_COHOST_PATTERN = /^event:cohost:(\d+)$/;
+const EVENT_RESUBMIT_PATTERN = /^event:resubmit:(\d+)$/;
+const EVENT_EDIT_PATTERN = /^event:edit:(\d+)$/;
+const EVENT_CANCEL_PATTERN = /^event:cancel:(\d+)$/;
+const EVENT_CANCEL_APPROVED_PATTERN = /^event:cancel-approved:(\d+)$/;
+
 async function canManageEvents(member: GuildMember): Promise<boolean> {
   return hasNode(member, "events.manage.approve");
 }
 
 @Discord()
 export class EventApprovalButtonHandlers {
-  @ButtonComponent({ id: /^event:approve:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_APPROVE_PATTERN })
   async handleApprove(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guildId || !interaction.guild) {
       await interaction.reply({
@@ -53,8 +63,11 @@ export class EventApprovalButtonHandlers {
       return;
     }
 
+    const match = matchComponentId(interaction.customId, EVENT_APPROVE_PATTERN);
+    if (!match) return;
+
     await interaction.deferUpdate();
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const eventId = parseInt(match[1], 10);
 
     try {
       const result = await approvePlannedEvent(eventId, interaction.user.id, interaction.guild);
@@ -74,7 +87,7 @@ export class EventApprovalButtonHandlers {
   }
 
   /** No @Guard — showModal must run immediately. */
-  @ButtonComponent({ id: /^event:deny:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_DENY_PATTERN })
   async handleDeny(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -84,7 +97,10 @@ export class EventApprovalButtonHandlers {
       return;
     }
 
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_DENY_PATTERN);
+    if (!match) return;
+
+    const eventId = parseInt(match[1], 10);
     const reasonInput = new TextInputBuilder()
       .setCustomId("reason")
       .setLabel("Denial reason")
@@ -111,7 +127,7 @@ export class EventApprovalButtonHandlers {
     }
   }
 
-  @ButtonComponent({ id: /^event:cohost:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_COHOST_PATTERN })
   async handleCoHostRequest(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guildId || !interaction.guild) {
       await interaction.reply({
@@ -130,9 +146,16 @@ export class EventApprovalButtonHandlers {
       return;
     }
 
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, EVENT_COHOST_PATTERN);
+    if (!match) return;
+
+    const eventId = parseInt(match[1], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.PENDING) {
+    const coHostRequestOpen =
+      event &&
+      (event.status === PlannedEventStatus.PENDING ||
+        event.status === PlannedEventStatus.APPROVED);
+    if (!coHostRequestOpen || isEventLocked(event)) {
       await interaction.reply({
         content: "❌ Event is not open for co-host requests.",
         flags: MessageFlags.Ephemeral,
@@ -198,32 +221,39 @@ export class EventApprovalButtonHandlers {
       return;
     }
 
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
-      data: { pendingCoHostUserId: interaction.user.id },
-    });
-
+    const requesterId = interaction.user.id;
     const acceptBtn = new ButtonBuilder()
-      .setCustomId(`event:cohost-accept:${eventId}:${interaction.user.id}`)
+      .setCustomId(`event:cohost-accept:${eventId}:${requesterId}`)
       .setLabel("Accept")
       .setStyle(ButtonStyle.Success);
     const denyBtn = new ButtonBuilder()
-      .setCustomId(`event:cohost-deny:${eventId}:${interaction.user.id}`)
+      .setCustomId(`event:cohost-deny:${eventId}:${requesterId}`)
       .setLabel("Deny")
       .setStyle(ButtonStyle.Danger);
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(acceptBtn, denyBtn);
 
     const channel = await interaction.client.channels.fetch(settings.eventPlanningChannelId);
-    if (channel?.isTextBased() && !channel.isDMBased()) {
-      const reqMsg = await channel.send({
-        content: `<@${interaction.user.id}> requested to become co-host for **${event.title}**. <@${event.hostId}>, do you accept?`,
-        components: [row],
-        allowedMentions: { users: [event.hostId, interaction.user.id] },
+    if (!channel?.isTextBased() || channel.isDMBased()) {
+      return;
+    }
+
+    const reqMsg = await channel.send({
+      content: `<@${requesterId}> requested to become co-host for **${event.title}**. <@${event.hostId}>, do you accept?`,
+      components: [row],
+      allowedMentions: { users: [event.hostId, requesterId] },
+    });
+
+    const claim = await prisma.plannedEvent.updateMany({
+      where: { id: eventId, pendingCoHostUserId: null },
+      data: { pendingCoHostUserId: requesterId, coHostRequestMessageId: reqMsg.id },
+    });
+    if (claim.count === 0) {
+      await reqMsg.delete().catch(() => null);
+      await interaction.followUp({
+        content: "❌ Another co-host request is already pending.",
+        flags: MessageFlags.Ephemeral,
       });
-      await prisma.plannedEvent.update({
-        where: { id: eventId },
-        data: { coHostRequestMessageId: reqMsg.id },
-      });
+      return;
     }
 
     const refreshed = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
@@ -232,14 +262,21 @@ export class EventApprovalButtonHandlers {
     }
   }
 
-  @ButtonComponent({ id: /^event:resubmit:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_RESUBMIT_PATTERN })
   async handleResubmitLegacy(interaction: ButtonInteraction): Promise<void> {
-    interaction.customId = interaction.customId.replace("event:resubmit:", "event:edit:");
-    return this.handleEdit(interaction);
+    const match = matchComponentId(interaction.customId, EVENT_RESUBMIT_PATTERN);
+    if (!match) return;
+    return this.runEdit(interaction, parseInt(match[1], 10));
   }
 
-  @ButtonComponent({ id: /^event:edit:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_EDIT_PATTERN })
   async handleEdit(interaction: ButtonInteraction): Promise<void> {
+    const match = matchComponentId(interaction.customId, EVENT_EDIT_PATTERN);
+    if (!match) return;
+    return this.runEdit(interaction, parseInt(match[1], 10));
+  }
+
+  private async runEdit(interaction: ButtonInteraction, eventId: number): Promise<void> {
     if (!interaction.guildId || !interaction.guild) {
       await interaction.reply({
         content: "❌ This can only be used in a server.",
@@ -247,8 +284,6 @@ export class EventApprovalButtonHandlers {
       });
       return;
     }
-
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
 
     const result = await beginEventEditForHost(
       eventId,
@@ -268,8 +303,21 @@ export class EventApprovalButtonHandlers {
     await interaction.editReply({ embeds: [embed], components });
   }
 
-  @ButtonComponent({ id: /^event:cancel:(\d+)$/ })
+  @ButtonComponent({ id: EVENT_CANCEL_PATTERN })
   async handleCancel(interaction: ButtonInteraction): Promise<void> {
+    const match = matchComponentId(interaction.customId, EVENT_CANCEL_PATTERN);
+    if (!match) return;
+    return this.runCancel(interaction, parseInt(match[1], 10));
+  }
+
+  @ButtonComponent({ id: EVENT_CANCEL_APPROVED_PATTERN })
+  async handleCancelApprovedLegacy(interaction: ButtonInteraction): Promise<void> {
+    const match = matchComponentId(interaction.customId, EVENT_CANCEL_APPROVED_PATTERN);
+    if (!match) return;
+    return this.runCancel(interaction, parseInt(match[1], 10));
+  }
+
+  private async runCancel(interaction: ButtonInteraction, eventId: number): Promise<void> {
     if (!interaction.guildId || !interaction.guild) {
       await interaction.reply({
         content: "❌ This can only be used in a server.",
@@ -278,7 +326,6 @@ export class EventApprovalButtonHandlers {
       return;
     }
 
-    const eventId = parseInt(interaction.customId.split(":")[2], 10);
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (
       !event ||
@@ -329,14 +376,5 @@ export class EventApprovalButtonHandlers {
         flags: MessageFlags.Ephemeral,
       });
     }
-  }
-
-  @ButtonComponent({ id: /^event:cancel-approved:(\d+)$/ })
-  async handleCancelApprovedLegacy(interaction: ButtonInteraction): Promise<void> {
-    interaction.customId = interaction.customId.replace(
-      "event:cancel-approved:",
-      "event:cancel:",
-    );
-    return this.handleCancel(interaction);
   }
 }

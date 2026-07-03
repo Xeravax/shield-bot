@@ -131,8 +131,8 @@ export async function editProfileSettingsMessage(
     return;
   }
 
-  if (interaction.isMessageComponent() && interaction.message.editable) {
-    await interaction.message.edit(payload);
+  if (interaction.isMessageComponent()) {
+    await interaction.update(payload);
   }
 }
 
@@ -141,4 +141,18 @@ export function isProfileSettingsOwner(
   discordId: string,
 ): boolean {
   return interaction.user.id === discordId;
+}
+
+export async function assertProfileSettingsOwner(
+  interaction: ProfileSettingsInteraction,
+  discordId: string,
+): Promise<boolean> {
+  if (isProfileSettingsOwner(interaction, discordId)) {
+    return true;
+  }
+  await interaction.reply({
+    content: "❌ These settings are not yours.",
+    flags: MessageFlags.Ephemeral,
+  });
+  return false;
 }
