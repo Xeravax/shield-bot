@@ -147,8 +147,8 @@ export class EventCommands {
 
     const useForce = force === true;
     if (useForce) {
-      const member = interaction.member
-        ? await interaction.guild!.members.fetch(interaction.user.id).catch(() => null)
+      const member = interaction.member && interaction.guild
+        ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null)
         : null;
       if (!member || !(await hasNode(member, "events.schedule.force"))) {
         await interaction.reply({

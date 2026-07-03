@@ -677,8 +677,6 @@ export async function submitEventForApproval(
     });
   }
 
-  await clearEventForceOverride(eventId);
-
   const finalEvent = { ...pendingEvent, planningMessageId: messageId };
   await notifyHost(
     guild,
@@ -731,6 +729,7 @@ export async function approvePlannedEvent(
       status: PlannedEventStatus.APPROVED,
       reviewedById: reviewerId,
       denialReason: null,
+      forceOverride: false,
     },
   });
 
