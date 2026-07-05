@@ -76,14 +76,16 @@ export class SettingsEventsOnDutyScheduleChannelCommand {
         return;
       }
 
+      const channelId: string | null = shouldClear ? null : channel ? channel.id : null;
+
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       await prisma.guildSettings.upsert({
         where: { guildId: interaction.guildId },
-        update: { eventOnDutyScheduleChannelId: shouldClear ? null : channel!.id },
+        update: { eventOnDutyScheduleChannelId: channelId },
         create: {
           guildId: interaction.guildId,
-          eventOnDutyScheduleChannelId: shouldClear ? null : channel!.id,
+          eventOnDutyScheduleChannelId: channelId,
         },
       });
 
@@ -93,7 +95,7 @@ export class SettingsEventsOnDutyScheduleChannelCommand {
           "settings-events-on-duty-schedule-channel",
           interaction.user.id,
           undefined,
-          shouldClear ? undefined : channel!.id,
+          channelId ?? undefined,
         );
       } catch (logError) {
         loggers.bot.warn("Failed to log on-duty-schedule-channel usage", logError);
@@ -102,9 +104,8 @@ export class SettingsEventsOnDutyScheduleChannelCommand {
       await interaction.editReply({
         content: shouldClear
           ? "✅ Cleared on-duty schedule channel override. Exports will now use the legacy schedule channel."
-          : `✅ On-duty schedule channel set to <#${channel!.id}>.`,
+          : `✅ On-duty schedule channel set to <#${channelId}>.`,
       });
-    } catch (error: unknown) {
       loggers.bot.error("Error setting on-duty schedule channel", error);
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({
