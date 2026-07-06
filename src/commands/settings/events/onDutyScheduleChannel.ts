@@ -106,6 +106,7 @@ export class SettingsEventsOnDutyScheduleChannelCommand {
           ? "✅ Cleared on-duty schedule channel override. Exports will now use the legacy schedule channel."
           : `✅ On-duty schedule channel set to <#${channelId}>.`,
       });
+    } catch (error: unknown) {
       loggers.bot.error("Error setting on-duty schedule channel", error);
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({

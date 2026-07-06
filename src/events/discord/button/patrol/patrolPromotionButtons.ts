@@ -344,10 +344,10 @@ export class PatrolPromotionButtonHandlers {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const member = interaction.member as GuildMember | null;
-    if (!member || !(await userHasPermission(member, PermissionFlags.STAFF))) {
+    const member = await resolveGuildMember(interaction);
+    if (!member || !(await hasNode(member, "patrol.manage.promotion"))) {
       await interaction.editReply({
-        content: "You don't have permission to use this. Staff access required.",
+        content: "You don't have permission to use this. Missing node: patrol.manage.promotion",
       });
       return;
     }
