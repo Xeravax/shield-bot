@@ -46,6 +46,15 @@ export async function getMainVRChatAccountInfo(
   }
 }
 
+export function buildPromotionThreadName(
+  mainAccount: MainVRChatAccountInfo | null,
+  currentRankName: string,
+  nextRankName: string,
+): string {
+  const username = mainAccount?.vrchatUsername ?? "Unknown";
+  return `${username} - ${currentRankName} -> ${nextRankName}`.slice(0, 100);
+}
+
 export function formatPromotionUserLines(
   userId: string,
   userTag: string,

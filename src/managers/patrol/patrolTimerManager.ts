@@ -1733,9 +1733,11 @@ export class PatrolTimerManager {
         );
         const approveId = `patrol-promo:approve:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
         const denyId = `patrol-promo:deny:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
+        const threadId = `patrol-promo:thread:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setCustomId(approveId).setLabel("Approve").setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(denyId).setLabel("Deny").setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(threadId).setLabel("Thread").setStyle(ButtonStyle.Secondary),
         );
         const container = new ContainerBuilder()
           .setAccentColor(Colors.Grey)
@@ -2043,9 +2045,11 @@ export class PatrolTimerManager {
 
       const approveId = `patrol-promo:approve:${guild.id}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
       const denyId = `patrol-promo:deny:${guild.id}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
+      const threadId = `patrol-promo:thread:${guild.id}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setCustomId(approveId).setLabel("Approve").setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId(denyId).setLabel("Deny").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(threadId).setLabel("Thread").setStyle(ButtonStyle.Secondary),
       );
       const container = new ContainerBuilder()
         .setAccentColor(Colors.Grey)

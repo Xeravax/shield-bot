@@ -15,6 +15,7 @@ import {
   userHasPermission,
 } from "../../../../utility/permissionUtils.js";
 import {
+  buildPromotionThreadName,
   formatPromotionUserLines,
   getMainVRChatAccountInfo,
 } from "../../../../utility/vrchat/promotionAccountInfo.js";
@@ -330,6 +331,80 @@ export class PatrolPromotionButtonHandlers {
       await interaction.followUp({
         content: "❌ An error occurred while denying.",
         flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+
+  @ButtonComponent({ id: /^patrol-promo:thread:/ })
+  async handleThread(interaction: ButtonInteraction): Promise<void> {
+    if (!interaction.guildId || !interaction.guild) {
+      await interaction.reply({
+        content: "❌ This can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const member = interaction.member as GuildMember | null;
+    if (!member || !(await userHasPermission(member, PermissionFlags.STAFF))) {
+      await interaction.editReply({
+        content: "You don't have permission to use this. Staff access required.",
+      });
+      return;
+    }
+
+    const parsed = parseCustomId(interaction.customId);
+    if (!parsed) {
+      await interaction.editReply({ content: "❌ Invalid button data." });
+      return;
+    }
+
+    const { userId, currentRankRoleId, nextRankRoleId } = parsed;
+
+    try {
+      if (interaction.channel?.isThread()) {
+        await interaction.editReply({
+          content: `💬 This promotion is already in a thread: ${interaction.channel.url}`,
+        });
+        return;
+      }
+
+      const message = interaction.message;
+      if (message.hasThread && message.thread) {
+        await interaction.editReply({
+          content: `💬 A thread already exists: ${message.thread.url}`,
+        });
+        return;
+      }
+
+      const currentRankName = scrubRoleDisplay(
+        interaction.guild.roles.cache.get(currentRankRoleId)?.name ?? "Current",
+      );
+      const nextRankName = scrubRoleDisplay(
+        interaction.guild.roles.cache.get(nextRankRoleId)?.name ?? "Next",
+      );
+      const mainAccount = await getMainVRChatAccountInfo(userId);
+      const threadName = buildPromotionThreadName(mainAccount, currentRankName, nextRankName);
+
+      const thread = await message.startThread({
+        name: threadName,
+        autoArchiveDuration: 10080,
+        reason: `Promotion discussion started by ${interaction.user.tag}`,
+      });
+
+      await interaction.editReply({
+        content: `💬 Thread created: ${thread.url}`,
+      });
+
+      loggers.patrol.info(
+        `Promotion thread created for user ${userId}: ${threadName} by ${interaction.user.tag}`,
+      );
+    } catch (err) {
+      loggers.patrol.error("Promotion thread error", err);
+      await interaction.editReply({
+        content: "❌ An error occurred while creating the thread.",
       });
     }
   }
