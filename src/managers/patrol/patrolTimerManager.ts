@@ -15,6 +15,7 @@ import {
   TextDisplayBuilder,
   MessageFlags,
   SectionBuilder,
+  roleMention,
 } from "discord.js";
 import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
@@ -130,6 +131,13 @@ function parseStaffRoleIds(guildId: string, staffRoleIds: unknown): string[] {
     `Expected staffRoleIds to be an array for guild ${guildId}, got ${typeof staffRoleIds}. Using empty array.`,
   );
   return [];
+}
+
+function staffPingPrefix(staffRoleIds: string[]): string[] {
+  if (staffRoleIds.length === 0) {
+    return [];
+  }
+  return [staffRoleIds.map((roleId) => roleMention(roleId)).join(" "), ""];
 }
 
 type TrackedUser = {
@@ -1669,10 +1677,6 @@ export class PatrolTimerManager {
       const totalTime = await this.getUserTotal(guildId, member.id);
       const totalHours = totalTime / (1000 * 60 * 60);
       const staffRoleIds = parseStaffRoleIds(guildId, settings.staffRoleIds);
-      const staffMentions =
-        staffRoleIds.length > 0
-          ? staffRoleIds.map((roleId) => `<@&${roleId}>`).join(" ")
-          : undefined;
       const channel = await member.guild.channels.fetch(settings.promotionChannelId);
       if (!channel || !channel.isTextBased()) {
         return false;
@@ -1727,6 +1731,7 @@ export class PatrolTimerManager {
             : `${rule.requiredHours}h patrol${declinedStr}`;
         const mainAccount = await getMainVRChatAccountInfo(member.id);
         const lines: string[] = [
+          ...staffPingPrefix(staffRoleIds),
           "**Patrol promotion – 🟠 Pending**",
           "",
           "**🟠 Pending** — ✅ Approve · ❌ Deny",
@@ -1769,7 +1774,6 @@ export class PatrolTimerManager {
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
           .addActionRowComponents(row);
         const sentMessage = await (channel as TextChannel).send({
-          content: staffMentions,
           components: [container],
           flags: MessageFlags.IsComponentsV2,
           allowedMentions: { users: [member.id], roles: staffRoleIds },
@@ -1997,10 +2001,6 @@ export class PatrolTimerManager {
     }
 
     const staffRoleIds = parseStaffRoleIds(guild.id, settings.staffRoleIds);
-    const staffMentions =
-      staffRoleIds.length > 0
-        ? staffRoleIds.map((roleId) => `<@&${roleId}>`).join(" ")
-        : undefined;
 
     const threadName = `Promotion resuggestions — ${new Date().toISOString().slice(0, 10)}`;
     const thread = await (promoChannel as TextChannel).threads.create({
@@ -2055,6 +2055,7 @@ export class PatrolTimerManager {
           : `${rule.requiredHours}h patrol`;
 
       const lines: string[] = [
+        ...staffPingPrefix(staffRoleIds),
         "**Patrol promotion – 🟠 Pending (resuggested)**",
         "",
         "**🟠 Pending** — ✅ Approve · ❌ Deny",
@@ -2089,7 +2090,6 @@ export class PatrolTimerManager {
         .addActionRowComponents(row);
 
       const sentMessage = await thread.send({
-        content: staffMentions,
         components: [container],
         flags: MessageFlags.IsComponentsV2,
         allowedMentions: { users: [member.id], roles: staffRoleIds },
