@@ -112,6 +112,26 @@ function scrubRoleDisplay(name: string): string {
   return name.replace(/[^a-zA-Z.]/g, "") || name;
 }
 
+function parseStaffRoleIds(guildId: string, staffRoleIds: unknown): string[] {
+  if (staffRoleIds === null || staffRoleIds === undefined) {
+    return [];
+  }
+  if (Array.isArray(staffRoleIds)) {
+    return staffRoleIds
+      .filter(
+        (item: unknown) =>
+          item !== null &&
+          item !== undefined &&
+          (typeof item === "string" || typeof item === "number" || typeof item === "boolean"),
+      )
+      .map((item: unknown) => String(item));
+  }
+  loggers.patrol.warn(
+    `Expected staffRoleIds to be an array for guild ${guildId}, got ${typeof staffRoleIds}. Using empty array.`,
+  );
+  return [];
+}
+
 type TrackedUser = {
   userId: string;
   channelId: string;
@@ -1648,6 +1668,11 @@ export class PatrolTimerManager {
       }
       const totalTime = await this.getUserTotal(guildId, member.id);
       const totalHours = totalTime / (1000 * 60 * 60);
+      const staffRoleIds = parseStaffRoleIds(guildId, settings.staffRoleIds);
+      const staffMentions =
+        staffRoleIds.length > 0
+          ? staffRoleIds.map((roleId) => `<@&${roleId}>`).join(" ")
+          : undefined;
       const channel = await member.guild.channels.fetch(settings.promotionChannelId);
       if (!channel || !channel.isTextBased()) {
         return false;
@@ -1744,9 +1769,10 @@ export class PatrolTimerManager {
           .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")))
           .addActionRowComponents(row);
         const sentMessage = await (channel as TextChannel).send({
+          content: staffMentions,
           components: [container],
           flags: MessageFlags.IsComponentsV2,
-          allowedMentions: { users: [member.id] },
+          allowedMentions: { users: [member.id], roles: staffRoleIds },
         });
         await sentMessage.react("🟠");
         await sentMessage.react("✅");
@@ -1970,6 +1996,12 @@ export class PatrolTimerManager {
       throw new Error("Invalid promotion channel");
     }
 
+    const staffRoleIds = parseStaffRoleIds(guild.id, settings.staffRoleIds);
+    const staffMentions =
+      staffRoleIds.length > 0
+        ? staffRoleIds.map((roleId) => `<@&${roleId}>`).join(" ")
+        : undefined;
+
     const threadName = `Promotion resuggestions — ${new Date().toISOString().slice(0, 10)}`;
     const thread = await (promoChannel as TextChannel).threads.create({
       name: threadName.slice(0, 100),
@@ -2057,9 +2089,10 @@ export class PatrolTimerManager {
         .addActionRowComponents(row);
 
       const sentMessage = await thread.send({
+        content: staffMentions,
         components: [container],
         flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { users: [member.id] },
+        allowedMentions: { users: [member.id], roles: staffRoleIds },
       });
       await sentMessage.react("🟠").catch(() => null);
       await sentMessage.react("✅").catch(() => null);
@@ -2302,21 +2335,7 @@ export class PatrolTimerManager {
         return;
       }
 
-      // Validate and coerce staff role IDs with runtime check
-      let staffRoleIds: string[] = [];
-      if (settings.staffRoleIds !== null && settings.staffRoleIds !== undefined) {
-        if (Array.isArray(settings.staffRoleIds)) {
-          // Filter and coerce to strings, only accepting primitive values
-          staffRoleIds = settings.staffRoleIds
-            .filter((item: unknown) => item !== null && item !== undefined && (typeof item === "string" || typeof item === "number" || typeof item === "boolean"))
-            .map((item: unknown) => String(item));
-        } else {
-          loggers.patrol.warn(
-            `Expected staffRoleIds to be an array for guild ${guildId}, got ${typeof settings.staffRoleIds}. Using empty array.`,
-          );
-        }
-      }
-
+      const staffRoleIds = parseStaffRoleIds(guildId, settings.staffRoleIds);
       if (staffRoleIds.length === 0) {
         loggers.patrol.debug(`No staff roles configured for guild ${guildId}`);
         return;
