@@ -362,8 +362,9 @@ export class GitHubPublisher {
       this.getRooftopTierUsernames(["rooftop_staff"], guildId),
       this.getRooftopTierUsernames(["rooftop_vipplus"], guildId),
       this.getRooftopTierUsernames(["rooftop_vip"], guildId),
-    ]).then(([staffplus, staff, vipplus, vip]) =>
-      JSON.stringify({ staffplus, staff, vipplus, vip }, null, 1),
+      this.getRooftopTierUsernames(["rooftop_dj"], guildId),
+    ]).then(([staffplus, staff, vipplus, vip, dj]) =>
+      JSON.stringify({ staffplus, staff, vipplus, vip, dj }, null, 1),
     );
   }
 

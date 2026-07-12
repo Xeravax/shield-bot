@@ -330,6 +330,7 @@ export class WhitelistManager {
     try {
       const rooftopPermissions = [
         "rooftop_announce",
+        "rooftop_dj",
         "rooftop_bouncer",
         "rooftop_staffplus",
         "rooftop_staff",
