@@ -488,6 +488,7 @@ export class PatrolTimerCommands {
     name: "time",
     description: "Check patrol time",
   })
+  @Guard(PermissionNodeGuard("patrol.command.time"))
   async time(
     @SlashOption({
       name: "user",
@@ -563,15 +564,6 @@ export class PatrolTimerCommands {
       if (!canViewOthers) {
         await interaction.reply({
           content: "You can only check your own patrol time. Staff members can check others' time.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-    } else {
-      if (!(await hasNode(member, "patrol.tracked"))) {
-        await interaction.reply({
-          content:
-            "You need the `patrol.tracked` node (or `patrol.manage.view-others`) to check patrol time.",
           flags: MessageFlags.Ephemeral,
         });
         return;

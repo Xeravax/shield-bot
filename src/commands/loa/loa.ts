@@ -25,6 +25,7 @@ export class LOACommands {
     name: "request",
     description: "Request a leave of absence",
   })
+  @Guard(PermissionNodeGuard("loa.command.request"))
   async request(
     @SlashOption({
       name: "time",

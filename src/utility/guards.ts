@@ -11,6 +11,14 @@ import { getEnv } from "../config/env.js";
 import { loggers } from "./logger.js";
 import { hasNode } from "./permissionNodes.js";
 
+async function denyMissingPermissionNode(
+  interaction: Interaction,
+  label: string,
+): Promise<undefined> {
+  await respondWithError(interaction, label);
+  return undefined;
+}
+
 /**
  * Helper function to check if interaction is in a guild
  */
@@ -115,11 +123,51 @@ export function PermissionNodeGuard(node: string) {
       return next();
     }
 
-    await respondWithError(
+    return denyMissingPermissionNode(
       interaction,
       `You don't have permission to use this command. Missing permission node: \`${node}\``,
     );
-    return undefined;
+  };
+}
+
+/**
+ * Guard factory: require any one of the given permission nodes.
+ * Usage: @Guard(PermissionNodeGuardAny("events.command.cancel", "events.manage.approve"))
+ */
+export function PermissionNodeGuardAny(...nodes: string[]) {
+  return async function permissionNodeGuardAny(
+    interaction: Interaction,
+    _client: Client,
+    next: Next,
+  ): Promise<unknown> {
+    if (!interaction.guildId || !interaction.guild) {
+      await respondWithError(
+        interaction,
+        "This command can only be used in a server.",
+      );
+      return undefined;
+    }
+
+    const member = await resolveGuildMember(interaction);
+    if (!member) {
+      await respondWithError(
+        interaction,
+        "Unable to verify your permissions.",
+      );
+      return undefined;
+    }
+
+    for (const node of nodes) {
+      if (await hasNode(member, node)) {
+        return next();
+      }
+    }
+
+    const label =
+      nodes.length === 1
+        ? `You don't have permission to use this command. Missing permission node: \`${nodes[0]}\``
+        : `You don't have permission to use this command. Missing one of: ${nodes.map((n) => `\`${n}\``).join(", ")}`;
+    return denyMissingPermissionNode(interaction, label);
   };
 }
 

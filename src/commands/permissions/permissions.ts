@@ -16,6 +16,7 @@ import {
 import { prisma } from "../../main.js";
 import {
   ALL_GRANTABLE_NODES,
+  EVENT_HOST_COMMAND_NODES,
   invalidatePermissionNodeCache,
   isValidGrantNode,
   PermissionNodeGuard,
@@ -117,10 +118,41 @@ export class PermissionsCommands {
           node,
         },
       });
+
+      const bundledNodes: string[] = [];
+      if (node === "roles.host" || node === "roles.jrhost") {
+        for (const eventNode of EVENT_HOST_COMMAND_NODES) {
+          const existingEventGrant = await prisma.rolePermission.findUnique({
+            where: {
+              guildId_roleId_node: {
+                guildId: interaction.guildId,
+                roleId: role.id,
+                node: eventNode,
+              },
+            },
+          });
+          if (!existingEventGrant) {
+            await prisma.rolePermission.create({
+              data: {
+                guildId: interaction.guildId,
+                roleId: role.id,
+                node: eventNode,
+              },
+            });
+            bundledNodes.push(eventNode);
+          }
+        }
+      }
+
       invalidatePermissionNodeCache(interaction.guildId);
 
+      const bundledNote =
+        bundledNodes.length > 0
+          ? ` Also granted: ${bundledNodes.map((n) => `\`${n}\``).join(", ")}.`
+          : "";
+
       await interaction.reply({
-        content: `✅ Granted \`${node}\` to <@&${role.id}>.`,
+        content: `✅ Granted \`${node}\` to <@&${role.id}>.${bundledNote}`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (error: unknown) {

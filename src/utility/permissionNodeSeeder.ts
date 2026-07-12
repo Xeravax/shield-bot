@@ -1,10 +1,12 @@
 import { prisma } from "../main.js";
+import { EVENT_HOST_COMMAND_NODES } from "./permissionNodes.js";
 import { invalidatePermissionNodeCache } from "./permissionNodes.js";
 import { loggers } from "./logger.js";
 
 /** Basic member-facing command nodes (shield member tier). */
 const SHIELD_MEMBER_NODES = [
   "patrol.tracked",
+  "patrol.command.time",
   "loa.command.request",
   "vrchat.command.request",
 ] as const;
@@ -24,10 +26,26 @@ const DEV_GUARD_NODES = [
   "rooftop.*",
   "phantomcompiler.*",
   "user.*",
+  "events.*",
 ] as const;
 
 const HOST_ATTENDANCE_NODES = ["attendance.*"] as const;
+
+/** Legacy Jr. Host roles receive the marker and event scheduling commands. */
+const LEGACY_JR_HOST_EVENT_NODES = [
+  "roles.jrhost",
+  ...EVENT_HOST_COMMAND_NODES,
+] as const;
+
+/** Legacy attendance-host roles also receive the event-host marker and scheduling commands. */
+const LEGACY_HOST_ATTENDANCE_EVENT_NODES = [
+  "roles.host",
+  ...EVENT_HOST_COMMAND_NODES,
+] as const;
+
 const STAFF_NODES = ["*"] as const;
+
+const HOST_MARKER_NODES = ["roles.host", "roles.jrhost"] as const;
 
 function parseRoleIds(value: unknown): string[] {
   if (!value || !Array.isArray(value)) {
@@ -57,6 +75,22 @@ async function grantNodes(
   return result.count;
 }
 
+async function seedEventCommandsForHostMarkedRoles(
+  guildId: string,
+): Promise<number> {
+  const rows = await prisma.rolePermission.findMany({
+    where: {
+      guildId,
+      node: { in: [...HOST_MARKER_NODES] },
+    },
+    select: { roleId: true },
+    distinct: ["roleId"],
+  });
+
+  const roleIds = rows.map((row) => row.roleId);
+  return grantNodes(guildId, roleIds, EVENT_HOST_COMMAND_NODES);
+}
+
 /**
  * One-time migration: convert legacy GuildSettings role arrays into
  * RolePermission wildcard grants. Idempotent via createMany(skipDuplicates).
@@ -69,6 +103,7 @@ export async function seedPermissionNodesFromLegacyRoles(): Promise<void> {
       devGuardRoleIds: true,
       trainerRoleIds: true,
       hostAttendanceRoleIds: true,
+      jrHostRoleIds: true,
       shieldMemberRoleIds: true,
     },
   });
@@ -100,9 +135,20 @@ export async function seedPermissionNodesFromLegacyRoles(): Promise<void> {
     );
     guildGrants += await grantNodes(
       settings.guildId,
+      parseRoleIds(settings.hostAttendanceRoleIds),
+      LEGACY_HOST_ATTENDANCE_EVENT_NODES,
+    );
+    guildGrants += await grantNodes(
+      settings.guildId,
+      parseRoleIds(settings.jrHostRoleIds),
+      LEGACY_JR_HOST_EVENT_NODES,
+    );
+    guildGrants += await grantNodes(
+      settings.guildId,
       parseRoleIds(settings.shieldMemberRoleIds),
       SHIELD_MEMBER_NODES,
     );
+    guildGrants += await seedEventCommandsForHostMarkedRoles(settings.guildId);
 
     if (guildGrants > 0) {
       invalidatePermissionNodeCache(settings.guildId);

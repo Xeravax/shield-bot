@@ -5,7 +5,19 @@ import {
 import { prisma } from "../main.js";
 import { getEnv } from "../config/env.js";
 import { loggers } from "./logger.js";
-export { PermissionNodeGuard, resolveGuildMember } from "./guards.js";
+export {
+  PermissionNodeGuard,
+  PermissionNodeGuardAny,
+  resolveGuildMember,
+} from "./guards.js";
+
+/** Slash-command nodes granted to roles marked as event Host / Jr. Host. */
+export const EVENT_HOST_COMMAND_NODES = [
+  "events.command.schedule",
+  "events.command.edit",
+  "events.command.submit",
+  "events.command.cancel",
+] as const;
 
 /**
  * Granular permission node system.
@@ -39,6 +51,7 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "patrol.command.current", description: "/patrol current — show tracked users in voice" },
     { node: "patrol.command.top", description: "/patrol top — patrol time leaderboard" },
     { node: "patrol.command.manage", description: "/patrol manage — manage patrol time (add/remove/wipe)" },
+    { node: "patrol.command.time", description: "/patrol time — check patrol time (shield members)" },
     { node: "patrol.manage.view-others", description: "View other members' patrol time and sessions" },
     { node: "patrol.manage.wipe", description: "Confirm patrol wipe actions (buttons)" },
     { node: "patrol.manage.promotion", description: "Approve/deny patrol promotion suggestions (buttons)" },
@@ -79,9 +92,11 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "whitelist.command.validate", description: "/whitelist validate — validate/cleanup whitelist access" },
   ],
   verification: [
-    { node: "verification.command.manage", description: "/verify manage — manage a member's verification" },
-    { node: "verification.command.account", description: "/verify account — manage verified VRChat accounts" },
-    { node: "verification.manage", description: "Staff verification management (inline checks and buttons)" },
+    {
+      node: "verification.manage",
+      description:
+        "/verify manage [user] — staff manage another member's verification (/verify account is open self-service)",
+    },
   ],
   vrchat: [
     { node: "vrchat.command.request", description: "/vrchat request — VRChat invite/friend requests" },

@@ -19,7 +19,11 @@ import {
   Colors,
 } from "discord.js";
 import { GuildGuard, resolveGuildMember } from "../../utility/guards.js";
-import { PermissionNodeGuard, hasNode } from "../../utility/permissionNodes.js";
+import {
+  PermissionNodeGuard,
+  PermissionNodeGuardAny,
+  hasNode,
+} from "../../utility/permissionNodes.js";
 import { prisma } from "../../main.js";
 import { buildTimeAutocompleteChoices } from "../../managers/events/eventTimeParser.js";
 import { getUserTimezone } from "../../utility/userPreferences.js";
@@ -314,7 +318,7 @@ export class EventCommands {
     name: "edit",
     description: "Reopen a pending or denied event for editing (host only)",
   })
-  @Guard(GuildGuard)
+  @Guard(PermissionNodeGuard("events.command.edit"))
   async edit(
     @SlashOption({
       name: "event",
@@ -355,7 +359,7 @@ export class EventCommands {
     name: "submit",
     description: "Submit a draft event for approval (host only)",
   })
-  @Guard(GuildGuard)
+  @Guard(PermissionNodeGuard("events.command.submit"))
   async submit(
     @SlashOption({
       name: "event",
@@ -519,7 +523,12 @@ export class EventCommands {
     description:
       "Cancel a pending or approved event and remove it from the host's weekly quota",
   })
-  @Guard(GuildGuard)
+  @Guard(
+    PermissionNodeGuardAny(
+      "events.command.cancel",
+      "events.manage.approve",
+    ),
+  )
   async cancel(
     @SlashOption({
       name: "event",
