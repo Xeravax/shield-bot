@@ -8,7 +8,7 @@ import {
   User,
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
-import { AttendanceHostGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { prisma } from "../../main.js";
 
 const attendanceManager = new AttendanceManager();
@@ -19,7 +19,7 @@ const attendanceManager = new AttendanceManager();
   description: "VRChat attendance tracking commands.",
 })
 @SlashGroup("attendance")
-@Guard(AttendanceHostGuard)
+@Guard(PermissionNodeGuard("attendance.command.member"))
 export class VRChatAttendanceMemberCommand {
   @Slash({
     name: "member",

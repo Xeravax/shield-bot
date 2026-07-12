@@ -9,6 +9,7 @@ model GuildSettings {
   promotionRules             Json? // Array of { currentRankRoleId, nextRankRoleId, requiredHours, cooldownHours?, declinedCooldownHours? } for rank-based rules
   // Attendance settings
   hostAttendanceRoleIds      Json? // Array of role IDs for host attendance
+  jrHostRoleIds              Json? // Array of role IDs for Jr. event hosts
   enrolledChannels           Json? // Array of channel IDs for attendance squads
   aocChannelId               String? // Channel ID for AOC (Attendance Operations Center) squad
   aocVoiceChannelId          String? // AoC voice channel — panel posts to its linked in-voice text chat
@@ -35,6 +36,17 @@ model GuildSettings {
   patrolLogChannelId         String? // Channel ID for patrol hours and command usage logs
   patrolTopChannelId         String? // Channel ID for weekly patrol top posts
   hostWeeklyEventReminderChannelId String? // Channel ID for weekly Thursday host / Jr. host event reminder (Europe/Amsterdam)
+  // Event scheduling settings
+  eventPlanningChannelId     String? // Channel ID where pending event approval embeds are posted
+  eventScheduleChannelId     String? // Legacy fallback for on-duty schedule channel
+  eventOnDutyScheduleChannelId   String? // Channel for exported on-duty weekly schedule
+  eventOffDutyScheduleChannelId  String? // Channel for exported off-duty weekly schedule
+  eventOnDutyPingRoleId      String? // Role pinged at top of on-duty schedule post
+  eventOffDutyPingRoleIds    Json?   // Role IDs pinged at top of off-duty schedule post
+  eventPatrolEmojiName       String? // Custom emoji name for patrol events (e.g. EventHosts)
+  eventPatrolEmojiId         String? // Custom emoji ID for patrol events
+  eventDefaultLocation       String? // Default location for exported external Discord scheduled events
+  eventDefaultDurationMinutes Int? // Default event duration in minutes (null treated as 120 in code)
   // VRChat instance settings
   avatarWorldId              String? // VRChat world ID for avatar world invites (e.g., wrld_xxx)
   // VRChat group settings

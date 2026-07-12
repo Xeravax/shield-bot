@@ -3,7 +3,6 @@ import {
   ButtonInteraction,
   Colors,
   ContainerBuilder,
-  GuildMember,
   Message,
   MessageFlags,
   ModalBuilder,
@@ -15,11 +14,9 @@ import {
 import { Discord, ButtonComponent, ModalComponent } from "discordx";
 import { patrolTimer } from "../../../../main.js";
 import { loggers } from "../../../../utility/logger.js";
-import {
-  PermissionFlags,
-  userHasPermission,
-} from "../../../../utility/permissionUtils.js";
+import { hasNode } from "../../../../utility/permissionNodes.js";
 import { respondWithError } from "../../../../utility/generalUtils.js";
+import { resolveGuildMember } from "../../../../utility/guards.js";
 
 const BUTTON_PREFIX = "patrol-session-remove:";
 /** Short prefix — modal custom_id max 100 chars (guild + user + two timestamps). */
@@ -185,16 +182,16 @@ export class PatrolSessionRemoveButtonHandlers {
       return;
     }
 
-    const member = interaction.member as GuildMember | null;
+    const member = await resolveGuildMember(interaction);
     if (!member) {
       await respondWithError(interaction, "Unable to verify your permissions.");
       return;
     }
 
-    if (!(await userHasPermission(member, PermissionFlags.STAFF))) {
+    if (!(await hasNode(member, "patrol.manage.session-remove"))) {
       await respondWithError(
         interaction,
-        "You don't have permission to use this. Staff access required.",
+        "You don't have permission to use this. Missing node: patrol.manage.session-remove",
       );
       return;
     }

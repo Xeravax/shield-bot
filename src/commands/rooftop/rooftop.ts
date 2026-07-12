@@ -6,7 +6,7 @@ import {
 import { Discord, Slash, SlashGroup, SlashOption, Guard } from "discordx";
 import { prisma } from "../../main.js";
 import { GitHubPublisher } from "../../managers/whitelist/githubPublisher.js";
-import { StaffGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/guards.js";
 import { loggers } from "../../utility/logger.js";
 
 @Discord()
@@ -15,11 +15,11 @@ import { loggers } from "../../utility/logger.js";
   description: "Rooftop file management commands",
 })
 @SlashGroup("rooftop")
-@Guard(StaffGuard)
 export class RooftopCommands {
   private githubPublisher = new GitHubPublisher();
 
   @Slash({ name: "force-update", description: "Force update rooftop files on GitHub" })
+  @Guard(PermissionNodeGuard("rooftop.command.force-update"))
   async forceUpdate(interaction: CommandInteraction): Promise<void> {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -54,6 +54,7 @@ export class RooftopCommands {
   }
 
   @Slash({ description: "Add a new announcement" })
+  @Guard(PermissionNodeGuard("rooftop.command.announcement"))
   async announcement(
     @SlashOption({
       description: "The announcement text to add",
@@ -110,6 +111,7 @@ export class RooftopCommands {
   }
 
   @Slash({ description: "Add a new spin the bottle response" })
+  @Guard(PermissionNodeGuard("rooftop.command.spinthebottle"))
   async spinthebottle(
     @SlashOption({
       description: "The spin the bottle response text to add",

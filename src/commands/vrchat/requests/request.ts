@@ -16,7 +16,8 @@ import {
   getInstanceInfoByShortName,
   getUserById,
 } from "../../../utility/vrchat.js";
-import { VRChatLoginGuard, ShieldMemberGuard, GuildGuard } from "../../../utility/guards.js";
+import { VRChatLoginGuard, GuildGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { prisma } from "../../../main.js";
 
 @Discord()
@@ -31,7 +32,7 @@ export class VRChatRequestCommand {
     name: "request",
     description: "Request backup or log dispatch for SHIELD.",
   })
-  @Guard(GuildGuard, ShieldMemberGuard)
+  @Guard(GuildGuard, PermissionNodeGuard("vrchat.command.request"))
   async request(
     @SlashChoice({ name: "Backup Request", value: "backup" })
     @SlashChoice({ name: "Dispatch Log", value: "dispatch" })

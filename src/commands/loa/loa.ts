@@ -8,7 +8,8 @@ import {
   ActionRowBuilder,
   User,
 } from "discord.js";
-import { GuildGuard, StaffGuard } from "../../utility/guards.js";
+import { GuildGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/guards.js";
 import { loaManager, patrolTimer } from "../../main.js";
 import { buildLOARequestEmbed } from "../../managers/loa/loaManager.js";
 
@@ -24,6 +25,7 @@ export class LOACommands {
     name: "request",
     description: "Request a leave of absence",
   })
+  @Guard(PermissionNodeGuard("loa.command.request"))
   async request(
     @SlashOption({
       name: "time",
@@ -110,7 +112,7 @@ export class LOACommands {
     name: "remove-cooldown",
     description: "Remove the LOA cooldown for a user (allows them to request a new LOA immediately)",
   })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("loa.command.remove-cooldown"))
   async removeCooldown(
     @SlashOption({
       name: "user",

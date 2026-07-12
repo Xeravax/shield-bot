@@ -1,14 +1,23 @@
 import {
   Interaction,
+  BaseInteraction,
   Client,
   GuildMember,
 } from "discord.js";
 import { Next } from "koa";
 import { respondWithError } from "./generalUtils.js";
 import { isLoggedInAndVerified } from "./vrchat.js";
-import { userHasPermission, PermissionFlags } from "./permissionUtils.js";
 import { getEnv } from "../config/env.js";
 import { loggers } from "./logger.js";
+import { hasNode } from "./permissionNodes.js";
+
+async function denyMissingPermissionNode(
+  interaction: Interaction,
+  label: string,
+): Promise<undefined> {
+  await respondWithError(interaction, label);
+  return undefined;
+}
 
 /**
  * Helper function to check if interaction is in a guild
@@ -42,42 +51,6 @@ export async function GuildGuard(
 }
 
 /**
- * Helper function to get guild member from interaction
- */
-async function requireGuildMember(
-  interaction: Interaction,
-): Promise<GuildMember | null> {
-  const guildCheck = await requireGuild(interaction);
-  if (!guildCheck) {
-    return null;
-  }
-
-  const member = interaction.member as GuildMember;
-  if (!member) {
-    await respondWithError(interaction, "Unable to verify your permissions.");
-    return null;
-  }
-  return member;
-}
-
-/**
- * Helper function to check permission and respond with error if missing
- */
-async function checkPermission(
-  interaction: Interaction,
-  member: GuildMember,
-  permission: PermissionFlags,
-  errorMessage: string,
-): Promise<boolean> {
-  const hasPermission = await userHasPermission(member, permission);
-  if (!hasPermission) {
-    await respondWithError(interaction, errorMessage);
-    return false;
-  }
-  return true;
-}
-
-/**
  * Guard to ensure VRChat is logged in and verified
  */
 export async function VRChatLoginGuard(
@@ -96,59 +69,110 @@ export async function VRChatLoginGuard(
 }
 
 /**
- * Guard to ensure user has attendance host permission
+ * Resolve a full GuildMember for permission checks.
+ * Fetches from guild API when interaction.member is partial or missing role cache.
  */
-export async function AttendanceHostGuard(
-  interaction: Interaction,
-  _client: Client,
-  next: Next,
-): Promise<unknown> {
-  const member = await requireGuildMember(interaction);
-  if (!member) {
-    return undefined;
+export async function resolveGuildMember(
+  interaction: BaseInteraction,
+): Promise<GuildMember | null> {
+  if (!interaction.guild) {
+    return null;
   }
 
-  if (
-    await checkPermission(
-      interaction,
-      member,
-      PermissionFlags.HOST_ATTENDANCE,
-      "You don't have permission to manage attendance.",
-    )
-  ) {
-    return next();
+  const member = interaction.member;
+  if (member instanceof GuildMember && member.roles.cache.size > 0) {
+    return member;
   }
-  return undefined;
+
+  const memberId = interaction.user?.id;
+  if (!memberId) {
+    return null;
+  }
+
+  return interaction.guild.members.fetch(memberId).catch(() => null);
 }
 
 /**
- * Guard to ensure user has shield member permission
+ * Guard factory: require the given permission node.
+ * Usage: @Guard(PermissionNodeGuard("events.command.schedule"))
  */
-export async function ShieldMemberGuard(
-  interaction: Interaction,
-  _client: Client,
-  next: Next,
-): Promise<unknown> {
-  const member = await requireGuildMember(interaction);
-  if (!member) {
-    return undefined;
-  }
+export function PermissionNodeGuard(node: string) {
+  return async function permissionNodeGuard(
+    interaction: Interaction,
+    _client: Client,
+    next: Next,
+  ): Promise<unknown> {
+    if (!interaction.guildId || !interaction.guild) {
+      await respondWithError(
+        interaction,
+        "This command can only be used in a server.",
+      );
+      return undefined;
+    }
 
-  if (
-    await checkPermission(
+    const member = await resolveGuildMember(interaction);
+    if (!member) {
+      await respondWithError(
+        interaction,
+        "Unable to verify your permissions.",
+      );
+      return undefined;
+    }
+
+    if (await hasNode(member, node)) {
+      return next();
+    }
+
+    return denyMissingPermissionNode(
       interaction,
-      member,
-      PermissionFlags.SHIELD_MEMBER,
-      "You don't have permission to use this command. Shield member access required.",
-    )
-  ) {
-    return next();
-  }
-  return undefined;
+      `You don't have permission to use this command. Missing permission node: \`${node}\``,
+    );
+  };
 }
 
 /**
- * Guard to ensure user is bot owner or has dev guard permission
+ * Guard factory: require any one of the given permission nodes.
+ * Usage: @Guard(PermissionNodeGuardAny("events.command.cancel", "events.manage.approve"))
+ */
+export function PermissionNodeGuardAny(...nodes: string[]) {
+  return async function permissionNodeGuardAny(
+    interaction: Interaction,
+    _client: Client,
+    next: Next,
+  ): Promise<unknown> {
+    if (!interaction.guildId || !interaction.guild) {
+      await respondWithError(
+        interaction,
+        "This command can only be used in a server.",
+      );
+      return undefined;
+    }
+
+    const member = await resolveGuildMember(interaction);
+    if (!member) {
+      await respondWithError(
+        interaction,
+        "Unable to verify your permissions.",
+      );
+      return undefined;
+    }
+
+    for (const node of nodes) {
+      if (await hasNode(member, node)) {
+        return next();
+      }
+    }
+
+    const label =
+      nodes.length === 1
+        ? `You don't have permission to use this command. Missing permission node: \`${nodes[0]}\``
+        : `You don't have permission to use this command. Missing one of: ${nodes.map((n) => `\`${n}\``).join(", ")}`;
+    return denyMissingPermissionNode(interaction, label);
+  };
+}
+
+/**
+ * Guard to ensure user is bot owner
  */
 export async function BotOwnerGuard(
   interaction: Interaction,
@@ -166,91 +190,12 @@ export async function BotOwnerGuard(
     );
   }
 
-  // First check if user is the configured bot owner
   if (interaction.user.id === botOwnerId) {
     return next();
   }
-  
+
   return respondWithError(
     interaction,
     "This command is restricted to the bot owner.",
   );
-}
-
-/**
- * Guard to ensure user has dev guard permission
- */
-export async function DevGuardGuard(
-  interaction: Interaction,
-  _client: Client,
-  next: Next,
-): Promise<unknown> {
-  const member = await requireGuildMember(interaction);
-  if (!member) {
-    return undefined;
-  }
-
-  if (
-    await checkPermission(
-      interaction,
-      member,
-      PermissionFlags.DEV_GUARD,
-      "You don't have permission to use this command. Dev guard access required.",
-    )
-  ) {
-    return next();
-  }
-  return undefined;
-}
-
-/**
- * Guard to ensure user has staff permission
- */
-export async function StaffGuard(
-  interaction: Interaction,
-  _client: Client,
-  next: Next,
-): Promise<unknown> {
-  const member = await requireGuildMember(interaction);
-  if (!member) {
-    return undefined;
-  }
-
-  if (
-    await checkPermission(
-      interaction,
-      member,
-      PermissionFlags.STAFF,
-      "You don't have permission to use this command. Staff access required.",
-    )
-  ) {
-    return next();
-  }
-  return undefined;
-}
-
-/**
- * Guard to ensure user has trainer permission
- */
-export async function TrainerGuard(
-  interaction: Interaction,
-  _client: Client,
-  next: Next,
-): Promise<unknown> {
-  const member = await requireGuildMember(interaction);
-  if (!member) {
-    return undefined;
-  }
-
-  if (
-    await checkPermission(
-      interaction,
-      member,
-      PermissionFlags.TRAINER,
-      "You don't have permission to use trainer commands. Trainer access required.",
-    )
-  ) {
-    return next();
-  }
-  return undefined;
 }

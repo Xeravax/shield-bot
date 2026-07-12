@@ -7,13 +7,13 @@ import {
   GuildBasedChannel,
   MessageFlags,
 } from "discord.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
 @SlashGroup("group", "settings")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.group"))
 export class GroupSettingsCommand {
   @Slash({
     name: "set-group-id",
