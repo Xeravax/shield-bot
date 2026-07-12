@@ -2,6 +2,7 @@ import { prisma } from "../../main.js";
 import { decrypt } from "../../utility/encryption.js";
 import { getEnv } from "../../config/env.js";
 import { loggers } from "../../utility/logger.js";
+import { purgeCloudflareCache } from "../../utility/cloudflare/purgeCache.js";
 
 /**
  * GitHub publishing operations for whitelist
@@ -240,10 +241,12 @@ export class GitHubPublisher {
   }
 
   /**
-   * Get usernames with a specific permission from the whitelist
-   * Returns plain text with one username per line
+   * Get VRChat usernames with a specific whitelist permission.
    */
-  private async getUsersByPermission(permission: string, guildId: string): Promise<string> {
+  private async getUsernamesByPermission(
+    permission: string,
+    guildId: string,
+  ): Promise<string[]> {
     try {
       const entries = await prisma.whitelistEntry.findMany({
         where: {
@@ -322,11 +325,46 @@ export class GitHubPublisher {
         }
       }
 
-      return Array.from(usernames).sort().join("\n");
+      return Array.from(usernames).sort();
     } catch (error) {
       console.error(`Error getting users by permission ${permission}:`, error);
-      return "";
+      return [];
     }
+  }
+
+  /**
+   * Get usernames for a rooftop tier, checking multiple permission aliases.
+   */
+  private async getRooftopTierUsernames(
+    permissions: string[],
+    guildId: string,
+  ): Promise<string[]> {
+    const usernames = new Set<string>();
+    for (const permission of permissions) {
+      const tierUsers = await this.getUsernamesByPermission(permission, guildId);
+      for (const username of tierUsers) {
+        usernames.add(username);
+      }
+    }
+    return Array.from(usernames).sort();
+  }
+
+  /**
+   * Build the combined VIPSystem role list JSON.
+   * @see VIPSystem "Combined Role List URL" (Use Combined Endpoint)
+   */
+  private buildCombinedRoleListJson(guildId: string): Promise<string> {
+    return Promise.all([
+      this.getRooftopTierUsernames(
+        ["rooftop_staffplus", "rooftop_bouncer"],
+        guildId,
+      ),
+      this.getRooftopTierUsernames(["rooftop_staff"], guildId),
+      this.getRooftopTierUsernames(["rooftop_vipplus"], guildId),
+      this.getRooftopTierUsernames(["rooftop_vip"], guildId),
+    ]).then(([staffplus, staff, vipplus, vip]) =>
+      JSON.stringify({ staffplus, staff, vipplus, vip }, null, 1),
+    );
   }
 
   /**
@@ -334,20 +372,14 @@ export class GitHubPublisher {
    */
   async generateRooftopFiles(guildId: string): Promise<{
     announcement: string;
-    bouncer: string;
-    staff: string;
-    vip: string;
-    vipplus: string;
+    permissionsJson: string;
     announcements: string;
     spinthebottle: string;
   }> {
-    const [announcement, bouncer, staff, vip, vipplus, announcements, spinthebottle] =
+    const [announcementUsernames, permissionsJson, announcements, spinthebottle] =
       await Promise.all([
-        this.getUsersByPermission("rooftop_announce", guildId),
-        this.getUsersByPermission("rooftop_bouncer", guildId),
-        this.getUsersByPermission("rooftop_staff", guildId),
-        this.getUsersByPermission("rooftop_vip", guildId),
-        this.getUsersByPermission("rooftop_vipplus", guildId),
+        this.getUsernamesByPermission("rooftop_announce", guildId),
+        this.buildCombinedRoleListJson(guildId),
         (async () => {
           try {
             const announcements = await prisma.announcement.findMany({
@@ -383,11 +415,8 @@ export class GitHubPublisher {
       ]);
 
     return {
-      announcement,
-      bouncer,
-      staff,
-      vip,
-      vipplus,
+      announcement: announcementUsernames.join("\n"),
+      permissionsJson,
       announcements,
       spinthebottle,
     };
@@ -448,11 +477,8 @@ export class GitHubPublisher {
 
     // Step 3: Create blobs for all files
     const fileData = [
+      { path: "rooftop/permissions.json", content: files.permissionsJson },
       { path: "rooftop/announcement.txt", content: files.announcement },
-      { path: "rooftop/bouncer.txt", content: files.bouncer },
-      { path: "rooftop/staff.txt", content: files.staff },
-      { path: "rooftop/vip.txt", content: files.vip },
-      { path: "rooftop/vipplus.txt", content: files.vipplus },
       { path: "rooftop/announcements.txt", content: files.announcements },
       { path: "rooftop/spinthebottle.txt", content: files.spinthebottle },
     ];
@@ -538,6 +564,19 @@ export class GitHubPublisher {
       method: "PATCH",
       body: JSON.stringify({ sha: newCommitSha, force: false }),
     });
+
+    const zoneId = process.env.CLOUDFLARE_ZONE_ID ?? "";
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
+    if (zoneId && apiToken) {
+      try {
+        await purgeCloudflareCache(zoneId, apiToken, [
+          `https://api.vrcshield.com/api/vrchat/${guildId}/rooftop/permissions`,
+        ]);
+        loggers.bot.info(`Purged Cloudflare cache for rooftop permissions (guild ${guildId})`);
+      } catch (err) {
+        loggers.bot.warn("Cloudflare purge failed for rooftop permissions", err);
+      }
+    }
 
     return {
       updated: true,

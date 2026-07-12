@@ -331,6 +331,7 @@ export class WhitelistManager {
       const rooftopPermissions = [
         "rooftop_announce",
         "rooftop_bouncer",
+        "rooftop_staffplus",
         "rooftop_staff",
         "rooftop_vip",
         "rooftop_vipplus",

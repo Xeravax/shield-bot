@@ -38,7 +38,7 @@ export class RooftopCommands {
 
       if (result.updated) {
         await interaction.editReply({
-          content: `✅ Successfully updated rooftop files on GitHub.\nCommit: ${result.commitSha}\nFiles: ${result.paths?.join(", ")}`,
+          content: `✅ Successfully updated rooftop files on GitHub.\nCommit: ${result.commitSha}\nFiles: ${result.paths?.join(", ")}\n\nConfigure VIPSystem **Combined Role List URL** to your GitHub raw URL:\n\`https://raw.githubusercontent.com/<owner>/<repo>/<branch>/rooftop/permissions.json\`\n\nOr use the Shield API:\n\`https://api.vrcshield.com/api/vrchat/${interaction.guildId}/rooftop/permissions\``,
         });
       } else {
         await interaction.editReply({
