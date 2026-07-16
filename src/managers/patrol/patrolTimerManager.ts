@@ -2188,7 +2188,7 @@ export class PatrolTimerManager {
     
     if (loa && blocksPatrolTracking(loa)) {
       // User is on a blocking LOA - notify staff but don't start tracking
-      await this.checkLOAAndNotify(guild, guildId, member.id, channelId, settings);
+      await this.checkLOAAndNotify(guild, guildId, member.id, channelId, settings, loa);
       
       // Inform user that their time won't be tracked (unless notifications are paused)
       if (!loa.notificationsPaused) {
@@ -2321,12 +2321,11 @@ export class PatrolTimerManager {
     userId: string,
     channelId: string,
     settings: Awaited<ReturnType<typeof this.getSettings>>,
+    loa: { notificationsPaused: boolean },
   ): Promise<void> {
     try {
-      const loa = await loaManager.getActiveLOA(guildId, userId);
-
-      if (!loa || loa.notificationsPaused || !blocksPatrolTracking(loa)) {
-        return; // No blocking LOA or notifications paused
+      if (loa.notificationsPaused) {
+        return;
       }
 
       // Use settings passed in (from handleVoiceStateUpdate which already called getSettings)

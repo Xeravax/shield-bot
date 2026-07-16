@@ -1,7 +1,8 @@
 import type { CommandInteraction } from "discord.js";
-import { prisma, bot } from "../../main.js";
+import { prisma, bot, loaManager } from "../../main.js";
 import { EmbedBuilder, Colors } from "discord.js";
 import { loggers } from "../../utility/logger.js";
+import { isBlockingLOA, BLOCKING_LOA_ATTENDANCE_MESSAGE } from "../loa/loaManager.js";
 
 export class AttendanceManager {
   async createEvent(date: Date, hostId?: number, cohostId?: number) {
@@ -179,8 +180,6 @@ export class AttendanceManager {
       return;
     }
 
-    const { loaManager } = await import("../../main.js");
-    const { isBlockingLOA, BLOCKING_LOA_ATTENDANCE_MESSAGE } = await import("../loa/loaManager.js");
     const loa = await loaManager.getActiveLOA(guildId, user.discordId);
     if (isBlockingLOA(loa)) {
       throw new Error(BLOCKING_LOA_ATTENDANCE_MESSAGE);
@@ -332,11 +331,6 @@ export class AttendanceManager {
     const user = await this.findOrCreateUserByDiscordId(discordId);
     const eventId = await this.getActiveEventIdForUser(user.id);
     if (!eventId) {
-      await interaction.reply({
-        content:
-          "You do not have an active event. Use /vrchat attendance createevent first.",
-        flags: 64,
-      });
       return null;
     }
     return { eventId, user };

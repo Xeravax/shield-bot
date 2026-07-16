@@ -72,14 +72,6 @@ export function buildLOARequestEmbed(
       inline: true,
     });
 
-  if (loa.type) {
-    embed.addFields({
-      name: "Type",
-      value: formatLOATypeLabel(loa.type),
-      inline: true,
-    });
-  }
-
   if (status === "expired" || status === "pending" || status === "approved" || status === "active" || status === "denied") {
     embed.addFields(
       {
@@ -93,6 +85,14 @@ export function buildLOARequestEmbed(
         inline: true,
       },
     );
+  }
+
+  if (loa.type) {
+    embed.addFields({
+      name: "Type",
+      value: formatLOATypeLabel(loa.type),
+      inline: true,
+    });
   }
 
   if (status === "ended_early") {
