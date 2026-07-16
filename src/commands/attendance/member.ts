@@ -9,7 +9,8 @@ import {
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
 import { AttendanceHostGuard } from "../../utility/guards.js";
-import { prisma } from "../../main.js";
+import { prisma, loaManager } from "../../main.js";
+import { isBlockingLOA } from "../../managers/loa/loaManager.js";
 
 const attendanceManager = new AttendanceManager();
 
@@ -114,6 +115,19 @@ export class VRChatAttendanceMemberCommand {
 
     const { eventId } = active;
     const dbUser = await attendanceManager.findOrCreateUserByDiscordId(user.id);
+    const guildId = cmdInteraction.guildId!;
+
+    const blockingLOATargetActions = new Set(["add", "move", "split"]);
+    if (blockingLOATargetActions.has(action)) {
+      const activeLOA = await loaManager.getActiveLOA(guildId, user.id);
+      if (isBlockingLOA(activeLOA)) {
+        await cmdInteraction.reply({
+          content: `❌ <@${user.id}> has an active **blocking** leave of absence and cannot participate in event attendance.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+    }
 
     // Handle remove action
     if (action === "remove") {
@@ -139,7 +153,7 @@ export class VRChatAttendanceMemberCommand {
 
     // Handle add action
     if (action === "add") {
-      await attendanceManager.addUserToSquad(eventId, dbUser.id, squad);
+      await attendanceManager.addUserToSquad(eventId, dbUser.id, squad, guildId);
 
       // Apply additional modifiers
       if (asLead) {
@@ -171,7 +185,7 @@ export class VRChatAttendanceMemberCommand {
 
     // Handle move action
     if (action === "move") {
-      await attendanceManager.moveUserToSquad(eventId, dbUser.id, squad);
+      await attendanceManager.moveUserToSquad(eventId, dbUser.id, squad, guildId);
       await cmdInteraction.reply({
         content: `Moved <@${user.id}> to ${squadName}`,
         flags: MessageFlags.Ephemeral,
@@ -203,10 +217,10 @@ export class VRChatAttendanceMemberCommand {
           dbUser.id,
           squad,
           previousSquadChannelId,
-          cmdInteraction.guildId || undefined,
+          guildId,
         );
       } else {
-        await attendanceManager.moveUserToSquad(eventId, dbUser.id, squad);
+        await attendanceManager.moveUserToSquad(eventId, dbUser.id, squad, guildId);
       }
 
       await cmdInteraction.reply({

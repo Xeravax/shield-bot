@@ -10,12 +10,27 @@ import { prisma } from "../../main.js";
 import { formatDuration, parseRelativeTime } from "../../utility/timeParser.js";
 import { loggers } from "../../utility/logger.js";
 import type { LeaveOfAbsence } from "../../generated/prisma/client.js";
-import { LeaveOfAbsenceStatus } from "../../generated/prisma/client.js";
+import { LeaveOfAbsenceStatus, LeaveOfAbsenceType } from "../../generated/prisma/client.js";
 
 const DEFAULT_LOA_COOLDOWN_DAYS = 14;
 const DEFAULT_MINIMUM_REQUEST_TIME_DAYS = 30;
 
 export type LOAEmbedStatus = "pending" | "approved" | "active" | "denied" | "expired" | "ended_early";
+
+export function isBlockingLOA(loa: { type: LeaveOfAbsenceType } | null | undefined): boolean {
+  return loa?.type === LeaveOfAbsenceType.BLOCKING;
+}
+
+export function blocksPatrolTracking(loa: { type: LeaveOfAbsenceType } | null | undefined): boolean {
+  return isBlockingLOA(loa);
+}
+
+export function formatLOATypeLabel(type: LeaveOfAbsenceType): string {
+  return type === LeaveOfAbsenceType.ATTENDABLE ? "Attendable" : "Blocking";
+}
+
+export const BLOCKING_LOA_ATTENDANCE_MESSAGE =
+  "User has an active blocking leave of absence and cannot participate in event attendance.";
 
 export type LOAWithUser = LeaveOfAbsence & {
   user: { discordId: string };
@@ -28,6 +43,7 @@ export function buildLOARequestEmbed(
     startDate: Date;
     endDate: Date;
     reason: string;
+    type?: LeaveOfAbsenceType;
     status?: string;
     approvedBy?: string | null;
     deniedBy?: string | null;
@@ -55,6 +71,14 @@ export function buildLOARequestEmbed(
       value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
       inline: true,
     });
+
+  if (loa.type) {
+    embed.addFields({
+      name: "Type",
+      value: formatLOATypeLabel(loa.type),
+      inline: true,
+    });
+  }
 
   if (status === "expired" || status === "pending" || status === "approved" || status === "active" || status === "denied") {
     embed.addFields(
@@ -163,6 +187,7 @@ export class LOAManager {
     discordId: string,
     timeString: string,
     reason: string,
+    type: LeaveOfAbsenceType,
   ): Promise<LOARequestResult> {
     try {
       // Parse time string
@@ -234,6 +259,7 @@ export class LOAManager {
             startDate,
             endDate,
             reason,
+            type,
             status: "PENDING",
             approvedBy: null,
             deniedBy: null,
@@ -261,6 +287,7 @@ export class LOAManager {
           startDate,
           endDate,
           reason,
+          type,
           status: "PENDING",
         },
       });
@@ -989,8 +1016,12 @@ export class LOAManager {
     try {
       const user = await this.client.users.fetch(loa.user.discordId);
       const embed = buildLOARequestEmbed(loa, "active");
+      const patrolNote =
+        loa.type === LeaveOfAbsenceType.ATTENDABLE
+          ? "Your promotion cooldown is paused until your LOA ends. You can still attend events and accrue patrol time."
+          : "Your patrol time and promotion cooldowns are paused until your LOA ends.";
       await user.send({
-        content: `✅ Your LOA is now **active**. Your patrol time and promotion cooldowns are paused until your LOA ends.${linkLine}`,
+        content: `✅ Your LOA is now **active**. ${patrolNote}${linkLine}`,
         embeds: [embed],
       });
     } catch (_error) {

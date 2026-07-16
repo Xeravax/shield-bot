@@ -46,6 +46,7 @@ export interface UserExportPayload {
     startDate: string;
     endDate: string;
     reason: string;
+    type: string;
     status: string;
     endedEarlyAt: string | null;
     notificationsPaused: boolean;
@@ -173,6 +174,7 @@ export async function getUserExportData(
       startDate: toIso(l.startDate),
       endDate: toIso(l.endDate),
       reason: l.reason,
+      type: l.type,
       status: l.status,
       endedEarlyAt: l.endedEarlyAt ? toIso(l.endedEarlyAt) : null,
       notificationsPaused: l.notificationsPaused,

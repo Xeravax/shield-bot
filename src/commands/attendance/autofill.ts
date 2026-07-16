@@ -9,7 +9,8 @@ import {
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
 import { AttendanceHostGuard } from "../../utility/guards.js";
-import { prisma } from "../../main.js";
+import { prisma, loaManager } from "../../main.js";
+import { isBlockingLOA } from "../../managers/loa/loaManager.js";
 import {
   PermissionLevel,
   userHasSpecificRole,
@@ -175,6 +176,7 @@ export class VRChatAttendanceAutofillCommand {
     let splitCount = 0;
     let staffCount = 0;
     let lateCount = 0;
+    let skippedBlockingLoaCount = 0;
 
     // First pass: Process all category channels for staff detection
     const staffMembersInCategories = new Set<string>();
@@ -197,6 +199,12 @@ export class VRChatAttendanceAutofillCommand {
       const members = channel.members;
 
       for (const memberId of members.keys()) {
+        const activeLOA = await loaManager.getActiveLOA(interaction.guildId, memberId);
+        if (isBlockingLOA(activeLOA)) {
+          skippedBlockingLoaCount++;
+          continue;
+        }
+
         processedUsers.add(memberId);
         newMemberSquads.set(memberId, channelId);
 
@@ -211,7 +219,7 @@ export class VRChatAttendanceAutofillCommand {
 
         if (!previousSquad) {
           // New member - add them
-          await attendanceManager.addUserToSquad(eventId, dbUser.id, channelId);
+          await attendanceManager.addUserToSquad(eventId, dbUser.id, channelId, interaction.guildId);
           addedCount++;
 
           // Mark as late if this is not the first autofill (they joined after initial roll call)
@@ -304,6 +312,7 @@ export class VRChatAttendanceAutofillCommand {
       `🔄 Split: ${splitCount} members`,
       `👤 Staff: ${staffCount} members marked as staff`,
       `⏰ Late: ${lateCount} members marked as late`,
+      `🚫 Skipped (blocking LOA): ${skippedBlockingLoaCount} members`,
       `❌ Left: ${leftCount} members`,
       `📊 Total in event: ${processedUsers.size} members`,
       "",
