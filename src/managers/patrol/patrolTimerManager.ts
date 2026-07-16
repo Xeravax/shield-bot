@@ -152,6 +152,18 @@ type TopUserResult = {
   totalMs: bigint | number;
 };
 
+/** Someone alone in a patrol VC; alert staff every ALONE_ALERT_INTERVAL_MINUTES. */
+type AloneWatch = {
+  guildId: string;
+  channelId: string;
+  userId: string;
+  aloneSince: Date;
+  lastNotifiedMinutes: number;
+  timeout: ReturnType<typeof setTimeout> | null;
+};
+
+const ALONE_ALERT_INTERVAL_MINUTES = 5;
+
 export class PatrolTimerManager {
   private client: Client;
   // guildId => Map<userId, TrackedUser>
@@ -160,6 +172,8 @@ export class PatrolTimerManager {
   private pausedUsers: Map<string, Set<string>> = new Map();
   // guildId => boolean for guild-wide pause
   private pausedGuilds: Set<string> = new Set();
+  /** `${guildId}:${channelId}` => alone watch */
+  private aloneWatches: Map<string, AloneWatch> = new Map();
   private onPatrolStateChange: ((guildId: string) => void) | null = null;
 
   constructor(client: Client) {
@@ -464,6 +478,8 @@ export class PatrolTimerManager {
       if (wasTracked && nowTracked && leftChannelId !== joinedChannelId && joinedChannelId) {
         if (!(await this.memberHasShieldMemberRole(member))) {
           await this.clearUntrackedPatrolSession(guildId, member.id);
+          this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId);
+          this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId);
           return;
         }
         const guildMap = this.tracked.get(guildId);
@@ -482,6 +498,8 @@ export class PatrolTimerManager {
               loggers.patrol.error("Failed to update session channel", err),
             );
         }
+        this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId);
+        this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId);
         return; // Don't stop/start tracking, just update channel
       }
 
@@ -504,6 +522,14 @@ export class PatrolTimerManager {
 
       if (wasTracked && nowTracked && leftChannelId !== joinedChannelId) {
         this.notifyPatrolStateChange(guildId);
+      }
+
+      // Alone-in-VC staff alerts (5 / 10 / 15 … minutes)
+      if (wasTracked) {
+        this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId);
+      }
+      if (nowTracked) {
+        this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId);
       }
     } catch (err) {
       loggers.patrol.error("voiceStateUpdate error", err);
@@ -637,6 +663,7 @@ export class PatrolTimerManager {
         trackedUsers.add(member.id);
         this.startTracking(guild.id, member, ch.id);
       }
+      this.evaluateAloneInChannel(guild, ch.id, settings.patrolChannelCategoryId);
     }
 
     // Stop tracking for users who have persisted sessions but are no longer in a tracked channel
@@ -1548,6 +1575,214 @@ export class PatrolTimerManager {
     } catch (err) {
       loggers.patrol.error("logCommandUsage error", err);
     }
+  }
+
+  // Alone-in-VC staff alerts (patrol category only)
+
+  private aloneWatchKey(guildId: string, channelId: string): string {
+    return `${guildId}:${channelId}`;
+  }
+
+  private clearAloneWatch(guildId: string, channelId: string): void {
+    const key = this.aloneWatchKey(guildId, channelId);
+    const watch = this.aloneWatches.get(key);
+    if (!watch) {
+      return;
+    }
+    if (watch.timeout) {
+      clearTimeout(watch.timeout);
+    }
+    this.aloneWatches.delete(key);
+  }
+
+  /**
+   * Start/continue/clear alone watch for a patrol-category voice channel.
+   * Alerts staff in the patrol log every 5 minutes while one human remains alone.
+   */
+  private evaluateAloneInChannel(
+    guild: Guild,
+    channelId: string | null | undefined,
+    categoryId: string | null | undefined,
+  ): void {
+    if (!channelId || !categoryId) {
+      return;
+    }
+
+    const ch = guild.channels.cache.get(channelId);
+    if (!ch || ch.type !== ChannelType.GuildVoice) {
+      this.clearAloneWatch(guild.id, channelId);
+      return;
+    }
+
+    const voice = ch as VoiceChannel;
+    if (voice.parentId !== categoryId) {
+      this.clearAloneWatch(guild.id, channelId);
+      return;
+    }
+
+    const humans = voice.members.filter((m) => !m.user.bot);
+    if (humans.size !== 1) {
+      this.clearAloneWatch(guild.id, channelId);
+      return;
+    }
+
+    const aloneMember = humans.first();
+    if (!aloneMember) {
+      this.clearAloneWatch(guild.id, channelId);
+      return;
+    }
+
+    this.ensureAloneWatch(guild.id, channelId, aloneMember.id);
+  }
+
+  private ensureAloneWatch(guildId: string, channelId: string, userId: string): void {
+    const key = this.aloneWatchKey(guildId, channelId);
+    const existing = this.aloneWatches.get(key);
+    if (existing && existing.userId === userId) {
+      return;
+    }
+
+    this.clearAloneWatch(guildId, channelId);
+
+    const watch: AloneWatch = {
+      guildId,
+      channelId,
+      userId,
+      aloneSince: new Date(),
+      lastNotifiedMinutes: 0,
+      timeout: null,
+    };
+    this.aloneWatches.set(key, watch);
+    this.scheduleAloneAlert(watch);
+    loggers.patrol.debug(
+      `Alone watch started for ${userId} in ${channelId} (guild ${guildId})`,
+    );
+  }
+
+  private scheduleAloneAlert(watch: AloneWatch): void {
+    const nextMilestone =
+      watch.lastNotifiedMinutes + ALONE_ALERT_INTERVAL_MINUTES;
+    const elapsedMs = Date.now() - watch.aloneSince.getTime();
+    const delay = Math.max(0, nextMilestone * 60_000 - elapsedMs);
+
+    if (watch.timeout) {
+      clearTimeout(watch.timeout);
+    }
+
+    watch.timeout = setTimeout(() => {
+      void this.fireAloneAlert(watch, nextMilestone).catch((err) =>
+        loggers.patrol.error("fireAloneAlert error", err),
+      );
+    }, delay);
+  }
+
+  private async fireAloneAlert(
+    watch: AloneWatch,
+    minutesAlone: number,
+  ): Promise<void> {
+    const key = this.aloneWatchKey(watch.guildId, watch.channelId);
+    if (this.aloneWatches.get(key) !== watch) {
+      return;
+    }
+
+    const guild = this.client.guilds.cache.get(watch.guildId);
+    if (!guild) {
+      this.clearAloneWatch(watch.guildId, watch.channelId);
+      return;
+    }
+
+    const settings = await this.getSettings(watch.guildId);
+    if (!settings.patrolChannelCategoryId) {
+      this.clearAloneWatch(watch.guildId, watch.channelId);
+      return;
+    }
+
+    const ch = guild.channels.cache.get(watch.channelId);
+    if (!ch || ch.type !== ChannelType.GuildVoice) {
+      this.clearAloneWatch(watch.guildId, watch.channelId);
+      return;
+    }
+
+    const voice = ch as VoiceChannel;
+    if (voice.parentId !== settings.patrolChannelCategoryId) {
+      this.clearAloneWatch(watch.guildId, watch.channelId);
+      return;
+    }
+
+    const humans = voice.members.filter((m) => !m.user.bot);
+    const stillAlone =
+      humans.size === 1 && humans.first()?.id === watch.userId;
+    if (!stillAlone) {
+      this.clearAloneWatch(watch.guildId, watch.channelId);
+      return;
+    }
+
+    watch.lastNotifiedMinutes = minutesAlone;
+    await this.sendAloneStaffAlert(watch, minutesAlone, settings);
+    this.scheduleAloneAlert(watch);
+  }
+
+  private async sendAloneStaffAlert(
+    watch: AloneWatch,
+    minutesAlone: number,
+    settings: Awaited<ReturnType<typeof this.getSettings>>,
+  ): Promise<void> {
+    if (!settings.patrolLogChannelId) {
+      loggers.patrol.debug(
+        `Alone alert skipped: no patrol log channel for guild ${watch.guildId}`,
+      );
+      return;
+    }
+
+    const staffRoleIds = parseStaffRoleIds(watch.guildId, settings.staffRoleIds);
+    if (staffRoleIds.length === 0) {
+      loggers.patrol.debug(
+        `Alone alert skipped: no staff roles for guild ${watch.guildId}`,
+      );
+      return;
+    }
+
+    const channel = await this.client.channels
+      .fetch(settings.patrolLogChannelId)
+      .catch(() => null);
+    if (!channel || !channel.isTextBased() || channel.isDMBased()) {
+      loggers.patrol.warn(
+        `Invalid patrol log channel ${settings.patrolLogChannelId} in guild ${watch.guildId}`,
+      );
+      return;
+    }
+
+    const textChannel = channel as TextChannel;
+    const aloneSinceUnix = Math.floor(watch.aloneSince.getTime() / 1000);
+    const staffMentions = staffRoleIds.map((id) => roleMention(id)).join(" ");
+
+    const embed = new EmbedBuilder()
+      .setTitle("Alone in patrol channel")
+      .setDescription(
+        `<@${watch.userId}> has been alone in <#${watch.channelId}> for **${minutesAlone} minutes**.`,
+      )
+      .addFields(
+        { name: "User", value: `<@${watch.userId}>`, inline: true },
+        { name: "Channel", value: `<#${watch.channelId}>`, inline: true },
+        {
+          name: "Alone since",
+          value: `<t:${aloneSinceUnix}:R> (<t:${aloneSinceUnix}:t>)`,
+          inline: false,
+        },
+      )
+      .setColor(Colors.Orange)
+      .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
+      .setTimestamp();
+
+    await textChannel.send({
+      content: staffMentions,
+      embeds: [embed],
+      allowedMentions: { roles: staffRoleIds, users: [watch.userId] },
+    });
+
+    loggers.patrol.info(
+      `Alone alert: ${watch.userId} alone ${minutesAlone}m in ${watch.channelId} (guild ${watch.guildId})`,
+    );
   }
 
   // Internals
