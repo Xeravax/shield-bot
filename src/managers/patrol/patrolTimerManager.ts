@@ -25,6 +25,7 @@ import {
   hasEnoughHoursSinceLastNotification,
 } from "../../utility/vrchat/promotionAccountInfo.js";
 import { loaManager } from "../../main.js";
+import { blocksPatrolTracking } from "../loa/loaManager.js";
 import {
   PermissionLevel,
   userHasSpecificRole,
@@ -1095,17 +1096,17 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Check if a user is paused or on LOA (async version for LOA checks).
-   * Note: notificationsPaused controls only alerts, not tracking. Any active LOA pauses tracking.
+   * Check if a user is paused or on a blocking LOA (async version for LOA checks).
+   * Note: notificationsPaused controls only alerts, not tracking. Only blocking LOAs pause tracking.
    */
   private async isUserPausedOrOnLOA(guildId: string, userId: string): Promise<boolean> {
     // Check manual pause first (synchronous)
     if (this.isUserPaused(guildId, userId)) {return true;}
     
-    // Check for active LOA (async) - any active LOA pauses tracking
+    // Only blocking LOAs pause patrol time tracking
     try {
       const loa = await loaManager.getActiveLOA(guildId, userId);
-      return loa !== null;
+      return blocksPatrolTracking(loa);
     } catch (error) {
       loggers.patrol.error(`Error checking LOA for user ${userId} in guild ${guildId}`, error);
       return false; // On error, don't pause (fail open)
@@ -2182,16 +2183,15 @@ export class PatrolTimerManager {
       return;
     }
     
-    // Check if user is on LOA (only if not manually paused)
+    // Check if user is on a blocking LOA (only if not manually paused)
     const loa = await loaManager.getActiveLOA(guildId, member.id);
-    const isOnLOA = loa !== null;
     
-    if (isOnLOA) {
-      // User is on LOA - notify staff but don't start tracking
-      await this.checkLOAAndNotify(guild, guildId, member.id, channelId, settings);
+    if (loa && blocksPatrolTracking(loa)) {
+      // User is on a blocking LOA - notify staff but don't start tracking
+      await this.checkLOAAndNotify(guild, guildId, member.id, channelId, settings, loa);
       
       // Inform user that their time won't be tracked (unless notifications are paused)
-      if (loa && !loa.notificationsPaused) {
+      if (!loa.notificationsPaused) {
         await this.notifyUserAboutLOATracking(member.id);
       }
       return;
@@ -2321,12 +2321,11 @@ export class PatrolTimerManager {
     userId: string,
     channelId: string,
     settings: Awaited<ReturnType<typeof this.getSettings>>,
+    loa: { notificationsPaused: boolean },
   ): Promise<void> {
     try {
-      const loa = await loaManager.getActiveLOA(guildId, userId);
-
-      if (!loa || loa.notificationsPaused) {
-        return; // No active LOA or notifications paused
+      if (loa.notificationsPaused) {
+        return;
       }
 
       // Use settings passed in (from handleVoiceStateUpdate which already called getSettings)

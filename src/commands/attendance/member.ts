@@ -9,7 +9,8 @@ import {
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
 import { AttendanceHostGuard } from "../../utility/guards.js";
-import { prisma } from "../../main.js";
+import { prisma, loaManager } from "../../main.js";
+import { isBlockingLOA } from "../../managers/loa/loaManager.js";
 
 const attendanceManager = new AttendanceManager();
 
@@ -102,34 +103,53 @@ export class VRChatAttendanceMemberCommand {
     }
 
     const cmdInteraction = interaction as CommandInteraction;
+    if (!cmdInteraction.guildId) {
+      await cmdInteraction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await cmdInteraction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const active =
       await attendanceManager.getActiveEventForInteraction(cmdInteraction);
     if (!active) {
-      await cmdInteraction.reply({
+      await cmdInteraction.editReply({
         content: "No active attendance event found.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     const { eventId } = active;
     const dbUser = await attendanceManager.findOrCreateUserByDiscordId(user.id);
+    const guildId = cmdInteraction.guildId;
+
+    const blockingLOATargetActions = new Set(["add", "move", "split"]);
+    if (blockingLOATargetActions.has(action)) {
+      const activeLOA = await loaManager.getActiveLOA(guildId, user.id);
+      if (isBlockingLOA(activeLOA)) {
+        await cmdInteraction.editReply({
+          content: `❌ <@${user.id}> has an active **blocking** leave of absence and cannot participate in event attendance.`,
+        });
+        return;
+      }
+    }
 
     // Handle remove action
     if (action === "remove") {
       await attendanceManager.forceRemoveUserFromEvent(eventId, dbUser.id);
-      await cmdInteraction.reply({
+      await cmdInteraction.editReply({
         content: `Completely removed <@${user.id}> from the event (no record kept)`,
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     // All other actions require squad
     if (!squad) {
-      await cmdInteraction.reply({
+      await cmdInteraction.editReply({
         content: `Squad is required for ${action} action.`,
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -139,7 +159,7 @@ export class VRChatAttendanceMemberCommand {
 
     // Handle add action
     if (action === "add") {
-      await attendanceManager.addUserToSquad(eventId, dbUser.id, squad);
+      await attendanceManager.addUserToSquad(eventId, dbUser.id, squad, guildId);
 
       // Apply additional modifiers
       if (asLead) {
@@ -162,30 +182,39 @@ export class VRChatAttendanceMemberCommand {
       const modifierText =
         modifiers.length > 0 ? ` (${modifiers.join(", ")})` : "";
 
-      await cmdInteraction.reply({
+      await cmdInteraction.editReply({
         content: `Added <@${user.id}> to ${squadName}${modifierText}`,
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     // Handle move action
     if (action === "move") {
-      await attendanceManager.moveUserToSquad(eventId, dbUser.id, squad);
-      await cmdInteraction.reply({
+      await attendanceManager.moveUserToSquad(eventId, dbUser.id, squad, guildId);
+      await cmdInteraction.editReply({
         content: `Moved <@${user.id}> to ${squadName}`,
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     // Handle split action
     if (action === "split") {
-      // Get current squad for the user
-      const currentMember = await prisma.squadMember.findFirst({
+      const settings = await prisma.guildSettings.findUnique({
+        where: { guildId },
+        select: { aocChannelId: true },
+      });
+      const aocChannelId = settings?.aocChannelId ?? null;
+
+      // Prefer retained AOC membership when present so markUserAsSplit is used
+      const memberships = await prisma.squadMember.findMany({
         where: { userId: dbUser.id, squad: { eventId } },
         include: { squad: true },
+        orderBy: { id: "asc" },
       });
+      const currentMember =
+        (aocChannelId
+          ? memberships.find((m) => m.squad.name === aocChannelId)
+          : undefined) ?? memberships[0] ?? null;
 
       const previousSquadChannelId = currentMember?.squad?.name || null;
       
@@ -203,23 +232,20 @@ export class VRChatAttendanceMemberCommand {
           dbUser.id,
           squad,
           previousSquadChannelId,
-          cmdInteraction.guildId || undefined,
+          guildId,
         );
       } else {
-        await attendanceManager.moveUserToSquad(eventId, dbUser.id, squad);
+        await attendanceManager.moveUserToSquad(eventId, dbUser.id, squad, guildId);
       }
 
-      await cmdInteraction.reply({
+      await cmdInteraction.editReply({
         content: `Split <@${user.id}> to ${squadName}${previousSquadName ? ` (Split from ${previousSquadName})` : ""}`,
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    await cmdInteraction.reply({
+    await cmdInteraction.editReply({
       content: "❌ Invalid action. Use 'add', 'remove', 'move', or 'split'.",
-      flags: MessageFlags.Ephemeral,
     });
   }
 }
-

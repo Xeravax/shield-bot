@@ -23,3 +23,8 @@ enum LeaveOfAbsenceStatus {
   ENDED_EARLY
   EXPIRED
 }
+
+enum LeaveOfAbsenceType {
+  ATTENDABLE
+  BLOCKING
+}

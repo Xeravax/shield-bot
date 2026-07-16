@@ -1,7 +1,8 @@
 import type { CommandInteraction } from "discord.js";
-import { prisma, bot } from "../../main.js";
+import { prisma, bot, loaManager } from "../../main.js";
 import { EmbedBuilder, Colors } from "discord.js";
 import { loggers } from "../../utility/logger.js";
+import { isBlockingLOA, BLOCKING_LOA_ATTENDANCE_MESSAGE } from "../loa/loaManager.js";
 
 export class AttendanceManager {
   async createEvent(date: Date, hostId?: number, cohostId?: number) {
@@ -18,11 +19,15 @@ export class AttendanceManager {
     eventId: number,
     userId: number | undefined,
     squadName: string,
+    guildId?: string,
   ) {
     if (!userId)
       {throw new Error(
         "User ID is undefined. Make sure the user exists in the database.",
       );}
+    if (guildId) {
+      await this.assertNotOnBlockingLOA(guildId, userId);
+    }
     let squad = await prisma.squad.findFirst({
       where: { eventId, name: squadName },
     });
@@ -48,7 +53,10 @@ export class AttendanceManager {
     await prisma.attendanceStaff.deleteMany({ where: { eventId, userId } });
   }
 
-  async moveUserToSquad(eventId: number, userId: number, newSquadName: string) {
+  async moveUserToSquad(eventId: number, userId: number, newSquadName: string, guildId?: string) {
+    if (guildId) {
+      await this.assertNotOnBlockingLOA(guildId, userId);
+    }
     const squads = await prisma.squad.findMany({ where: { eventId } });
     for (const squad of squads) {
       await prisma.squadMember.deleteMany({
@@ -102,6 +110,9 @@ export class AttendanceManager {
     splitFrom: string,
     guildId?: string,
   ) {
+    if (guildId) {
+      await this.assertNotOnBlockingLOA(guildId, userId);
+    }
     // Check if splitting from AOC - if so, keep them in AOC and add to new squad
     const guildSettings = guildId 
       ? await prisma.guildSettings.findUnique({ where: { guildId } })
@@ -126,7 +137,7 @@ export class AttendanceManager {
       }
 
       // Add to new squad without removing from AOC
-      await this.addUserToSquad(eventId, userId, newSquadName);
+      await this.addUserToSquad(eventId, userId, newSquadName, guildId);
       const member = await prisma.squadMember.findFirst({
         where: { squad: { eventId, name: newSquadName }, userId },
       });
@@ -144,7 +155,7 @@ export class AttendanceManager {
       }
     } else {
       // Normal split - move user (removes from old squad, adds to new)
-      await this.moveUserToSquad(eventId, userId, newSquadName);
+      await this.moveUserToSquad(eventId, userId, newSquadName, guildId);
       const member = await prisma.squadMember.findFirst({
         where: { squad: { eventId, name: newSquadName }, userId },
       });
@@ -154,6 +165,24 @@ export class AttendanceManager {
           data: { isSplit: true, splitFrom },
         });
       }
+    }
+  }
+
+  /**
+   * Prevent squad changes for users on an active blocking LOA.
+   */
+  private async assertNotOnBlockingLOA(guildId: string, userId: number): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { discordId: true },
+    });
+    if (!user) {
+      return;
+    }
+
+    const loa = await loaManager.getActiveLOA(guildId, user.discordId);
+    if (isBlockingLOA(loa)) {
+      throw new Error(BLOCKING_LOA_ATTENDANCE_MESSAGE);
     }
   }
 
@@ -302,11 +331,6 @@ export class AttendanceManager {
     const user = await this.findOrCreateUserByDiscordId(discordId);
     const eventId = await this.getActiveEventIdForUser(user.id);
     if (!eventId) {
-      await interaction.reply({
-        content:
-          "You do not have an active event. Use /vrchat attendance createevent first.",
-        flags: 64,
-      });
       return null;
     }
     return { eventId, user };

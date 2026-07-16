@@ -6,6 +6,7 @@ model LeaveOfAbsence {
   startDate          DateTime
   endDate            DateTime
   reason             String
+  type               LeaveOfAbsenceType   @default(BLOCKING)
   status             LeaveOfAbsenceStatus @default(PENDING)
   approvedBy         String? // Discord ID of staff who approved
   deniedBy           String? // Discord ID of staff who denied
