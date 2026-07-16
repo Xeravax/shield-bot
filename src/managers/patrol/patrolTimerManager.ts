@@ -141,6 +141,13 @@ function staffPingPrefix(staffRoleIds: string[]): string[] {
   return [staffRoleIds.map((roleId) => roleMention(roleId)).join(" "), ""];
 }
 
+function parseChannelIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
 type TrackedUser = {
   userId: string;
   channelId: string;
@@ -268,6 +275,7 @@ export class PatrolTimerManager {
       patrolLogChannelId?: string | null;
       loaNotificationChannelId?: string | null;
       staffRoleIds?: unknown;
+      patrolAloneExcludeChannelIds?: unknown;
     };
   }
 
@@ -455,6 +463,7 @@ export class PatrolTimerManager {
 
       const leftChannelId = oldState.channelId;
       const joinedChannelId = newState.channelId;
+      const aloneExcludeIds = parseChannelIdList(settings.patrolAloneExcludeChannelIds);
 
       // Ensure map
       if (!this.tracked.has(guildId)) {this.tracked.set(guildId, new Map());}
@@ -478,8 +487,8 @@ export class PatrolTimerManager {
       if (wasTracked && nowTracked && leftChannelId !== joinedChannelId && joinedChannelId) {
         if (!(await this.memberHasShieldMemberRole(member))) {
           await this.clearUntrackedPatrolSession(guildId, member.id);
-          this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId);
-          this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId);
+          this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId, aloneExcludeIds);
+          this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId, aloneExcludeIds);
           return;
         }
         const guildMap = this.tracked.get(guildId);
@@ -498,8 +507,8 @@ export class PatrolTimerManager {
               loggers.patrol.error("Failed to update session channel", err),
             );
         }
-        this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId);
-        this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId);
+        this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId, aloneExcludeIds);
+        this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId, aloneExcludeIds);
         return; // Don't stop/start tracking, just update channel
       }
 
@@ -526,10 +535,10 @@ export class PatrolTimerManager {
 
       // Alone-in-VC staff alerts (5 / 10 / 15 … minutes)
       if (wasTracked) {
-        this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId);
+        this.evaluateAloneInChannel(guild, leftChannelId, settings.patrolChannelCategoryId, aloneExcludeIds);
       }
       if (nowTracked) {
-        this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId);
+        this.evaluateAloneInChannel(guild, joinedChannelId, settings.patrolChannelCategoryId, aloneExcludeIds);
       }
     } catch (err) {
       loggers.patrol.error("voiceStateUpdate error", err);
@@ -651,6 +660,7 @@ export class PatrolTimerManager {
     if (!voiceChannels.size) {return;}
 
     const trackedUsers = new Set<string>();
+    const aloneExcludeIds = parseChannelIdList(settings.patrolAloneExcludeChannelIds);
 
     for (const ch of voiceChannels.values()) {
       // ch.members contains members currently connected to this voice channel
@@ -663,7 +673,12 @@ export class PatrolTimerManager {
         trackedUsers.add(member.id);
         this.startTracking(guild.id, member, ch.id);
       }
-      this.evaluateAloneInChannel(guild, ch.id, settings.patrolChannelCategoryId);
+      this.evaluateAloneInChannel(
+        guild,
+        ch.id,
+        settings.patrolChannelCategoryId,
+        aloneExcludeIds,
+      );
     }
 
     // Stop tracking for users who have persisted sessions but are no longer in a tracked channel
@@ -1596,6 +1611,13 @@ export class PatrolTimerManager {
   }
 
   /**
+   * Clear alone watch when a channel is added to the exclude list.
+   */
+  clearAloneWatchForChannel(guildId: string, channelId: string): void {
+    this.clearAloneWatch(guildId, channelId);
+  }
+
+  /**
    * Start/continue/clear alone watch for a patrol-category voice channel.
    * Alerts staff in the patrol log every 5 minutes while one human remains alone.
    */
@@ -1603,8 +1625,14 @@ export class PatrolTimerManager {
     guild: Guild,
     channelId: string | null | undefined,
     categoryId: string | null | undefined,
+    excludeChannelIds: string[] = [],
   ): void {
     if (!channelId || !categoryId) {
+      return;
+    }
+
+    if (excludeChannelIds.includes(channelId)) {
+      this.clearAloneWatch(guild.id, channelId);
       return;
     }
 
@@ -1693,6 +1721,12 @@ export class PatrolTimerManager {
 
     const settings = await this.getSettings(watch.guildId);
     if (!settings.patrolChannelCategoryId) {
+      this.clearAloneWatch(watch.guildId, watch.channelId);
+      return;
+    }
+
+    const aloneExcludeIds = parseChannelIdList(settings.patrolAloneExcludeChannelIds);
+    if (aloneExcludeIds.includes(watch.channelId)) {
       this.clearAloneWatch(watch.guildId, watch.channelId);
       return;
     }
