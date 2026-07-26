@@ -11,7 +11,7 @@ import { Pagination } from "@discordx/pagination";
 import { Discord, Slash, SlashGroup, SlashOption, Guard, SlashChoice } from "discordx";
 import { whitelistManager } from "../../managers/whitelist/whitelistManager.js";
 import { searchUsers } from "../../utility/vrchat/user.js";
-import { StaffGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
 
 @Discord()
@@ -20,9 +20,9 @@ import { loggers } from "../../utility/logger.js";
   description: "VRChat whitelist management commands",
 })
 @SlashGroup("whitelist")
-@Guard(StaffGuard)
 export class WhitelistCommands {
   @Slash({ description: "Manage Discord role mappings to whitelist permissions" })
+  @Guard(PermissionNodeGuard("whitelist.command.role"))
   async role(
     @SlashChoice({ name: "Setup", value: "setup" })
     @SlashChoice({ name: "Remove", value: "remove" })
@@ -334,6 +334,7 @@ export class WhitelistCommands {
 
 
   @Slash({ description: "Manage whitelist user operations" })
+  @Guard(PermissionNodeGuard("whitelist.command.user"))
   async user(
     @SlashChoice({ name: "Info", value: "info" })
     @SlashChoice({ name: "Sync", value: "sync" })
@@ -732,6 +733,7 @@ export class WhitelistCommands {
 
 
   @Slash({ description: "Get whitelist statistics" })
+  @Guard(PermissionNodeGuard("whitelist.command.stats"))
   async stats(interaction: CommandInteraction): Promise<void> {
     try {
       if (!interaction.guildId) {
@@ -780,6 +782,7 @@ export class WhitelistCommands {
   }
 
   @Slash({ description: "Generate and download the encoded whitelist" })
+  @Guard(PermissionNodeGuard("whitelist.command.generate"))
   async generate(interaction: CommandInteraction): Promise<void> {
     try {
       if (!interaction.guildId) {
@@ -868,6 +871,7 @@ export class WhitelistCommands {
   @Slash({
     description: "Validate and cleanup whitelist access for all server members",
   })
+  @Guard(PermissionNodeGuard("whitelist.command.validate"))
   async validate(
     @SlashOption({
       description: "Specific Discord user to validate (optional)",

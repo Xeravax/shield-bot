@@ -5,7 +5,7 @@ import {
   GuildMember,
 } from "discord.js";
 import { patrolTimer } from "../../../main.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 
 @Discord()
 @SlashGroup({
@@ -14,7 +14,7 @@ import { StaffGuard } from "../../../utility/guards.js";
   root: "settings",
 })
 @SlashGroup("patrol", "settings")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.patrol"))
 export class SettingsPatrolSubGroup {
   // Additional patrol setting commands can be added here as more functionality is needed
 

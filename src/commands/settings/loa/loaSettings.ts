@@ -8,7 +8,7 @@ import {
   TextChannel,
   NewsChannel,
 } from "discord.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
@@ -19,7 +19,7 @@ import { loggers } from "../../../utility/logger.js";
   root: "settings",
 })
 @SlashGroup("loa", "settings")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.loa"))
 export class SettingsLOASubGroup {
   /**
    * Helper method to update a guild setting with error handling

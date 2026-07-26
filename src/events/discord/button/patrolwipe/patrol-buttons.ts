@@ -1,34 +1,41 @@
-import { ButtonComponent, Discord, Guard } from "discordx";
-import { ButtonInteraction, GuildMember, MessageFlags } from "discord.js";
+import { ButtonComponent, Discord } from "discordx";
+import { ButtonInteraction, MessageFlags } from "discord.js";
 import { patrolTimer } from "../../../../main.js";
-import { StaffGuard } from "../../../../utility/guards.js";
-import { userHasPermission, PermissionFlags } from "../../../../utility/permissionUtils.js";
+import { hasNode } from "../../../../utility/permissionNodes.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
+import { resolveGuildMember } from "../../../../utility/guards.js";
 
 @Discord()
 export class PatrolButtonHandlers {
   @ButtonComponent({ id: /patrol-wipe-confirm:(\d+):(true|false)/ })
-  @Guard(StaffGuard)
   async handleWipeConfirm(interaction: ButtonInteraction) {
-    if (!interaction.guildId) {return;}    
-    const [, userId] = interaction.customId.split(":");
-    
-    // Check permissions again
-    const member = interaction.member as GuildMember;
-    if (!(await userHasPermission(member, PermissionFlags.STAFF))) {
-      await interaction.reply({
+    if (!interaction.guildId) {return;}
+    await interaction.deferUpdate();
+
+    const match = matchComponentId(interaction.customId, /^patrol-wipe-confirm:(\d+):(true|false)$/);
+    if (!match) {
+      await interaction.followUp({
+        content: "❌ Invalid button data.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const userId = match[1];
+
+    const member = await resolveGuildMember(interaction);
+    if (!member || !(await hasNode(member, "patrol.manage.wipe"))) {
+      await interaction.followUp({
         content: "❌ You don't have permission to wipe patrol data.",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
-    
-    // Perform the wipe for the specific user
+
     await patrolTimer.reset(interaction.guildId, userId);
-    
-    // Log the command usage
+
     await patrolTimer.logCommandUsage(interaction.guildId, "wipe", interaction.user.id, userId);
 
-    await interaction.update({
+    await interaction.editReply({
       content: `✅ Successfully wiped all patrol data for <@${userId}>.`,
       components: [],
     });
@@ -36,8 +43,16 @@ export class PatrolButtonHandlers {
 
   @ButtonComponent({ id: /patrol-wipe-cancel:(\d+)/ })
   async handleWipeCancel(interaction: ButtonInteraction) {
-    const [, userId] = interaction.customId.split(":");
-    
+    const match = matchComponentId(interaction.customId, /^patrol-wipe-cancel:(\d+)$/);
+    if (!match) {
+      await interaction.reply({
+        content: "❌ Invalid button data.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const userId = match[1];
+
     await interaction.update({
       content: `❌ Cancelled wipe operation for <@${userId}>.`,
       components: [],

@@ -359,8 +359,7 @@ Key models include:
 - `/settings group bulkrolesync` - Sync all verified users' roles
 - `/settings patrol setup-category` - Set tracked voice category for patrol
 - `/patrol settings` - Patrol promotion notification rules
-- `/role-tracking settings` - Role tracking configuration
-- `/role-tracking-warn` - Role tracking warnings and staff pings
+- `/role-tracking settings` - Role tracking configuration (including warnings and staff pings)
 - `/settings attendance add-channel/remove-channel` - Manage enrolled attendance channels
 - `/whitelist settings` - Whitelist GitHub and log channel settings
 - `/settings vrchat set-avatar-world/remove-avatar-world` - Avatar world ID config

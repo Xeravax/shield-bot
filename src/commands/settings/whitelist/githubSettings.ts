@@ -8,7 +8,7 @@ import {
   ChannelType,
   GuildBasedChannel,
 } from "discord.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/guards.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import { encrypt, decrypt } from "../../../utility/encryption.js";
@@ -43,7 +43,7 @@ function safeMaskToken(value: string): string {
   root: "whitelist",
 })
 @SlashGroup("settings", "whitelist")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.whitelist"))
 export class WhitelistGitHubSettingsCommand {
   @Slash({
     name: "gh-token",

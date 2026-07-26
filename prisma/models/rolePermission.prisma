@@ -1,0 +1,11 @@
+// Granular permission nodes granted to Discord roles.
+// Node examples: "events.command.schedule", "roles.host", "patrol.*", "*"
+model RolePermission {
+  id      Int    @id @default(autoincrement())
+  guildId String
+  roleId  String
+  node    String
+
+  @@unique([guildId, roleId, node])
+  @@index([guildId])
+}

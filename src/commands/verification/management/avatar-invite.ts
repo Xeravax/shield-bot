@@ -14,7 +14,8 @@ import {
   Colors,
   ActionRowBuilder,
 } from "discord.js";
-import { VRChatLoginGuard, StaffGuard, GuildGuard } from "../../../utility/guards.js";
+import { VRChatLoginGuard, GuildGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { prisma } from "../../../main.js";
 
 @Discord()
@@ -23,7 +24,7 @@ import { prisma } from "../../../main.js";
   description: "VRChat related commands.",
 })
 @SlashGroup("vrchat")
-@Guard(VRChatLoginGuard, StaffGuard)
+@Guard(VRChatLoginGuard, PermissionNodeGuard("vrchat.command.avatar-invite"))
 export class VRChatAvatarInviteCommand {
   @Slash({
     name: "avatar-invite",

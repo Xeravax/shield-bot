@@ -19,14 +19,14 @@ import {
 } from "discord.js";
 import { Pagination } from "@discordx/pagination";
 import { patrolTimer, prisma, roleTrackingManager } from "../../../main.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { loggers } from "../../../utility/logger.js";
 import type { RoleTrackingConfigMap, CustomMessageData } from "../../../managers/roleTracking/roleTrackingManager.js";
 import { parseDurationToMs, isValidDuration } from "../../../utility/roleTracking/durationParser.js";
 
 @Discord()
 @SlashGroup("settings", "role-tracking")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.role-tracking"))
 export class SettingsRoleTrackingWarnCommands {
 
   private async autocompleteTrackedRoles(interaction: AutocompleteInteraction): Promise<void> {

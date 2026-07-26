@@ -1,0 +1,43 @@
+enum EventDuty {
+  ON_DUTY
+  OFF_DUTY
+}
+
+enum EventType {
+  PATROL
+  GAME
+  SPECIAL
+  OTHER
+}
+
+enum PlannedEventStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  DENIED
+}
+
+model PlannedEvent {
+  id                     Int                @id @default(autoincrement())
+  guildId                String
+  title                  String             @db.VarChar(200)
+  startTime              DateTime
+  hostId                 String // Discord user ID, defaults to executor
+  coHostId               String?
+  coHostOpen             Boolean            @default(false)
+  duty                   EventDuty
+  eventType              EventType? // null = infer from title
+  durationMinutes        Int                @default(120)
+  status                 PlannedEventStatus @default(DRAFT)
+  denialReason           String?
+  reviewedById           String?
+  planningMessageId      String? // approval embed in planning channel
+  pendingCoHostUserId    String? // locks the co-host button while a request is open
+  coHostRequestMessageId String?
+  discordEventId         String? // set on export
+  forceOverride          Boolean            @default(false) // bypass policy rule failures while drafting
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  @@index([guildId, status, startTime])
+}

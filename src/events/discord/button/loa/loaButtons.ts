@@ -8,16 +8,17 @@ import {
   ButtonStyle,
 } from "discord.js";
 import { Discord, ButtonComponent, Guard } from "discordx";
-import { StaffGuard } from "../../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../../utility/permissionNodes.js";
 import { loaManager, patrolTimer, prisma } from "../../../../main.js";
 import { formatDuration } from "../../../../utility/timeParser.js";
 import { loggers } from "../../../../utility/logger.js";
 import { buildLOARequestEmbed, getLOAMessageLink } from "../../../../managers/loa/loaManager.js";
+import { matchComponentId } from "../../../../utility/componentId.js";
 
 @Discord()
 export class LOAButtonHandlers {
   @ButtonComponent({ id: /^loa:approve:(\d+)$/ })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("loa.manage.approve"))
   async handleApprove(interaction: ButtonInteraction) {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -30,7 +31,15 @@ export class LOAButtonHandlers {
     // Defer immediately to avoid timeout
     await interaction.deferUpdate();
 
-    const loaId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, /^loa:approve:(\d+)$/);
+    if (!match) {
+      await interaction.followUp({
+        content: "❌ Invalid button data.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const loaId = parseInt(match[1], 10);
 
     try {
       const result = await loaManager.approveLOA(loaId, interaction.user.id);
@@ -109,7 +118,7 @@ export class LOAButtonHandlers {
   }
 
   @ButtonComponent({ id: /^loa:deny:(\d+)$/ })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("loa.manage.approve"))
   async handleDeny(interaction: ButtonInteraction) {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -122,7 +131,15 @@ export class LOAButtonHandlers {
     // Defer immediately to avoid timeout
     await interaction.deferUpdate();
 
-    const loaId = parseInt(interaction.customId.split(":")[2], 10);
+    const match = matchComponentId(interaction.customId, /^loa:deny:(\d+)$/);
+    if (!match) {
+      await interaction.followUp({
+        content: "❌ Invalid button data.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const loaId = parseInt(match[1], 10);
 
     try {
       // Deny without reason for now (can be enhanced later with modals)

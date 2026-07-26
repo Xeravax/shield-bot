@@ -1,6 +1,6 @@
 import { ButtonComponent, Discord } from "discordx";
 import { ButtonInteraction, MessageFlags, EmbedBuilder, Colors, ButtonBuilder, ButtonStyle, ActionRowBuilder } from "discord.js";
-import { prisma } from "../../../../main.js";
+import { updateUserPreferences } from "../../../../utility/userPreferences.js";
 import { loggers } from "../../../../utility/logger.js";
 
 @Discord()
@@ -19,39 +19,14 @@ export class PatrolDmButtonHandlers {
         return;
       }
 
-      // Get or create user
-      let user = await prisma.user.findUnique({
-        where: { discordId: userId },
-        include: { userPreferences: true },
-      });
+      await updateUserPreferences(userId, { patrolDmDisabled: true });
 
-      if (!user) {
-        // Create user if doesn't exist
-        user = await prisma.user.create({
-          data: { discordId: userId },
-          include: { userPreferences: true },
-        });
-      }
-
-      // Update or create preferences
-      if (user.userPreferences) {
-        await prisma.userPreferences.update({
-          where: { userId: user.id },
-          data: { patrolDmDisabled: true },
-        });
-      } else {
-        await prisma.userPreferences.create({
-          data: {
-            userId: user.id,
-            patrolDmDisabled: true,
-          },
-        });
-      }
-
-      // Update the message with confirmation and enable button
       const embed = new EmbedBuilder()
         .setTitle("✅ Patrol DM Disabled")
-        .setDescription("You will no longer receive DM notifications when you complete patrol sessions.\n\nYou can re-enable them at any time using the button below.")
+        .setDescription(
+          "You will no longer receive DM notifications when you complete patrol sessions.\n\n" +
+          "You can re-enable them via the button below or `/profile settings`.",
+        )
         .setColor(Colors.Orange)
         .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
         .setTimestamp();
@@ -74,9 +49,7 @@ export class PatrolDmButtonHandlers {
       await interaction.reply({
         content: "❌ An error occurred while processing your request.",
         flags: MessageFlags.Ephemeral,
-      }).catch(() => {
-        // If update already happened, ignore
-      });
+      }).catch(() => {});
     }
   }
 
@@ -94,39 +67,14 @@ export class PatrolDmButtonHandlers {
         return;
       }
 
-      // Get user
-      const user = await prisma.user.findUnique({
-        where: { discordId: userId },
-        include: { userPreferences: true },
-      });
+      await updateUserPreferences(userId, { patrolDmDisabled: false });
 
-      if (!user) {
-        await interaction.reply({
-          content: "❌ User not found.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      // Update or create preferences
-      if (user.userPreferences) {
-        await prisma.userPreferences.update({
-          where: { userId: user.id },
-          data: { patrolDmDisabled: false },
-        });
-      } else {
-        await prisma.userPreferences.create({
-          data: {
-            userId: user.id,
-            patrolDmDisabled: false,
-          },
-        });
-      }
-
-      // Update the message with confirmation and disable button
       const embed = new EmbedBuilder()
         .setTitle("✅ Patrol DM Enabled")
-        .setDescription("You will now receive DM notifications when you complete patrol sessions.\n\nYou can disable them at any time using the button below.")
+        .setDescription(
+          "You will now receive DM notifications when you complete patrol sessions.\n\n" +
+          "You can disable them via the button below or `/profile settings`.",
+        )
         .setColor(Colors.Green)
         .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
         .setTimestamp();
@@ -149,9 +97,7 @@ export class PatrolDmButtonHandlers {
       await interaction.reply({
         content: "❌ An error occurred while processing your request.",
         flags: MessageFlags.Ephemeral,
-      }).catch(() => {
-        // If update already happened, ignore
-      });
+      }).catch(() => {});
     }
   }
 
@@ -169,36 +115,14 @@ export class PatrolDmButtonHandlers {
         return;
       }
 
-      let user = await prisma.user.findUnique({
-        where: { discordId: userId },
-        include: { userPreferences: true },
-      });
-
-      if (!user) {
-        user = await prisma.user.create({
-          data: { discordId: userId },
-          include: { userPreferences: true },
-        });
-      }
-
-      if (user.userPreferences) {
-        await prisma.userPreferences.update({
-          where: { userId: user.id },
-          data: { patrolNoShieldMemberDmDisabled: true },
-        });
-      } else {
-        await prisma.userPreferences.create({
-          data: {
-            userId: user.id,
-            patrolNoShieldMemberDmDisabled: true,
-          },
-        });
-      }
+      await updateUserPreferences(userId, { patrolNoShieldMemberDmDisabled: true });
 
       const embed = new EmbedBuilder()
         .setTitle("Reminders turned off")
         .setDescription(
-          "You will no longer be DM'd when you join a patrol channel without the Shield Member role.\n\nPatrol hours still only count once you have the Shield Member role. Completion DMs after patrol sessions are controlled separately.",
+          "You will no longer be DM'd when you join a patrol channel without the Shield Member role.\n\n" +
+          "Patrol hours still only count once you have the Shield Member role. " +
+          "Manage all preferences with `/profile settings`.",
         )
         .setColor(Colors.Grey)
         .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })

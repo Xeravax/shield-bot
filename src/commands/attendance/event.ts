@@ -11,6 +11,7 @@ import {
 import { Pagination } from "@discordx/pagination";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
 import { GuildGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 
 const attendanceManager = new AttendanceManager();
 
@@ -25,7 +26,7 @@ export class VRChatAttendanceEventCommand {
     name: "event",
     description: "Manage attendance events (create/list/select/delete)",
   })
-  @Guard(GuildGuard)
+  @Guard(GuildGuard, PermissionNodeGuard("attendance.command.event"))
   async event(
     @SlashChoice({ name: "Create", value: "create" })
     @SlashChoice({ name: "List", value: "list" })

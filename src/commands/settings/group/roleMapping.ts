@@ -7,7 +7,7 @@ import {
   Role,
   MessageFlags,
 } from "discord.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { getGroupRoles } from "../../../utility/vrchat/groups.js";
 import { loggers } from "../../../utility/logger.js";
@@ -20,7 +20,7 @@ import { loggers } from "../../../utility/logger.js";
   root: "group",
 })
 @SlashGroup("role", "group")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("vrchat.command.role-mapping"))
 export class GroupRoleMappingCommand {
   @Slash({
     name: "map",

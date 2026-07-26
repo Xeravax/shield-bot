@@ -32,6 +32,7 @@ import { loggers, logger, LogLevel } from "./utility/logger.js";
 import { ConfigError } from "./utility/errors.js";
 import { ExceptionConstants } from "./config/constants.js";
 import { BOT_INTENTS, BOT_CONFIG } from "./config/discord.js";
+import { seedPermissionNodesFromLegacyRoles } from "./utility/permissionNodeSeeder.js";
 
 // Validate environment variables at startup
 let env;
@@ -146,6 +147,14 @@ bot.once("clientReady", async () => {
     }
   } catch (error) {
     loggers.bot.error("Failed to initialize application commands", error);
+  }
+
+  loggers.bot.info("Seeding permission nodes from legacy role arrays...");
+  try {
+    await seedPermissionNodesFromLegacyRoles();
+    loggers.bot.info("Permission node seeding complete.");
+  } catch (error) {
+    loggers.bot.error("Permission node seeding failed (continuing startup)", error);
   }
 
   loggers.schedules.info("Initializing schedules...");

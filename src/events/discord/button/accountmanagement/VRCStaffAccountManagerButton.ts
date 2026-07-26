@@ -15,7 +15,7 @@ import { Discord, ButtonComponent, Guard } from "discordx";
 import { patrolTimer, prisma } from "../../../../main.js";
 import type { User, VRChatAccount } from "../../../../generated/prisma/client.js";
 import { unfriendUser } from "../../../../utility/vrchat/user.js";
-import { StaffGuard } from "../../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../../utility/permissionNodes.js";
 import { whitelistManager } from "../../../../managers/whitelist/whitelistManager.js";
 import { sendWhitelistLog, getUserWhitelistRoles } from "../../../../utility/vrchat/whitelistLogger.js";
 import { loggers } from "../../../../utility/logger.js";
@@ -25,7 +25,7 @@ export class VRCStaffAccountManagerButtonHandler {
   @ButtonComponent({
     id: /^staffaccountmanager:(main|alt|delete):(\d+):(\d+)$/,
   })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("verification.manage"))
   async handleStaffAccountManager(interaction: ButtonInteraction) {
     const parts = interaction.customId.split(":");
     const action = parts[1];

@@ -4,14 +4,14 @@ import {
   ApplicationCommandOptionType,
   MessageFlags,
 } from "discord.js";
-import { StaffGuard } from "../../../utility/guards.js";
+import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
 @SlashGroup({ name: "vrchat", description: "VRChat settings", root: "settings" })
 @SlashGroup("vrchat", "settings")
-@Guard(StaffGuard)
+@Guard(PermissionNodeGuard("settings.command.vrchat"))
 export class VRChatSettingsCommand {
   @Slash({
     name: "avatar-world",

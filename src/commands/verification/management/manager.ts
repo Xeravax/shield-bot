@@ -17,7 +17,7 @@ import {
 import { Discord, Guard, Slash, SlashGroup, SlashOption } from "discordx";
 import { prisma } from "../../../main.js";
 import { VRChatLoginGuard, GuildGuard } from "../../../utility/guards.js";
-import { userHasPermissionFromRoles, PermissionLevel } from "../../../utility/permissionUtils.js";
+import { hasNode } from "../../../utility/permissionNodes.js";
 
 @Discord()
 @SlashGroup({
@@ -52,17 +52,17 @@ export class VRChatVerifyManagerCommand {
     }
 
     // Check if user is staff
-    const isStaff = await userHasPermissionFromRoles(member, PermissionLevel.STAFF);
+    const canManageOthers = await hasNode(member, "verification.manage");
     
     // Determine target user
     let targetDiscordId: string;
     let isManagingSelf = true;
     
-    if (targetUser && isStaff) {
+    if (targetUser && canManageOthers) {
       // Staff managing another user
       targetDiscordId = targetUser.id;
       isManagingSelf = false;
-    } else if (targetUser && !isStaff) {
+    } else if (targetUser && !canManageOthers) {
       // Non-staff trying to specify a user - ignore and use themselves
       targetDiscordId = interaction.user.id;
     } else {
