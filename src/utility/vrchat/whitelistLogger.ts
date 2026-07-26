@@ -9,7 +9,7 @@ export interface WhitelistLogData {
   vrcUserId?: string;
   roles: string[];
   action: "verified" | "modified" | "removed";
-  accountType?: "MAIN" | "ALT" | "UNVERIFIED" | "IN_VERIFICATION";
+  accountType?: "MAIN" | "ALT" | "IN_VERIFICATION";
 }
 
 /**
@@ -124,8 +124,6 @@ function getAccountTypeBadge(accountType: string): string {
       return "**[MAIN <:HappyExite:923018075073302579>]**";
     case "ALT":
       return "**[ALT <:Elixir:1357029222115446844>]**";
-    case "UNVERIFIED":
-      return "**[UNVERIFIED <a:homerdisapear:1324348827372621845>]**";
     case "IN_VERIFICATION":
       return "**[IN VERIFICATION <a:loading:867923149465980929>]**";
     default:

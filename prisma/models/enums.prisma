@@ -1,7 +1,6 @@
 enum VRChatAccountType {
   MAIN
   ALT
-  UNVERIFIED
   IN_VERIFICATION
 }
 

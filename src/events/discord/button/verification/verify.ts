@@ -12,102 +12,6 @@ import { loggers } from "../../../../utility/logger.js";
 @Discord()
 export class VRChatVerifyButtonHandler {
   @ButtonComponent({
-    id: /vrchat-add:(\d+):([a-zA-Z0-9\-_]+)/,
-  })
-  async handleAdd(interaction: ButtonInteraction) {
-    const parts = interaction.customId.split(":");
-    const discordId = parts[1];
-    const vrcUserId = parts[2];
-
-    if (!discordId || !vrcUserId) {
-      await interaction.reply({
-        content:
-          "Could not determine Discord or VRChat user ID from the button.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    // Validate VRChat user ID format
-    if (!isValidVRChatUserId(vrcUserId)) {
-      loggers.bot.error(
-        `Invalid VRChat user ID format in handleAdd: "${vrcUserId}". Expected format: "usr_...".`,
-      );
-      await interaction.reply({
-        content:
-          "❌ Invalid VRChat user ID format. Please contact support if this error persists.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    // Ensure user exists in database
-    let user = await prisma.user.findUnique({ where: { discordId } });
-    if (!user) {
-      user = await prisma.user.create({ data: { discordId } });
-    }
-
-    const vrcAccount = await prisma.vRChatAccount.findFirst({
-      where: { vrcUserId },
-    });
-
-    // Block takeover if account is fully verified
-    if (
-      vrcAccount &&
-      (vrcAccount.accountType === "MAIN" || vrcAccount.accountType === "ALT")
-    ) {
-      await interaction.reply({
-        content:
-          "❌ This VRChat account is fully verified and protected from takeover. Please contact the current owner or use a different account.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    // Get VRChat username for caching
-    const vrchatUsername = await this.getVRChatUsername(vrcUserId);
-
-    if (vrcAccount?.accountType === "UNVERIFIED") {
-      // Transfer existing unverified account to new user
-      await prisma.vRChatAccount.update({
-        where: { id: vrcAccount.id },
-        data: {
-          userId: user.id,
-          accountType: "UNVERIFIED",
-          verificationCode: null,
-          vrchatUsername,
-          usernameUpdatedAt: new Date(),
-        },
-      });
-
-      await this.sendAccountStatusEmbed(
-        interaction,
-        "✅ Account Transferred",
-        vrcUserId,
-        "transferred",
-      );
-    } else {
-      // Create new unverified account
-      await prisma.vRChatAccount.create({
-        data: {
-          vrcUserId,
-          userId: user.id,
-          accountType: "UNVERIFIED",
-          vrchatUsername,
-          usernameUpdatedAt: new Date(),
-        },
-      });
-
-      await this.sendAccountStatusEmbed(
-        interaction,
-        "✅ Account Added",
-        vrcUserId,
-        "added",
-      );
-    }
-  }
-
-  @ButtonComponent({
     id: /vrchat-verify:(\d+):([a-zA-Z0-9\-_]+)/,
   })
   async handleConfirm(interaction: ButtonInteraction) {
@@ -224,26 +128,6 @@ export class VRChatVerifyButtonHandler {
       loggers.vrchat.warn(`Failed to fetch username for ${vrcUserId}`, error);
       return null;
     }
-  }
-
-  private async sendAccountStatusEmbed(
-    interaction: ButtonInteraction,
-    title: string,
-    vrcUserId: string,
-    action: "transferred" | "added",
-  ): Promise<void> {
-    const actionText = action === "transferred" ? "transferred to" : "added to";
-    const embed = new EmbedBuilder()
-      .setTitle(title)
-      .setDescription(
-        `The VRChat account **${vrcUserId}** has been ${actionText} your Discord account as **UNVERIFIED**.\n\n⚠️ **Remember**: This account is only "unverified bound" and can be stolen by others until you fully verify it with \`/vrchat verify\`.`,
-      )
-      .setColor(0xffa500);
-
-    await interaction.update({
-      embeds: [embed],
-      components: [],
-    });
   }
 
   private async showVerificationMethods(

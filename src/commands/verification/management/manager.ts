@@ -86,17 +86,14 @@ export class VRChatVerifyManagerCommand {
       return;
     }
 
-    // Separate verified and unverified accounts
+    // Show verified MAIN/ALT accounts only
     const verifiedAccounts = user.vrchatAccounts.filter(
       (acc: { accountType: string }) => acc.accountType === "MAIN" || acc.accountType === "ALT",
     );
-    const unverifiedAccounts = user.vrchatAccounts.filter(
-      (acc: { accountType: string }) => acc.accountType === "UNVERIFIED",
-    );
 
-    if (verifiedAccounts.length === 0 && unverifiedAccounts.length === 0) {
+    if (verifiedAccounts.length === 0) {
       await interaction.reply({
-        content: "No VRChat accounts found for your Discord account.",
+        content: "No verified VRChat accounts found for your Discord account.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -106,8 +103,8 @@ export class VRChatVerifyManagerCommand {
     const container = new ContainerBuilder();
 
     const infoText = isManagingSelf
-      ? "**Account Manager**\n- Only **verified** accounts can be set as MAIN/ALT. Unverified accounts have basic whitelist access only.\n- One MAIN account allowed. Deleting an account will unfriend it.\n- Username updates require being friended with the bot."
-      : `**Staff Account Manager** - Managing accounts for <@${discordId}>\n- Only **verified** accounts can be set as MAIN/ALT. Unverified accounts have basic whitelist access only.\n- One MAIN account allowed. Deleting an account will unfriend it.\n- Username updates require being friended with the bot.`;
+      ? "**Account Manager**\n- Verified accounts can be set as MAIN or ALT.\n- One MAIN account allowed. Deleting an account will unfriend it.\n- Username updates require being friended with the bot."
+      : `**Staff Account Manager** - Managing accounts for <@${discordId}>\n- Verified accounts can be set as MAIN or ALT.\n- One MAIN account allowed. Deleting an account will unfriend it.\n- Username updates require being friended with the bot.`;
 
     const buttonCustomId = isManagingSelf ? "accountmanager:info" : "staffaccountmanager:info";
 
@@ -132,126 +129,70 @@ export class VRChatVerifyManagerCommand {
         .setDivider(true),
     );
 
-    // Show verified accounts first
-    if (verifiedAccounts.length > 0) {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("**🔒 Verified Accounts**"),
-      );
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("**🔒 Verified Accounts**"),
+    );
 
-      for (const acc of verifiedAccounts) {
-        const profileLink = `<https://vrchat.com/home/user/${acc.vrcUserId}>`;
-        const displayName = acc.vrchatUsername || acc.vrcUserId;
-        const discordPing = `<@${discordId}>`;
-
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `[${displayName}](${profileLink}) - Linked to ${discordPing}`,
-          ),
-        );
-
-        const isMain = acc.accountType === "MAIN";
-        const isAlt = acc.accountType === "ALT";
-
-        // Button color/enable logic for verified accounts
-        let mainBtnStyle = ButtonStyle.Primary;
-        let mainBtnDisabled = false;
-        let altBtnStyle = ButtonStyle.Secondary;
-        let altBtnDisabled = false;
-
-        if (isMain) {
-          mainBtnStyle = ButtonStyle.Success; // Green
-          mainBtnDisabled = true;
-          altBtnStyle = ButtonStyle.Secondary; // Gray
-          altBtnDisabled = false;
-        } else if (isAlt) {
-          mainBtnStyle = ButtonStyle.Secondary; // Gray
-          mainBtnDisabled = false;
-          altBtnStyle = ButtonStyle.Primary; // Blue
-          altBtnDisabled = true;
-        }
-
-        const mainCustomId = isManagingSelf
-          ? `accountmanager:main:${acc.id}`
-          : `staffaccountmanager:main:${discordId}:${acc.id}`;
-        const altCustomId = isManagingSelf
-          ? `accountmanager:alt:${acc.id}`
-          : `staffaccountmanager:alt:${discordId}:${acc.id}`;
-        const deleteCustomId = isManagingSelf
-          ? `accountmanager:delete:${acc.id}`
-          : `staffaccountmanager:delete:${discordId}:${acc.id}`;
-
-        container.addActionRowComponents(
-          new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-            new ButtonBuilder()
-              .setStyle(mainBtnStyle)
-              .setLabel("Main")
-              .setDisabled(mainBtnDisabled)
-              .setCustomId(mainCustomId),
-            new ButtonBuilder()
-              .setStyle(altBtnStyle)
-              .setLabel("Alt")
-              .setDisabled(altBtnDisabled)
-              .setCustomId(altCustomId),
-            new ButtonBuilder()
-              .setStyle(ButtonStyle.Danger)
-              .setLabel("Unlink (Delete)")
-              .setCustomId(deleteCustomId),
-          ),
-        );
-      }
-    }
-
-    // Show unverified accounts
-    if (unverifiedAccounts.length > 0) {
-      if (verifiedAccounts.length > 0) {
-        container.addSeparatorComponents(
-          new SeparatorBuilder()
-            .setSpacing(SeparatorSpacingSize.Small)
-            .setDivider(true),
-        );
-      }
+    for (const acc of verifiedAccounts) {
+      const profileLink = `<https://vrchat.com/home/user/${acc.vrcUserId}>`;
+      const displayName = acc.vrchatUsername || acc.vrcUserId;
+      const discordPing = `<@${discordId}>`;
 
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          "**⚠️ Unverified Accounts (Whitelist Access Only)**",
+          `[${displayName}](${profileLink}) - Linked to ${discordPing}`,
         ),
       );
 
-      for (const acc of unverifiedAccounts) {
-        const profileLink = `<https://vrchat.com/home/user/${acc.vrcUserId}>`;
-        const displayName = acc.vrchatUsername || acc.vrcUserId;
-        const discordPing = `<@${discordId}>`;
+      const isMain = acc.accountType === "MAIN";
+      const isAlt = acc.accountType === "ALT";
 
-        container.addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `[${displayName}](${profileLink}) - **Can be taken over** - Linked to ${discordPing}`,
-          ),
-        );
+      // Button color/enable logic for verified accounts
+      let mainBtnStyle = ButtonStyle.Primary;
+      let mainBtnDisabled = false;
+      let altBtnStyle = ButtonStyle.Secondary;
+      let altBtnDisabled = false;
 
-        // Only show delete button for unverified accounts
-        container.addActionRowComponents(
-          new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-            new ButtonBuilder()
-              .setStyle(ButtonStyle.Secondary)
-              .setLabel("Main")
-              .setDisabled(true)
-              .setCustomId(`disabled:main:${acc.id}`),
-            new ButtonBuilder()
-              .setStyle(ButtonStyle.Secondary)
-              .setLabel("Alt")
-              .setDisabled(true)
-              .setCustomId(`disabled:alt:${acc.id}`),
-            new ButtonBuilder()
-              .setStyle(ButtonStyle.Danger)
-              .setLabel("Unlink (Delete)")
-              .setCustomId(
-                isManagingSelf
-                  ? `accountmanager:delete:${acc.id}`
-                  : `staffaccountmanager:delete:${discordId}:${acc.id}`,
-              ),
-          ),
-        );
+      if (isMain) {
+        mainBtnStyle = ButtonStyle.Success; // Green
+        mainBtnDisabled = true;
+        altBtnStyle = ButtonStyle.Secondary; // Gray
+        altBtnDisabled = false;
+      } else if (isAlt) {
+        mainBtnStyle = ButtonStyle.Secondary; // Gray
+        mainBtnDisabled = false;
+        altBtnStyle = ButtonStyle.Primary; // Blue
+        altBtnDisabled = true;
       }
+
+      const mainCustomId = isManagingSelf
+        ? `accountmanager:main:${acc.id}`
+        : `staffaccountmanager:main:${discordId}:${acc.id}`;
+      const altCustomId = isManagingSelf
+        ? `accountmanager:alt:${acc.id}`
+        : `staffaccountmanager:alt:${discordId}:${acc.id}`;
+      const deleteCustomId = isManagingSelf
+        ? `accountmanager:delete:${acc.id}`
+        : `staffaccountmanager:delete:${discordId}:${acc.id}`;
+
+      container.addActionRowComponents(
+        new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+          new ButtonBuilder()
+            .setStyle(mainBtnStyle)
+            .setLabel("Main")
+            .setDisabled(mainBtnDisabled)
+            .setCustomId(mainCustomId),
+          new ButtonBuilder()
+            .setStyle(altBtnStyle)
+            .setLabel("Alt")
+            .setDisabled(altBtnDisabled)
+            .setCustomId(altCustomId),
+          new ButtonBuilder()
+            .setStyle(ButtonStyle.Danger)
+            .setLabel("Unlink (Delete)")
+            .setCustomId(deleteCustomId),
+        ),
+      );
     }
 
     await interaction.reply({

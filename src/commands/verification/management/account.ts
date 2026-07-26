@@ -81,7 +81,7 @@ export class VRChatVerifyAccountCommand {
     const embed = new EmbedBuilder()
       .setTitle(`Is this your VRChat account?`)
       .setDescription(
-        `**${userInfo.displayName}** (${userInfo.id})\n\nChoose how you want to add this account:`,
+        `**${userInfo.displayName}** (${userInfo.id})\n\nConfirm to start verification. Verified accounts are protected from takeover.`,
       )
       .setColor(Colors.Blue)
       .setImage(
@@ -95,15 +95,9 @@ export class VRChatVerifyAccountCommand {
 
     // Use the discord and VRChat IDs in the confirm button's custom_id
     // userInfo.id is guaranteed to be a valid user ID format at this point
-    const addUnverifiedBtn = new ButtonBuilder()
-      .setCustomId(`vrchat-add:${interaction.user.id}:${userInfo.id}`)
-      .setLabel("Add unverified (can be taken over)")
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji("⚠️");
-
     const verifyBtn = new ButtonBuilder()
       .setCustomId(`vrchat-verify:${interaction.user.id}:${userInfo.id}`)
-      .setLabel("Add and verify (protected)")
+      .setLabel("Verify account")
       .setStyle(ButtonStyle.Success)
       .setEmoji("🔒");
 
@@ -114,7 +108,7 @@ export class VRChatVerifyAccountCommand {
 
     const row = {
       type: 1,
-      components: [addUnverifiedBtn, verifyBtn, tryAgainBtn],
+      components: [verifyBtn, tryAgainBtn],
     };
     await interaction.reply({
       embeds: [embed],

@@ -258,7 +258,7 @@ export class GitHubPublisher {
               vrchatAccounts: {
                 where: {
                   accountType: {
-                    in: ["MAIN", "ALT", "UNVERIFIED"],
+                    in: ["MAIN", "ALT"],
                   },
                 },
                 select: {
@@ -304,8 +304,8 @@ export class GitHubPublisher {
         }
 
         if (hasPermission && entry.user.vrchatAccounts && entry.user.vrchatAccounts.length > 0) {
-          // Prefer MAIN account, then ALT, then UNVERIFIED
-          const accountTypes = ["MAIN", "ALT", "UNVERIFIED"];
+          // Prefer MAIN account, then ALT
+          const accountTypes = ["MAIN", "ALT"];
           let selectedAccount = null;
           for (const accountType of accountTypes) {
             selectedAccount = entry.user.vrchatAccounts.find(
