@@ -60,7 +60,10 @@ export function initializeRoleTrackingSchedule(client: Client): cron.ScheduledTa
     timezone: "UTC",
   });
 
-  loggers.schedules.info("Role tracking schedule initialized. Will run daily at 8 PM UTC.");
+  loggers.schedules.info(
+    "Role tracking schedule initialized. Running once on startup, then daily at 8 PM UTC.",
+  );
+  void checkRoleTracking(client);
   return job;
 }
 

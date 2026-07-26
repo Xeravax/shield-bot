@@ -33,11 +33,12 @@ export function formatCurrentTimeInTimezone(
 
 /**
  * Reply with a user's local time, or tell the executor they have not set a timezone.
- * Replies are ephemeral so only the executor sees the result.
+ * @param ephemeral - When true (slash), only the executor sees the reply.
  */
 export async function replyWithUserLocalTime(
   interaction: TimeLookupInteraction,
   targetUser: User,
+  ephemeral = true,
 ): Promise<void> {
   try {
     const prefs = await getResolvedUserPreferences(targetUser.id);
@@ -50,7 +51,7 @@ export async function replyWithUserLocalTime(
 
       await interaction.reply({
         content,
-        flags: MessageFlags.Ephemeral,
+        ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}),
       });
       return;
     }
@@ -61,7 +62,7 @@ export async function replyWithUserLocalTime(
 
     await interaction.reply({
       content: `🕐 ${who} local time is **${localNow}**\nTimezone: \`${display}\``,
-      flags: MessageFlags.Ephemeral,
+      ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}),
     });
   } catch (error) {
     loggers.bot.error("Error looking up user local time", error);

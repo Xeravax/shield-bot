@@ -60,7 +60,10 @@ export function initializeLOAExpirationSchedule(client: Client): cron.ScheduledT
     await checkLOAExpiration(client);
   });
 
-  loggers.schedules.info("LOA expiration schedule initialized. Will run every hour.");
+  loggers.schedules.info(
+    "LOA expiration schedule initialized. Running once on startup, then every hour.",
+  );
+  void checkLOAExpiration(client);
   return job;
 }
 

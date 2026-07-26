@@ -48,11 +48,10 @@ export class LocalTimeCommands {
     if (user.bot) {
       await interaction.reply({
         content: "❌ Bots don't have timezones.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    await replyWithUserLocalTime(interaction, user);
+    await replyWithUserLocalTime(interaction, user, false);
   }
 }

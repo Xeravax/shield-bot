@@ -98,7 +98,10 @@ export function initializePromotionCheckSchedule(client: Client): cron.Scheduled
     { timezone: "UTC" },
   );
 
-  loggers.schedules.info("Promotion check schedule initialized. Will run daily at 10 AM UTC.");
+  loggers.schedules.info(
+    "Promotion check schedule initialized. Running once on startup, then daily at 10 AM UTC.",
+  );
+  void checkPromotions(client);
   return job;
 }
 
