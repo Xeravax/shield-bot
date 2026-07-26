@@ -5,7 +5,7 @@ import { prisma, patrolTimer } from "../../main.js";
 
 /**
  * Run promotion check for all eligible members in all configured guilds.
- * Called daily at 10 AM UTC.
+ * Called daily at 10 AM UTC and once on bot startup.
  */
 export async function checkPromotions(client: Client): Promise<void> {
   try {
@@ -41,12 +41,18 @@ export async function checkPromotions(client: Client): Promise<void> {
           continue;
         }
 
+        // role.members only reflects the cache; populate it before scanning ranks.
+        await guild.members.fetch();
+
         const currentRankIds = [...new Set(rules.map((r) => r.currentRankRoleId))];
         const membersToCheck = new Map<string, GuildMember>();
 
         for (const roleId of currentRankIds) {
           const role = await guild.roles.fetch(roleId).catch(() => null);
           if (!role) {
+            loggers.schedules.warn(
+              `Promotion check: role ${roleId} not found in guild ${settings.guildId}`,
+            );
             continue;
           }
           for (const [, member] of role.members) {
@@ -64,11 +70,9 @@ export async function checkPromotions(client: Client): Promise<void> {
           }
         }
 
-        if (membersToCheck.size > 0) {
-          loggers.schedules.info(
-            `Promotion check guild ${settings.guildId}: ${membersToCheck.size} member(s), ${sentCount} notification(s) sent`,
-          );
-        }
+        loggers.schedules.info(
+          `Promotion check guild ${settings.guildId}: ${membersToCheck.size} member(s), ${sentCount} notification(s) sent`,
+        );
       } catch (error) {
         loggers.schedules.error(
           `Failed to check promotions for guild ${settings.guildId}`,
