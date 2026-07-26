@@ -13,23 +13,25 @@ import {
 import { loggers } from "../../utility/logger.js";
 import {
   formatTimezoneDisplay,
-  isValidTimezone,
+  resolveTimezoneInput,
   searchTimezones,
   setUserTimezone,
 } from "../../utility/userPreferences.js";
+import { formatCurrentTimeInTimezone } from "../../utility/localTime.js";
 import { EVENT_TIMEZONE } from "../../utility/estTime.js";
 
+/** @deprecated Prefer top-level `/timezone` — kept for compatibility. */
 @Discord()
 @SlashGroup("profile")
 export class ProfileTimezoneCommands {
   @Slash({
     name: "set-timezone",
-    description: "Set your timezone for natural-language time input",
+    description: "Set your timezone (same as /timezone)",
   })
   async setTimezone(
     @SlashOption({
       name: "timezone",
-      description: "IANA timezone (e.g. America/Los_Angeles, Europe/London)",
+      description: "Region, city, GMT+10, UTC-5, or abbreviation",
       type: ApplicationCommandOptionType.String,
       required: true,
       autocomplete: function (
@@ -43,30 +45,33 @@ export class ProfileTimezoneCommands {
     interaction: CommandInteraction,
   ): Promise<void> {
     try {
-      if (!isValidTimezone(timezone)) {
+      const resolved = resolveTimezoneInput(timezone);
+      if (!resolved) {
         await interaction.reply({
           content:
-            "❌ Invalid timezone. Pick a value from autocomplete (IANA format, e.g. `America/New_York`).",
+            "❌ Invalid timezone. Pick from autocomplete — try a city (`Sydney`), offset (`GMT+10` / `UTC-5`), or abbreviation (`EST`).",
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      await setUserTimezone(interaction.user.id, timezone);
+      await setUserTimezone(interaction.user.id, resolved);
 
-      const display = formatTimezoneDisplay(timezone);
+      const display = formatTimezoneDisplay(resolved);
+      const localNow = formatCurrentTimeInTimezone(resolved);
       const defaultNote =
-        timezone === EVENT_TIMEZONE
+        resolved === EVENT_TIMEZONE
           ? ""
           : `\nEvent scheduling rules (Monday ban, weekly limits) still use **EST**.`;
 
       await interaction.editReply({
         content:
           `✅ Your timezone is set to **${display}**.\n` +
+          `It is currently **${localNow}** there.\n` +
           `Natural-language times (e.g. "Saturday 8pm") will be interpreted in this timezone. ` +
           `Unix timestamps are always absolute.${defaultNote}\n\n` +
-          `Use \`/profile settings\` to manage all your preferences.`,
+          `Tip: you can also use \`/timezone\` (view or set) and \`/local-time\` to check someone else's time.`,
       });
     } catch (error) {
       loggers.bot.error("Error setting user timezone", error);

@@ -5,7 +5,7 @@ import {
   isProfileSettingsOwner,
 } from "../../../../managers/profile/profileSettingsPanel.js";
 import {
-  isValidTimezone,
+  resolveTimezoneInput,
   updateUserPreferences,
 } from "../../../../utility/userPreferences.js";
 import { loggers } from "../../../../utility/logger.js";
@@ -36,17 +36,18 @@ export class ProfileSettingsModalHandlers {
     }
 
     const timezone = interaction.fields.getTextInputValue("timezone").trim();
-    if (!isValidTimezone(timezone)) {
+    const resolved = resolveTimezoneInput(timezone);
+    if (!resolved) {
       await interaction.reply({
         content:
-          "❌ Invalid timezone. Use an IANA name like `America/New_York` or `Europe/Amsterdam`.",
+          "❌ Invalid timezone. Try a city (`America/New_York`), offset (`GMT+10` / `UTC-5`), or abbreviation (`EST`).",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     try {
-      await updateUserPreferences(discordId, { timezone });
+      await updateUserPreferences(discordId, { timezone: resolved });
       await interaction.deferUpdate();
       await editProfileSettingsMessage(interaction);
     } catch (error) {

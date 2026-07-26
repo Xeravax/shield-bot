@@ -65,7 +65,7 @@ export async function RequireTimezoneGuard(
 
   return respondWithError(
     interaction,
-    "❌ Set your timezone first with `/profile set-timezone` (or `/profile settings`) before using event commands.",
+    "❌ Set your timezone first with `/timezone` (or `/profile settings`) before using event commands.",
   );
 }
 

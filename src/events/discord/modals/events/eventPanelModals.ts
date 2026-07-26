@@ -97,7 +97,7 @@ export class EventPanelModalHandlers {
     if (!(await hasStoredTimezone(interaction.user.id))) {
       await interaction.reply({
         content:
-          "❌ Set your timezone first with `/profile set-timezone` (or `/profile settings`) before editing event times.",
+          "❌ Set your timezone first with `/timezone` (or `/profile settings`) before editing event times.",
         flags: MessageFlags.Ephemeral,
       });
       return;
