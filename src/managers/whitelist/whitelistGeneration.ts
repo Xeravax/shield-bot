@@ -26,7 +26,7 @@ export class WhitelistGeneration {
             vrchatAccounts: {
               where: {
                 accountType: {
-                  in: ["MAIN", "ALT", "UNVERIFIED"],
+                  in: ["MAIN", "ALT"],
                 },
               },
               select: {

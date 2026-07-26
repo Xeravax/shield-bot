@@ -119,9 +119,6 @@ export async function handleFriendAdd(content: unknown) {
                         loggers.vrchat.warn(`Failed to send whitelist log for ${user.discordId}`, logError);
                     }
                 }
-            } else if (verificationGuildId) {
-                // For unverified binding, ensure basic access and sync if eligible
-                await whitelistManager.ensureUnverifiedAccountAccess(user.discordId, verificationGuildId);
             }
         } catch (e) {
             loggers.vrchat.warn(`Failed to update whitelist for user ${user.discordId}`, e);

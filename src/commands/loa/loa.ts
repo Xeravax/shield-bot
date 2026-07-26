@@ -1,4 +1,4 @@
-import { Discord, Slash, SlashGroup, SlashOption, Guard } from "discordx";
+import { Discord, Slash, SlashGroup, SlashOption, Guard, SlashChoice } from "discordx";
 import {
   CommandInteraction,
   ApplicationCommandOptionType,
@@ -12,6 +12,7 @@ import { GuildGuard } from "../../utility/guards.js";
 import { PermissionNodeGuard } from "../../utility/guards.js";
 import { loaManager, patrolTimer } from "../../main.js";
 import { buildLOARequestEmbed } from "../../managers/loa/loaManager.js";
+import { LeaveOfAbsenceType } from "../../generated/prisma/client.js";
 
 @Discord()
 @SlashGroup({
@@ -34,6 +35,15 @@ export class LOACommands {
       required: true,
     })
     time: string,
+    @SlashChoice({ name: "Attendable (can still attend events)", value: "attendable" })
+    @SlashChoice({ name: "Blocking (no event participation)", value: "blocking" })
+    @SlashOption({
+      name: "type",
+      description: "LOA type — attendable (can still attend events) or blocking (no event participation)",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    type: string,
     @SlashOption({
       name: "reason",
       description: "Reason for the LOA",
@@ -62,12 +72,16 @@ export class LOACommands {
     // Defer interaction (without ephemeral flag so the message can be public)
     await interaction.deferReply();
 
+    const loaType =
+      type === "attendable" ? LeaveOfAbsenceType.ATTENDABLE : LeaveOfAbsenceType.BLOCKING;
+
     // Request LOA
     const result = await loaManager.requestLOA(
       guildId,
       interaction.user.id,
       time,
       reason,
+      loaType,
     );
 
     if (!result.success) {

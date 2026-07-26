@@ -47,7 +47,7 @@ Custom guards in `src/utility/guards.ts` protect commands:
 
 ### Database Patterns
 - **Models**: Split across `prisma/models/` files (user.prisma, enums.prisma, etc.)
-- **Verification Flow**: `VRChatAccount` uses `accountType` enum (UNVERIFIED → IN_VERIFICATION → MAIN/ALT)
+- **Verification Flow**: `VRChatAccount` uses `accountType` enum (IN_VERIFICATION → MAIN/ALT)
 - **Singleton**: Global `prisma` client exported from `src/main.ts`
 
 ### Manager Pattern

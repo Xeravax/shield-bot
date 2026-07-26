@@ -35,6 +35,7 @@ model GuildSettings {
   // Patrol settings
   patrolLogChannelId         String? // Channel ID for patrol hours and command usage logs
   patrolTopChannelId         String? // Channel ID for weekly patrol top posts
+  patrolAloneExcludeChannelIds Json? // Voice channel IDs excluded from alone-in-VC staff alerts
   hostWeeklyEventReminderChannelId String? // Channel ID for weekly Thursday host / Jr. host event reminder (Europe/Amsterdam)
   // Event scheduling settings
   eventPlanningChannelId     String? // Channel ID where pending event approval embeds are posted

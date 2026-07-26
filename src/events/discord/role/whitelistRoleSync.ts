@@ -89,7 +89,7 @@ export class WhitelistRoleSync {
         return; // No role changes
       }
 
-      // Check if user has any VRChat accounts (verified or unverified)
+      // Check if user has any verified VRChat accounts
       const userHasVRChatAccount = await this.hasVRChatAccount(newMember.id);
       if (!userHasVRChatAccount) {
         loggers.bot.debug(
@@ -214,7 +214,7 @@ export class WhitelistRoleSync {
         `New member ${member.displayName} joined with ${roleIds.length} roles`,
       );
 
-      // Check if user has any VRChat accounts (verified or unverified)
+      // Check if user has any verified VRChat accounts
       const userHasVRChatAccount = await this.hasVRChatAccount(member.id);
       if (!userHasVRChatAccount) {
         loggers.bot.debug(
@@ -456,7 +456,7 @@ export class WhitelistRoleSync {
         vrchatAccounts: {
           where: {
             accountType: {
-              in: ["MAIN", "ALT", "UNVERIFIED"],
+              in: ["MAIN", "ALT"],
             },
           },
         },

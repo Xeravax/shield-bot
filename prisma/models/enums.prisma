@@ -1,7 +1,6 @@
 enum VRChatAccountType {
   MAIN
   ALT
-  UNVERIFIED
   IN_VERIFICATION
 }
 
@@ -12,4 +11,9 @@ enum LeaveOfAbsenceStatus {
   ACTIVE
   ENDED_EARLY
   EXPIRED
+}
+
+enum LeaveOfAbsenceType {
+  ATTENDABLE
+  BLOCKING
 }

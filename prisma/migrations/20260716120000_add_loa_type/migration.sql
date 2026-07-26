@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `leave_of_absences` ADD COLUMN `type` ENUM('ATTENDABLE', 'BLOCKING') NOT NULL DEFAULT 'BLOCKING';

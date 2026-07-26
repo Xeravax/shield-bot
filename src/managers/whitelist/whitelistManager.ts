@@ -330,7 +330,9 @@ export class WhitelistManager {
     try {
       const rooftopPermissions = [
         "rooftop_announce",
+        "rooftop_dj",
         "rooftop_bouncer",
+        "rooftop_staffplus",
         "rooftop_staff",
         "rooftop_vip",
         "rooftop_vipplus",
@@ -537,24 +539,6 @@ export class WhitelistManager {
       discordRoleIds,
       guildId,
       (discordId, guildId) => this.userOps.removeUserFromWhitelistIfNoRoles(discordId, guildId),
-    );
-  }
-
-  async ensureUnverifiedAccountAccess(discordId: string, guildId: string): Promise<void> {
-    return this.discordSync.ensureUnverifiedAccountAccess(
-      discordId,
-      (guildId) => this.roleOps.getDiscordRoleMappings(guildId),
-      // Callback fallback: when discordSync.ensureUnverifiedAccountAccess provides a callbackGuildId
-      // (from role mappings), use that value for syncAndPublishAfterVerification; otherwise fall back
-      // to the outer guildId parameter. This ensures we sync with the correct guild context based on
-      // where the role mappings are configured.
-      (discordId, botOverride, callbackGuildId) => {
-        if (callbackGuildId) {
-          return this.syncAndPublishAfterVerification(discordId, callbackGuildId, botOverride);
-        }
-        return this.syncAndPublishAfterVerification(discordId, guildId, botOverride);
-      },
-      guildId,
     );
   }
 
