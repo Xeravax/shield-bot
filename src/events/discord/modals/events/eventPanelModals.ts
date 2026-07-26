@@ -2,7 +2,10 @@ import { MessageFlags, ModalSubmitInteraction } from "discord.js";
 import { Discord, ModalComponent } from "discordx";
 import { prisma } from "../../../../main.js";
 import { parseEventTime } from "../../../../managers/events/eventTimeParser.js";
-import { getUserTimezone } from "../../../../utility/userPreferences.js";
+import {
+  getUserTimezone,
+  hasStoredTimezone,
+} from "../../../../utility/userPreferences.js";
 import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import { refreshDraftPanel, editDraftPanelMessage } from "../../../../managers/events/eventPlanningManager.js";
 import { loggers } from "../../../../utility/logger.js";
@@ -91,6 +94,14 @@ export class EventPanelModalHandlers {
       return;
     }
     const eventId = parseInt(match[1], 10);
+    if (!(await hasStoredTimezone(interaction.user.id))) {
+      await interaction.reply({
+        content:
+          "❌ Set your timezone first with `/profile set-timezone` (or `/profile settings`) before editing event times.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const timeRaw = interaction.fields.getTextInputValue("time").trim();
     const timezone = await getUserTimezone(interaction.user.id);
     const startTime = parseEventTime(timeRaw, { timezone });

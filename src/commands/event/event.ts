@@ -18,7 +18,11 @@ import {
   EmbedBuilder,
   Colors,
 } from "discord.js";
-import { GuildGuard, resolveGuildMember } from "../../utility/guards.js";
+import {
+  GuildGuard,
+  RequireTimezoneGuard,
+  resolveGuildMember,
+} from "../../utility/guards.js";
 import {
   PermissionNodeGuard,
   PermissionNodeGuardAny,
@@ -59,7 +63,7 @@ import { loggers } from "../../utility/logger.js";
   description: "Event scheduling commands",
 })
 @SlashGroup("event")
-@Guard(GuildGuard)
+@Guard(GuildGuard, RequireTimezoneGuard)
 export class EventCommands {
   @Slash({
     name: "schedule",

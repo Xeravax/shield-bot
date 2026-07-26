@@ -10,6 +10,7 @@ import { isLoggedInAndVerified } from "./vrchat.js";
 import { getEnv } from "../config/env.js";
 import { loggers } from "./logger.js";
 import { hasNode } from "./permissionNodes.js";
+import { hasStoredTimezone } from "./userPreferences.js";
 
 async function denyMissingPermissionNode(
   interaction: Interaction,
@@ -48,6 +49,24 @@ export async function GuildGuard(
     return undefined;
   }
   return next();
+}
+
+/**
+ * Guard to ensure the user has set a profile timezone (required for event time parsing).
+ */
+export async function RequireTimezoneGuard(
+  interaction: Interaction,
+  _client: Client,
+  next: Next,
+): Promise<unknown> {
+  if (await hasStoredTimezone(interaction.user.id)) {
+    return next();
+  }
+
+  return respondWithError(
+    interaction,
+    "❌ Set your timezone first with `/profile set-timezone` (or `/profile settings`) before using event commands.",
+  );
 }
 
 /**

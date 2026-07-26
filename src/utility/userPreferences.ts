@@ -86,6 +86,12 @@ export async function getUserTimezone(discordId: string): Promise<string> {
   return prefs.timezone;
 }
 
+/** True when the user has explicitly saved a timezone (not just the EST default). */
+export async function hasStoredTimezone(discordId: string): Promise<boolean> {
+  const prefs = await getResolvedUserPreferences(discordId);
+  return prefs.timezoneStored !== null;
+}
+
 async function ensureUser(discordId: string) {
   return prisma.user.upsert({
     where: { discordId },
