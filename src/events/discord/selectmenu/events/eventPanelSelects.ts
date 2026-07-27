@@ -66,7 +66,11 @@ export class EventPanelSelectHandlers {
         id: eventId,
         status: PlannedEventStatus.DRAFT,
       },
-      data: { hostId },
+      data: {
+        hostId,
+        // Host and co-host must be different people
+        ...(hostId === event.coHostId ? { coHostId: null } : {}),
+      },
     });
     if (updated.count === 0) {
       await interaction.followUp({
@@ -101,6 +105,14 @@ export class EventPanelSelectHandlers {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (coHostId && coHostId === event.hostId) {
+      await interaction.reply({
+        content: "❌ The host cannot also be the co-host.",
         flags: MessageFlags.Ephemeral,
       });
       return;

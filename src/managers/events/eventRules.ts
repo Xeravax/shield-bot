@@ -374,6 +374,22 @@ export async function validateEventRules(
     });
   }
 
+  if (coHostId && coHostId === hostId) {
+    results.push({
+      id: "distinct-host-cohost",
+      label: "Host / co-host",
+      severity: "fail",
+      message: "The host and co-host must be different people.",
+    });
+  } else if (coHostId) {
+    results.push({
+      id: "distinct-host-cohost",
+      label: "Host / co-host",
+      severity: "pass",
+      message: "Host and co-host are different people.",
+    });
+  }
+
   if (hostMember && (await memberIsJrHostOnly(hostMember))) {
     let coHostFullHost = false;
     if (coHostId && guild) {

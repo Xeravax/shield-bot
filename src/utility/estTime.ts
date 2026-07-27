@@ -182,6 +182,17 @@ const MONTH_NAMES = [
   "December",
 ] as const;
 
+/** Editable natural-language time for event draft modals (re-parsable by chrono). */
+export function formatNaturalEventTime(date: Date, timeZone: string): string {
+  const parts = getTimezoneDateParts(date, timeZone);
+  const weekday = WEEKDAY_NAMES[parts.weekday];
+  const month = MONTH_NAMES[parts.month - 1];
+  const hour12 = parts.hour % 12 || 12;
+  const ampm = parts.hour < 12 ? "AM" : "PM";
+  const minute = String(parts.minute).padStart(2, "0");
+  return `${weekday} ${month} ${parts.day} at ${hour12}:${minute} ${ampm}`;
+}
+
 export function formatOrdinal(day: number): string {
   const mod100 = day % 100;
   if (mod100 >= 11 && mod100 <= 13) {

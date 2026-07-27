@@ -60,6 +60,14 @@ export class EventCoHostButtonHandlers {
       return;
     }
 
+    if (requesterId === event.hostId) {
+      await interaction.reply({
+        content: "❌ The host cannot also be the co-host.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     const [requesterMember, hostMember] = await Promise.all([
       interaction.guild.members.fetch(requesterId).catch(() => null),
       interaction.guild.members.fetch(event.hostId).catch(() => null),

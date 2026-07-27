@@ -23,8 +23,10 @@ import {
 } from "../../../../managers/events/eventType.js";
 import { isDraftPlaceholderTime } from "../../../../managers/events/eventDraftDefaults.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
+import { formatNaturalEventTime } from "../../../../utility/estTime.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
 import { resolveGuildMember } from "../../../../utility/guards.js";
+import { getUserTimezone } from "../../../../utility/userPreferences.js";
 
 const EVENT_PANEL_TITLE_PATTERN = /^event-panel:title:(\d+)$/;
 const EVENT_PANEL_TIME_PATTERN = /^event-panel:time:(\d+)$/;
@@ -114,15 +116,18 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    const unix = Math.floor(event.startTime.getTime() / 1000);
+    const timezone = await getUserTimezone(event.hostId);
+    const naturalTime = isDraftPlaceholderTime(event.startTime)
+      ? ""
+      : formatNaturalEventTime(event.startTime, timezone);
     const input = new TextInputBuilder()
       .setCustomId("time")
-      .setLabel("Time (natural language or Unix)")
+      .setLabel("Time (in your timezone)")
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
       .setMaxLength(200)
-      .setPlaceholder("e.g. Saturday 8pm or 1730000000")
-      .setValue(isDraftPlaceholderTime(event.startTime) ? "" : String(unix));
+      .setPlaceholder("e.g. Saturday 8pm or next Friday at 7:30 PM")
+      .setValue(naturalTime);
 
     const modal = new ModalBuilder()
       .setCustomId(`event-modal:time:${eventId}`)

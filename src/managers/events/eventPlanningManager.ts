@@ -674,22 +674,9 @@ export async function submitEventForApproval(
   const embed = buildPlanningEmbed(pendingPreview, { overriddenIds });
   const components = buildPlanningComponents(pendingPreview);
 
-  let messageId = event.planningMessageId;
-  let createdNewMessage = false;
-  if (messageId) {
-    try {
-      const existing = await channel.messages.fetch(messageId);
-      await existing.edit({ embeds: [embed], components });
-    } catch {
-      messageId = null;
-    }
-  }
-
-  if (!messageId) {
-    const msg = await channel.send({ embeds: [embed], components });
-    messageId = msg.id;
-    createdNewMessage = true;
-  }
+  const previousMessageId = event.planningMessageId;
+  const msg = await channel.send({ embeds: [embed], components });
+  const messageId = msg.id;
 
   const submitted = await prisma.plannedEvent.updateMany({
     where: {
@@ -705,10 +692,12 @@ export async function submitEventForApproval(
     },
   });
   if (submitted.count === 0) {
-    if (createdNewMessage && messageId) {
-      await channel.messages.delete(messageId).catch(() => null);
-    }
+    await channel.messages.delete(messageId).catch(() => null);
     return { success: false, error: "This event is no longer editable." };
+  }
+
+  if (previousMessageId && previousMessageId !== messageId) {
+    await channel.messages.delete(previousMessageId).catch(() => null);
   }
 
   const finalEvent = await prisma.plannedEvent.findUnique({ where: { id: eventId } });

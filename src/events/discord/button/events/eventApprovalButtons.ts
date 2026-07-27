@@ -181,7 +181,7 @@ export class EventApprovalButtonHandlers {
 
     if (interaction.user.id === event.hostId) {
       await interaction.reply({
-        content: "❌ The host cannot request to be their own co-host.",
+        content: "❌ The host cannot also be the co-host.",
         flags: MessageFlags.Ephemeral,
       });
       return;
