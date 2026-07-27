@@ -133,6 +133,10 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "events.command.submit", description: "/event submit — submit a draft for approval" },
     { node: "events.manage.approve", description: "Approve/deny/cancel planned events in the planning channel" },
     { node: "events.schedule.force", description: "Bypass event scheduling rule failures with force" },
+    {
+      node: "events.schedule.behalf",
+      description: "Schedule planned events on behalf of another member (set host)",
+    },
   ],
   permissions: [
     { node: "permissions.manage", description: "/permissions grant|revoke|list — manage permission nodes" },

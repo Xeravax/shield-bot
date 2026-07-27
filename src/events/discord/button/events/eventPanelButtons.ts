@@ -10,6 +10,7 @@ import { Discord, ButtonComponent } from "discordx";
 import { EventDuty, PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import { prisma } from "../../../../main.js";
 import {
+  canManageEventDraft,
   refreshDraftPanel,
   runEventValidation,
   submitEventForApproval,
@@ -35,6 +36,29 @@ const EVENT_PANEL_TOGGLE_FORCE_PATTERN = /^event-panel:toggle-force:(\d+)$/;
 const EVENT_PANEL_SUBMIT_PATTERN = /^event-panel:submit:(\d+)$/;
 const EVENT_PANEL_CANCEL_PATTERN = /^event-panel:cancel:(\d+)$/;
 
+async function denyUnlessCanManageDraft(
+  interaction: ButtonInteraction,
+  eventHostId: string,
+  action: "edit" | "submit" | "cancel" = "edit",
+): Promise<boolean> {
+  const member = await resolveGuildMember(interaction);
+  if (await canManageEventDraft(interaction.user.id, member, eventHostId)) {
+    return true;
+  }
+  const messages = {
+    edit: "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
+    submit:
+      "❌ Only the event host (or someone with `events.schedule.behalf`) can submit this event.",
+    cancel:
+      "❌ Only the event host (or someone with `events.schedule.behalf`) can cancel this draft.",
+  };
+  await interaction.reply({
+    content: messages[action],
+    flags: MessageFlags.Ephemeral,
+  });
+  return false;
+}
+
 @Discord()
 export class EventPanelButtonHandlers {
   /** No @Guard before showModal — Discord 3s ack window. */
@@ -52,11 +76,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
       return;
     }
 
@@ -90,11 +110,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
       return;
     }
 
@@ -130,11 +146,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
       return;
     }
 
@@ -145,7 +157,6 @@ export class EventPanelButtonHandlers {
     const updated = await prisma.plannedEvent.updateMany({
       where: {
         id: eventId,
-        hostId: interaction.user.id,
         status: PlannedEventStatus.DRAFT,
       },
       data: {
@@ -179,11 +190,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
       return;
     }
 
@@ -191,7 +198,6 @@ export class EventPanelButtonHandlers {
     const updated = await prisma.plannedEvent.updateMany({
       where: {
         id: eventId,
-        hostId: interaction.user.id,
         status: PlannedEventStatus.DRAFT,
       },
       data: { eventType: nextEventType(event.eventType) },
@@ -222,11 +228,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
       return;
     }
 
@@ -234,7 +236,6 @@ export class EventPanelButtonHandlers {
     const updated = await prisma.plannedEvent.updateMany({
       where: {
         id: eventId,
-        hostId: interaction.user.id,
         status: PlannedEventStatus.DRAFT,
       },
       data: { durationMinutes: nextDurationMinutes(event.durationMinutes, event.duty) },
@@ -265,11 +266,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
       return;
     }
 
@@ -278,7 +275,6 @@ export class EventPanelButtonHandlers {
     const updated = await prisma.plannedEvent.updateMany({
       where: {
         id: eventId,
-        hostId: interaction.user.id,
         status: PlannedEventStatus.DRAFT,
       },
       data: {
@@ -312,11 +308,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
       return;
     }
 
@@ -336,7 +328,6 @@ export class EventPanelButtonHandlers {
     const updated = await prisma.plannedEvent.updateMany({
       where: {
         id: eventId,
-        hostId: interaction.user.id,
         status: PlannedEventStatus.DRAFT,
       },
       data: { forceOverride: enabling },
@@ -367,11 +358,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can submit this event.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId, "submit"))) {
       return;
     }
 
@@ -424,11 +411,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
-      await interaction.reply({
-        content: "❌ Only the event host can cancel this draft.",
-        flags: MessageFlags.Ephemeral,
-      });
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId, "cancel"))) {
       return;
     }
 
@@ -443,7 +426,6 @@ export class EventPanelButtonHandlers {
     const deleted = await prisma.plannedEvent.deleteMany({
       where: {
         id: eventId,
-        hostId: interaction.user.id,
         status: PlannedEventStatus.DRAFT,
       },
     });

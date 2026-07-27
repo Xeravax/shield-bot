@@ -469,6 +469,21 @@ export async function canUserCancelPlannedEvent(
   return false;
 }
 
+/** Host, or anyone with events.schedule.behalf, may edit/submit drafts. */
+export async function canManageEventDraft(
+  userId: string,
+  member: GuildMember | null,
+  eventHostId: string,
+): Promise<boolean> {
+  if (userId === eventHostId) {
+    return true;
+  }
+  if (member && (await hasNode(member, "events.schedule.behalf"))) {
+    return true;
+  }
+  return false;
+}
+
 export async function refreshDraftPanel(
   eventId: number,
   guild: Guild | null,
@@ -807,6 +822,7 @@ export async function beginEventEditForHost(
   eventId: number,
   guild: Guild,
   userId: string,
+  member: GuildMember | null = null,
 ): Promise<{ success: boolean; error?: string }> {
   const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
   if (!event || event.guildId !== guild.id) {
@@ -818,8 +834,12 @@ export async function beginEventEditForHost(
   ) {
     return { success: false, error: "Only pending or denied events can be edited." };
   }
-  if (userId !== event.hostId) {
-    return { success: false, error: "Only the event host can edit this event." };
+  if (!(await canManageEventDraft(userId, member, event.hostId))) {
+    return {
+      success: false,
+      error:
+        "Only the event host (or someone with events.schedule.behalf) can edit this event.",
+    };
   }
   if (isEventLocked(event)) {
     return { success: false, error: "Exported events cannot be edited." };

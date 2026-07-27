@@ -7,9 +7,14 @@ import {
   hasStoredTimezone,
 } from "../../../../utility/userPreferences.js";
 import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
-import { refreshDraftPanel, editDraftPanelMessage } from "../../../../managers/events/eventPlanningManager.js";
+import {
+  canManageEventDraft,
+  refreshDraftPanel,
+  editDraftPanelMessage,
+} from "../../../../managers/events/eventPlanningManager.js";
 import { loggers } from "../../../../utility/logger.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
+import { resolveGuildMember } from "../../../../utility/guards.js";
 
 const EVENT_MODAL_TITLE_PATTERN = /^event-modal:title:(\d+)$/;
 const EVENT_MODAL_TIME_PATTERN = /^event-modal:time:(\d+)$/;
@@ -45,9 +50,11 @@ export class EventPanelModalHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
+    const member = await resolveGuildMember(interaction);
+    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
+        content:
+          "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -59,7 +66,6 @@ export class EventPanelModalHandlers {
       const updated = await prisma.plannedEvent.updateMany({
         where: {
           id: eventId,
-          hostId: interaction.user.id,
           status: PlannedEventStatus.DRAFT,
         },
         data: { title },
@@ -94,25 +100,6 @@ export class EventPanelModalHandlers {
       return;
     }
     const eventId = parseInt(match[1], 10);
-    if (!(await hasStoredTimezone(interaction.user.id))) {
-      await interaction.reply({
-        content:
-          "❌ Set your timezone first with `/timezone` (or `/profile settings`) before editing event times.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const timeRaw = interaction.fields.getTextInputValue("time").trim();
-    const timezone = await getUserTimezone(interaction.user.id);
-    const startTime = parseEventTime(timeRaw, { timezone });
-
-    if (!startTime || startTime.getTime() <= Date.now()) {
-      await interaction.reply({
-        content: "❌ Invalid or past time.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.status !== PlannedEventStatus.DRAFT) {
@@ -123,9 +110,35 @@ export class EventPanelModalHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
+    const member = await resolveGuildMember(interaction);
+    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
+        content:
+          "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const timeRaw = interaction.fields.getTextInputValue("time").trim();
+    const isAbsoluteTime =
+      /^\d{10,13}$/.test(timeRaw) || /<t:\d+(?::[tTdDfFR])?>/.test(timeRaw);
+    if (!isAbsoluteTime && !(await hasStoredTimezone(event.hostId))) {
+      await interaction.reply({
+        content:
+          "❌ The event host must set their timezone with `/timezone` (or `/profile settings`) before editing event times.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const timezone = isAbsoluteTime
+      ? undefined
+      : await getUserTimezone(event.hostId);
+    const startTime = parseEventTime(timeRaw, { timezone });
+
+    if (!startTime || startTime.getTime() <= Date.now()) {
+      await interaction.reply({
+        content: "❌ Invalid or past time.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -137,7 +150,6 @@ export class EventPanelModalHandlers {
       const updated = await prisma.plannedEvent.updateMany({
         where: {
           id: eventId,
-          hostId: interaction.user.id,
           status: PlannedEventStatus.DRAFT,
         },
         data: { startTime },

@@ -44,6 +44,7 @@ import {
   denyPlannedEvent,
   submitEventForApproval,
   runEventValidation,
+  canManageEventDraft,
   DRAFT_PLACEHOLDER_TITLE,
   resolveDraftStartTime,
 } from "../../managers/events/eventPlanningManager.js";
@@ -103,7 +104,8 @@ export class EventCommands {
     duty: string | null,
     @SlashOption({
       name: "host",
-      description: "Event host (defaults to you)",
+      description:
+        "Event host (defaults to you; requires events.schedule.behalf to set another member)",
       type: ApplicationCommandOptionType.User,
       required: false,
     })
@@ -152,11 +154,12 @@ export class EventCommands {
       return;
     }
 
+    const member = interaction.member && interaction.guild
+      ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null)
+      : null;
+
     const useForce = force === true;
     if (useForce) {
-      const member = interaction.member && interaction.guild
-        ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null)
-        : null;
       if (!member || !(await hasNode(member, "events.schedule.force"))) {
         await interaction.reply({
           content: "❌ You need the `events.schedule.force` permission to use force.",
@@ -166,13 +169,16 @@ export class EventCommands {
       }
     }
 
-    if (host && host.id !== interaction.user.id) {
-      await interaction.reply({
-        content:
-          "❌ Event drafts can only be created for yourself. You cannot schedule on behalf of another member.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
+    const schedulingForOther = Boolean(host && host.id !== interaction.user.id);
+    if (schedulingForOther) {
+      if (!member || !(await hasNode(member, "events.schedule.behalf"))) {
+        await interaction.reply({
+          content:
+            "❌ You need the `events.schedule.behalf` permission to schedule on behalf of another member.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
     }
 
     const hostId = host?.id ?? interaction.user.id;
@@ -186,7 +192,7 @@ export class EventCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-      const timezone = await getUserTimezone(interaction.user.id);
+      const timezone = await getUserTimezone(hostId);
       const event = await prisma.plannedEvent.create({
         data: {
           guildId: interaction.guildId,
@@ -345,10 +351,12 @@ export class EventCommands {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+    const member = await resolveGuildMember(interaction);
     const result = await beginEventEditForHost(
       eventId,
       interaction.guild,
       interaction.user.id,
+      member,
     );
     if (!result.success) {
       await interaction.editReply({ content: `❌ ${result.error}` });
@@ -393,9 +401,13 @@ export class EventCommands {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
+    const member = await resolveGuildMember(interaction);
+    if (
+      !(await canManageEventDraft(interaction.user.id, member, event.hostId))
+    ) {
       await interaction.reply({
-        content: "❌ Only the event host can submit this event.",
+        content:
+          "❌ Only the event host (or someone with `events.schedule.behalf`) can submit this event.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -602,18 +614,34 @@ export class EventCommands {
   }
 
   async autocompleteEditEvent(interaction: AutocompleteInteraction): Promise<void> {
+    const member = await resolveGuildMember(interaction);
+    const canBehalf = member
+      ? await hasNode(member, "events.schedule.behalf")
+      : false;
     await respondPlannedEventAutocomplete(
       interaction,
       [PlannedEventStatus.PENDING, PlannedEventStatus.DENIED],
-      { restrictToCallerHost: true },
+      {
+        restrictToCallerHost: true,
+        leadCanSeeAll: true,
+        isLead: canBehalf,
+      },
     );
   }
 
   async autocompleteSubmitEvent(interaction: AutocompleteInteraction): Promise<void> {
+    const member = await resolveGuildMember(interaction);
+    const canBehalf = member
+      ? await hasNode(member, "events.schedule.behalf")
+      : false;
     await respondPlannedEventAutocomplete(
       interaction,
       [PlannedEventStatus.DRAFT, PlannedEventStatus.DENIED],
-      { restrictToCallerHost: true },
+      {
+        restrictToCallerHost: true,
+        leadCanSeeAll: true,
+        isLead: canBehalf,
+      },
     );
   }
 

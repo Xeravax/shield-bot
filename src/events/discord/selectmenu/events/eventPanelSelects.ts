@@ -2,8 +2,14 @@ import { MessageFlags, UserSelectMenuInteraction } from "discord.js";
 import { Discord, SelectMenuComponent } from "discordx";
 import { prisma } from "../../../../main.js";
 import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
-import { refreshDraftPanel, editDraftPanelMessage } from "../../../../managers/events/eventPlanningManager.js";
+import {
+  canManageEventDraft,
+  refreshDraftPanel,
+  editDraftPanelMessage,
+} from "../../../../managers/events/eventPlanningManager.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
+import { hasNode } from "../../../../utility/permissionNodes.js";
+import { resolveGuildMember } from "../../../../utility/guards.js";
 
 const EVENT_PANEL_HOST_PATTERN = /^event-panel-select:host:(\d+)$/;
 const EVENT_PANEL_COHOST_PATTERN = /^event-panel-select:cohost:(\d+)$/;
@@ -25,14 +31,6 @@ export class EventPanelSelectHandlers {
       return;
     }
 
-    if (hostId !== interaction.user.id) {
-      await interaction.reply({
-        content: "❌ You cannot transfer event ownership from the panel.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
     if (!event || event.status !== PlannedEventStatus.DRAFT) {
       await interaction.reply({
@@ -42,19 +40,30 @@ export class EventPanelSelectHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
+    const member = await resolveGuildMember(interaction);
+    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
+        content:
+          "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
         flags: MessageFlags.Ephemeral,
       });
       return;
+    }
+
+    if (hostId !== interaction.user.id) {
+      if (!member || !(await hasNode(member, "events.schedule.behalf"))) {
+        await interaction.reply({
+          content: "❌ You cannot transfer event ownership from the panel.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
     }
 
     await interaction.deferUpdate();
     const updated = await prisma.plannedEvent.updateMany({
       where: {
         id: eventId,
-        hostId: interaction.user.id,
         status: PlannedEventStatus.DRAFT,
       },
       data: { hostId },
@@ -87,9 +96,11 @@ export class EventPanelSelectHandlers {
       return;
     }
 
-    if (interaction.user.id !== event.hostId) {
+    const member = await resolveGuildMember(interaction);
+    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
-        content: "❌ Only the event host can edit this panel.",
+        content:
+          "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -99,7 +110,6 @@ export class EventPanelSelectHandlers {
     const updated = await prisma.plannedEvent.updateMany({
       where: {
         id: eventId,
-        hostId: interaction.user.id,
         status: PlannedEventStatus.DRAFT,
       },
       data: { coHostId },

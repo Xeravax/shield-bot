@@ -298,10 +298,14 @@ export class EventApprovalButtonHandlers {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
+      const member = interaction.member && interaction.guild
+        ? await interaction.guild.members.fetch(interaction.user.id).catch(() => null)
+        : null;
       const result = await beginEventEditForHost(
         eventId,
         interaction.guild,
         interaction.user.id,
+        member,
       );
       if (!result.success) {
         await interaction.editReply({
