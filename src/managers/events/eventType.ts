@@ -42,6 +42,7 @@ const TYPE_CYCLE: (EventType | null)[] = [
   EventType.PATROL,
   EventType.GAME,
   EventType.SPECIAL,
+  EventType.RECRUITMENT,
   EventType.OTHER,
 ];
 
@@ -59,6 +60,8 @@ export function eventTypeLabel(type: EventType): string {
       return "Game";
     case EventType.SPECIAL:
       return "Special";
+    case EventType.RECRUITMENT:
+      return "Recruitment";
     case EventType.OTHER:
       return "Other";
   }
@@ -78,6 +81,9 @@ export function inferEventTypeFromTitle(
     /special\s+points|points\s+event|roulette|single\s+squad|🎊/.test(t)
   ) {
     return EventType.SPECIAL;
+  }
+  if (/\brecruit(?:ment|ing)?\b/.test(t)) {
+    return EventType.RECRUITMENT;
   }
   if (/\bpatrol\b/.test(t)) {
     return EventType.PATROL;
@@ -128,6 +134,8 @@ export function parseEventTypeOption(value: string | null): EventType | null {
       return EventType.GAME;
     case "special":
       return EventType.SPECIAL;
+    case "recruitment":
+      return EventType.RECRUITMENT;
     case "other":
       return EventType.OTHER;
     default:

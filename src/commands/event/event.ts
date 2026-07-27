@@ -123,6 +123,7 @@ export class EventCommands {
     @SlashChoice({ name: "Patrol", value: "patrol" })
     @SlashChoice({ name: "Game", value: "game" })
     @SlashChoice({ name: "Special", value: "special" })
+    @SlashChoice({ name: "Recruitment", value: "recruitment" })
     @SlashChoice({ name: "Other", value: "other" })
     @SlashOption({
       name: "type",

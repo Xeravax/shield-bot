@@ -85,6 +85,8 @@ function formatEventTitleLine(
         return event.title;
       }
       return `🎊 ${event.title} 🎊`;
+    case EventType.RECRUITMENT:
+      return `📢 ${event.title}`;
     case EventType.OTHER:
     default:
       return `🎲 ${event.title}`;
@@ -95,6 +97,8 @@ function formatHostLines(event: PlannedEvent): string[] {
   const lines = [`Host: <@${event.hostId}>`];
   if (event.coHostId) {
     lines.push(`Co-Host: <@${event.coHostId}>`);
+  } else if (event.coHostOpen) {
+    lines.push("Co-Host: Open");
   }
   return lines;
 }

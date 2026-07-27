@@ -136,7 +136,7 @@ function coHostDisplay(event: PlannedEvent): string {
     return `<@${event.coHostId}>`;
   }
   if (event.coHostOpen) {
-    return "Open — request below";
+    return "Open";
   }
   return "None";
 }
@@ -185,11 +185,6 @@ function buildSummaryFields(event: PlannedEvent): EmbedBuilder {
       { name: "Time", value: formatEventTimeField(event.startTime), inline: false },
       { name: "Host", value: `<@${event.hostId}>`, inline: true },
       { name: "Co-host", value: coHostDisplay(event), inline: true },
-      {
-        name: "Co-host slot",
-        value: event.coHostOpen ? "Open" : "Closed",
-        inline: true,
-      },
       { name: "Duty", value: dutyLabel(event.duty), inline: true },
       { name: "Type", value: formatEventTypeDisplay(event), inline: true },
       {
@@ -1102,7 +1097,9 @@ export async function createDiscordScheduledEvent(
     const endMs = startMs + durationMinutes * 60 * 1000;
     const coHostLine = event.coHostId
       ? `Co-host: <@${event.coHostId}>`
-      : "Co-host: None";
+      : event.coHostOpen
+        ? "Co-host: Open"
+        : "Co-host: None";
 
     const scheduled = await guild.scheduledEvents.create({
       name: event.title,
