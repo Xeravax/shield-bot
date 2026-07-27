@@ -15,6 +15,7 @@ import {
   getResolvedUserPreferences,
   noShieldMemberDmEnabled,
   patrolDmEnabled,
+  eventStatusDmEnabled,
   type ResolvedUserPreferences,
 } from "../../utility/userPreferences.js";
 import { EVENT_TIMEZONE } from "../../utility/estTime.js";
@@ -54,6 +55,13 @@ export function buildProfileSettingsEmbed(
           : "❌ **Disabled** — no join reminders.",
         inline: false,
       },
+      {
+        name: "Event status updates",
+        value: eventStatusDmEnabled(prefs)
+          ? "✅ **Enabled** — you receive DMs when your planned events are submitted, approved, denied, or cancelled."
+          : "❌ **Disabled** — no event status DMs.",
+        inline: false,
+      },
     )
     .setFooter({ text: "Event scheduling rules (Monday ban, weekly limits) always use EST." });
 }
@@ -66,6 +74,9 @@ export function buildProfileSettingsComponents(
   const shieldLabel = noShieldMemberDmEnabled(prefs)
     ? "Join reminders: On"
     : "Join reminders: Off";
+  const eventStatusLabel = eventStatusDmEnabled(prefs)
+    ? "Event status: On"
+    : "Event status: Off";
 
   return [
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
@@ -80,6 +91,14 @@ export function buildProfileSettingsComponents(
         .setLabel(shieldLabel)
         .setStyle(
           noShieldMemberDmEnabled(prefs)
+            ? ButtonStyle.Success
+            : ButtonStyle.Secondary,
+        ),
+      new ButtonBuilder()
+        .setCustomId(`profile-settings:toggle-event-status-dm:${discordId}`)
+        .setLabel(eventStatusLabel)
+        .setStyle(
+          eventStatusDmEnabled(prefs)
             ? ButtonStyle.Success
             : ButtonStyle.Secondary,
         ),

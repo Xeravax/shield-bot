@@ -21,6 +21,8 @@ import { loggers } from "../../../../utility/logger.js";
 
 const PROFILE_TOGGLE_PATROL_DM_PATTERN = /^profile-settings:toggle-patrol-dm:(\d+)$/;
 const PROFILE_TOGGLE_NO_SHIELD_DM_PATTERN = /^profile-settings:toggle-no-shield-dm:(\d+)$/;
+const PROFILE_TOGGLE_EVENT_STATUS_DM_PATTERN =
+  /^profile-settings:toggle-event-status-dm:(\d+)$/;
 const PROFILE_TIMEZONE_PATTERN = /^profile-settings:timezone:(\d+)$/;
 const PROFILE_RESET_TIMEZONE_PATTERN = /^profile-settings:reset-timezone:(\d+)$/;
 
@@ -85,6 +87,32 @@ export class ProfileSettingsButtonHandlers {
       await editProfileSettingsMessage(interaction);
     } catch (error) {
       loggers.bot.error("Error toggling no-shield patrol DM preference", error);
+      await replyProfileSettingsError(interaction, "❌ Failed to update preference.");
+    }
+  }
+
+  @ButtonComponent({ id: PROFILE_TOGGLE_EVENT_STATUS_DM_PATTERN })
+  async toggleEventStatusDm(interaction: ButtonInteraction): Promise<void> {
+    const match = matchComponentId(
+      interaction.customId,
+      PROFILE_TOGGLE_EVENT_STATUS_DM_PATTERN,
+    );
+    if (!match) return;
+
+    const discordId = match[1];
+    if (!(await assertProfileSettingsOwner(interaction, discordId))) {
+      return;
+    }
+
+    try {
+      await interaction.deferUpdate();
+      const prefs = await getResolvedUserPreferences(discordId);
+      await updateUserPreferences(discordId, {
+        eventStatusDmDisabled: !prefs.eventStatusDmDisabled,
+      });
+      await editProfileSettingsMessage(interaction);
+    } catch (error) {
+      loggers.bot.error("Error toggling event status DM preference", error);
       await replyProfileSettingsError(interaction, "❌ Failed to update preference.");
     }
   }

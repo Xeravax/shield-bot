@@ -24,6 +24,10 @@ import { prisma } from "../../main.js";
 import { hasNode } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
 import {
+  eventStatusDmEnabled,
+  getResolvedUserPreferences,
+} from "../../utility/userPreferences.js";
+import {
   isDraftPlaceholderTime,
   isDraftPlaceholderTitle,
 } from "./eventDraftDefaults.js";
@@ -567,6 +571,11 @@ export async function notifyHost(
   content: string,
   options?: NotifyHostOptions,
 ): Promise<void> {
+  const prefs = await getResolvedUserPreferences(event.hostId);
+  if (!eventStatusDmEnabled(prefs)) {
+    return;
+  }
+
   let embed = buildPlanningEmbed(event, {
     overriddenIds: options?.overriddenIds,
     denialReason: options?.denialReason ?? event.denialReason,

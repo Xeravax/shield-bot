@@ -21,6 +21,7 @@ interface TimezoneSearchMeta {
 export interface ResolvedUserPreferences {
   patrolDmDisabled: boolean;
   patrolNoShieldMemberDmDisabled: boolean;
+  eventStatusDmDisabled: boolean;
   /** Effective timezone used for parsing (falls back to EST). */
   timezone: string;
   /** Raw stored value, null when using the default. */
@@ -28,7 +29,13 @@ export interface ResolvedUserPreferences {
 }
 
 export type UserPreferenceUpdate = Partial<
-  Pick<UserPreferences, "patrolDmDisabled" | "patrolNoShieldMemberDmDisabled" | "timezone">
+  Pick<
+    UserPreferences,
+    | "patrolDmDisabled"
+    | "patrolNoShieldMemberDmDisabled"
+    | "eventStatusDmDisabled"
+    | "timezone"
+  >
 >;
 
 function allIanaTimezones(): string[] {
@@ -302,6 +309,7 @@ function resolvePreferences(
     patrolDmDisabled: prefs?.patrolDmDisabled ?? false,
     patrolNoShieldMemberDmDisabled:
       prefs?.patrolNoShieldMemberDmDisabled ?? false,
+    eventStatusDmDisabled: prefs?.eventStatusDmDisabled ?? false,
     timezone,
     timezoneStored: stored,
   };
@@ -381,4 +389,8 @@ export function patrolDmEnabled(prefs: ResolvedUserPreferences): boolean {
 
 export function noShieldMemberDmEnabled(prefs: ResolvedUserPreferences): boolean {
   return !prefs.patrolNoShieldMemberDmDisabled;
+}
+
+export function eventStatusDmEnabled(prefs: ResolvedUserPreferences): boolean {
+  return !prefs.eventStatusDmDisabled;
 }

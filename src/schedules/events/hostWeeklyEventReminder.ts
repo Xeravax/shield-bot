@@ -1,6 +1,7 @@
 import {
   Client,
   ContainerBuilder,
+  chatInputApplicationCommandMention,
   hyperlink,
   inlineCode,
   italic,
@@ -21,7 +22,40 @@ const JR_HOST_ROLE_ID = "842897800286306304";
 
 const HOST_REMINDER_ALLOWED_ROLES = [HOST_ROLE_ID, JR_HOST_ROLE_ID] as const;
 
-function buildReminderContainer(): ContainerBuilder {
+async function resolveEventScheduleCommandMention(
+  client: Client,
+  guildId: string,
+): Promise<string> {
+  const fallback = inlineCode("/event schedule");
+  try {
+    const guild = await client.guilds.fetch(guildId).catch(() => null);
+    const guildCommands = guild
+      ? await guild.commands.fetch().catch(() => null)
+      : null;
+    let eventCmd = guildCommands?.find((command) => command.name === "event");
+
+    if (!eventCmd) {
+      const globalCommands = await client.application?.commands.fetch();
+      eventCmd = globalCommands?.find((command) => command.name === "event");
+    }
+
+    if (eventCmd) {
+      return chatInputApplicationCommandMention(
+        "event",
+        "schedule",
+        eventCmd.id,
+      );
+    }
+  } catch (error) {
+    loggers.schedules.debug(
+      `Could not resolve /event schedule mention for guild ${guildId}`,
+      error,
+    );
+  }
+  return fallback;
+}
+
+function buildReminderContainer(scheduleCommand: string): ContainerBuilder {
   const host = roleMention(HOST_ROLE_ID);
   const jrHost = roleMention(JR_HOST_ROLE_ID);
 
@@ -31,7 +65,7 @@ function buildReminderContainer(): ContainerBuilder {
       "",
       `Hello ${host} and ${jrHost} - time to get events on the calendar.`,
       "",
-      "You have until **Monday** to prepare and schedule your events for the week. The sooner they’re posted, the easier it is for members to plan.",
+      `Use ${scheduleCommand} to open a draft and schedule your events for the week. You have until **Monday** — the sooner they’re posted, the easier it is for members to plan.`,
     ].join("\n"),
   );
 
@@ -113,8 +147,6 @@ export async function broadcastHostWeeklyEventReminder(client: Client): Promise<
       return;
     }
 
-    const container = buildReminderContainer();
-
     loggers.schedules.info(
       `Posting host weekly event reminder to ${guildSettings.length} guild(s)`,
     );
@@ -133,6 +165,12 @@ export async function broadcastHostWeeklyEventReminder(client: Client): Promise<
           );
           continue;
         }
+
+        const scheduleCommand = await resolveEventScheduleCommandMention(
+          client,
+          settings.guildId,
+        );
+        const container = buildReminderContainer(scheduleCommand);
 
         await channel.send({
           allowedMentions: { roles: [...HOST_REMINDER_ALLOWED_ROLES] },

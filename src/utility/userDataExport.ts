@@ -12,6 +12,7 @@ export interface UserExportPayload {
   userPreferences: {
     patrolDmDisabled: boolean;
     patrolNoShieldMemberDmDisabled: boolean;
+    eventStatusDmDisabled: boolean;
     timezone: string | null;
     createdAt: string;
     updatedAt: string;
@@ -140,6 +141,7 @@ export async function getUserExportData(
           patrolDmDisabled: user.userPreferences.patrolDmDisabled,
           patrolNoShieldMemberDmDisabled:
             user.userPreferences.patrolNoShieldMemberDmDisabled,
+          eventStatusDmDisabled: user.userPreferences.eventStatusDmDisabled,
           timezone: user.userPreferences.timezone,
           createdAt: toIso(user.userPreferences.createdAt),
           updatedAt: toIso(user.userPreferences.updatedAt),
