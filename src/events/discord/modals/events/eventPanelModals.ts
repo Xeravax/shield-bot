@@ -15,6 +15,7 @@ import {
 import { loggers } from "../../../../utility/logger.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
 import { resolveGuildMember } from "../../../../utility/guards.js";
+import { normalizeEventTitle } from "../../../../managers/events/eventDraftDefaults.js";
 
 const EVENT_MODAL_TITLE_PATTERN = /^event-modal:title:(\d+)$/;
 const EVENT_MODAL_TIME_PATTERN = /^event-modal:time:(\d+)$/;
@@ -32,7 +33,9 @@ export class EventPanelModalHandlers {
       return;
     }
     const eventId = parseInt(match[1], 10);
-    const title = interaction.fields.getTextInputValue("title").trim();
+    const title = normalizeEventTitle(
+      interaction.fields.getTextInputValue("title"),
+    );
     if (!title) {
       await interaction.reply({
         content: "❌ Title cannot be empty.",

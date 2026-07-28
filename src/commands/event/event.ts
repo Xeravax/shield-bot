@@ -50,14 +50,19 @@ import {
   resolveExportWeekRange,
 } from "../../managers/events/eventPlanningManager.js";
 import { respondPlannedEventAutocomplete } from "../../managers/events/eventAutocomplete.js";
-import { getScheduleExportSettings } from "../../managers/events/eventScheduleFormatter.js";
+import {
+  getScheduleExportSettings,
+  rewriteAnnouncementTimestampsToFull,
+} from "../../managers/events/eventScheduleFormatter.js";
 import { jrHostMissingFullCoHost } from "../../managers/events/eventRules.js";
 import {
   defaultDurationMinutes,
   parseDurationOption,
   parseEventTypeOption,
 } from "../../managers/events/eventType.js";
+import { normalizeEventTitle } from "../../managers/events/eventDraftDefaults.js";
 import type { ExportWeekChoice } from "../../managers/events/eventWeek.js";
+import { parseDiscordMessageLink } from "../../utility/generalUtils.js";
 import { loggers } from "../../utility/logger.js";
 
 @Discord()
@@ -199,7 +204,9 @@ export class EventCommands {
       const event = await prisma.plannedEvent.create({
         data: {
           guildId: interaction.guildId,
-          title: title?.trim() || DRAFT_PLACEHOLDER_TITLE,
+          title: title?.trim()
+            ? normalizeEventTitle(title)
+            : DRAFT_PLACEHOLDER_TITLE,
           startTime: resolveDraftStartTime(time, timezone),
           hostId,
           coHostOpen,
@@ -352,6 +359,90 @@ export class EventCommands {
       embeds: [embed],
       components: [row],
     });
+  }
+
+  @Slash({
+    name: "edit-announcement",
+    description:
+      "Update a posted schedule announcement to use full date/time timestamps",
+  })
+  @Guard(
+    PermissionNodeGuardAny(
+      "events.command.edit-announcement",
+      "events.command.export",
+    ),
+  )
+  async editAnnouncement(
+    @SlashOption({
+      name: "message",
+      description: "Discord message link to the announcement",
+      type: ApplicationCommandOptionType.String,
+      required: true,
+    })
+    messageLink: string,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction.guildId || !interaction.guild) {
+      return;
+    }
+
+    const parsed = parseDiscordMessageLink(messageLink);
+    if (!parsed) {
+      await interaction.reply({
+        content:
+          "❌ Invalid message link. Paste a Discord message link like `https://discord.com/channels/.../.../...`.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (parsed.guildId !== interaction.guildId) {
+      await interaction.reply({
+        content: "❌ That message is from a different server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    try {
+      const channel = await interaction.guild.channels.fetch(parsed.channelId);
+      if (!channel?.isTextBased() || channel.isDMBased()) {
+        await interaction.editReply({
+          content: "❌ Could not find that channel, or it is not a text channel.",
+        });
+        return;
+      }
+
+      const message = await channel.messages.fetch(parsed.messageId);
+      if (message.author.id !== interaction.client.user?.id) {
+        await interaction.editReply({
+          content:
+            "❌ I can only edit announcements I posted. For manual posts, replace timestamps with `<t:unix:F>` yourself.",
+        });
+        return;
+      }
+
+      const currentContent = message.content ?? "";
+      const updatedContent = rewriteAnnouncementTimestampsToFull(currentContent);
+      if (updatedContent === currentContent) {
+        await interaction.editReply({
+          content: `ℹ️ Announcement already uses full timestamps: ${message.url}`,
+        });
+        return;
+      }
+
+      await message.edit({ content: updatedContent });
+      await interaction.editReply({
+        content: `✅ Updated announcement to full date/time timestamps: ${message.url}`,
+      });
+    } catch (error) {
+      loggers.bot.error("Error updating announcement timestamps", error);
+      await interaction.editReply({
+        content: "❌ Failed to update that announcement. Check the link and my channel permissions.",
+      });
+    }
   }
 
   @Slash({

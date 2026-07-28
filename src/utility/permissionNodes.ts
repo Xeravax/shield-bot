@@ -128,6 +128,11 @@ export const PERMISSION_NODE_REGISTRY: Record<
   events: [
     { node: "events.command.schedule", description: "/event schedule — schedule a planned event" },
     { node: "events.command.export", description: "/event export — export the weekly schedule" },
+    {
+      node: "events.command.edit-announcement",
+      description:
+        "/event edit-announcement — rewrite a posted schedule announcement to full timestamps",
+    },
     { node: "events.command.cancel", description: "/event cancel — cancel own pending/approved events" },
     { node: "events.command.edit", description: "/event edit — reopen own pending/denied events for editing" },
     { node: "events.command.submit", description: "/event submit — submit a draft for approval" },

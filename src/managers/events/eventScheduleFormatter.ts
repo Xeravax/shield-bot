@@ -106,7 +106,7 @@ function formatHostLines(event: PlannedEvent): string[] {
 function formatDaySections(
   events: PlannedEvent[],
   settings: ScheduleExportSettings,
-  options: { ordinalDayHeaders: boolean; timestampStyle: "F" | "default" },
+  options: { ordinalDayHeaders: boolean },
 ): string[] {
   const sections: string[] = [];
 
@@ -119,14 +119,9 @@ function formatDaySections(
 
     for (const event of dayEvents) {
       const unix = Math.floor(event.startTime.getTime() / 1000);
-      const timestamp =
-        options.timestampStyle === "F"
-          ? `<t:${unix}:F>`
-          : `<t:${unix}>`;
-
       sections.push(
         formatEventTitleLine(event, settings),
-        timestamp,
+        `<t:${unix}:F>`,
         ...formatHostLines(event),
         "",
       );
@@ -161,7 +156,6 @@ export function formatOnDutyScheduleMessage(
     "",
     ...formatDaySections(onDuty, settings, {
       ordinalDayHeaders: true,
-      timestampStyle: "default",
     }),
     "That is all our Events Folks! Have an fantastic Week!",
   ];
@@ -193,7 +187,6 @@ export function formatOffDutyScheduleMessage(
     "",
     ...formatDaySections(offDuty, settings, {
       ordinalDayHeaders: true,
-      timestampStyle: "default",
     }),
   ];
 
@@ -227,4 +220,11 @@ export function resolveOffDutyScheduleChannelId(
   settings: GuildSettings | null,
 ): string | null {
   return settings?.eventOffDutyScheduleChannelId ?? settings?.eventScheduleChannelId ?? null;
+}
+
+const DISCORD_TIMESTAMP_RE = /<t:(\d+)(?::[tTdDfFR])?>/g;
+
+/** Rewrite Discord timestamps in announcement text to full date/time (`:F`). */
+export function rewriteAnnouncementTimestampsToFull(content: string): string {
+  return content.replace(DISCORD_TIMESTAMP_RE, "<t:$1:F>");
 }

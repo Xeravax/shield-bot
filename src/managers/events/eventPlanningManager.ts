@@ -30,6 +30,7 @@ import {
 import {
   isDraftPlaceholderTime,
   isDraftPlaceholderTitle,
+  normalizeEventTitle,
 } from "./eventDraftDefaults.js";
 import {
   applyForceOverride,
@@ -79,6 +80,7 @@ export {
   DRAFT_PLACEHOLDER_TIME_MS,
   isDraftPlaceholderTitle,
   isDraftPlaceholderTime,
+  normalizeEventTitle,
   resolveDraftStartTime,
 } from "./eventDraftDefaults.js";
 
@@ -668,8 +670,10 @@ export async function submitEventForApproval(
     return { success: false, error: "Event planning channel is invalid." };
   }
 
+  const normalizedTitle = normalizeEventTitle(event.title);
   const pendingPreview: PlannedEvent = {
     ...event,
+    title: normalizedTitle,
     status: PlannedEventStatus.PENDING,
     denialReason: null,
     reviewedById: null,
@@ -688,6 +692,7 @@ export async function submitEventForApproval(
       status: { in: [PlannedEventStatus.DRAFT, PlannedEventStatus.DENIED] },
     },
     data: {
+      title: normalizedTitle,
       status: PlannedEventStatus.PENDING,
       denialReason: null,
       reviewedById: null,
