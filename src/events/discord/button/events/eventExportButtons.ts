@@ -1,11 +1,13 @@
 import { ButtonInteraction, GuildMember, MessageFlags } from "discord.js";
 import { Discord, ButtonComponent } from "discordx";
 import { exportApprovedEvents } from "../../../../managers/events/eventPlanningManager.js";
+import { getEventWeekRangeForDate } from "../../../../managers/events/eventWeek.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
-const EVENT_EXPORT_CONFIRM_PATTERN = /^event:export:confirm:(\d+)(?::(manual|channel))?$/;
+const EVENT_EXPORT_CONFIRM_PATTERN =
+  /^event:export:confirm:(\d+)(?::(manual|channel))?(?::(\d+))?$/;
 
 function chunkText(text: string, maxLength = DISCORD_MESSAGE_LIMIT): string[] {
   if (text.length <= maxLength) {
@@ -76,9 +78,15 @@ export class EventExportButtonHandlers {
 
     const mode = match[2] === "channel" ? "channel" : "manual";
     const manualPost = mode === "manual";
+    const weekStartUnix = match[3] ? parseInt(match[3], 10) : null;
+    const weekRange =
+      weekStartUnix != null && Number.isFinite(weekStartUnix)
+        ? getEventWeekRangeForDate(new Date(weekStartUnix * 1000))
+        : undefined;
 
     const result = await exportApprovedEvents(interaction.guild, interaction.user.id, {
       manualPost,
+      weekRange,
     });
 
     if (!result.success) {

@@ -25,9 +25,9 @@ export function getEventWeekRangeForDate(date: Date): { start: Date; end: Date }
 }
 
 /**
- * The event week hosts may currently schedule or export.
- * Monday = planning day for the current Tue–Sun week.
- * Tuesday–Sunday = only the next Tue–Sun week.
+ * The event week hosts may currently schedule into.
+ * Monday = planning day for the upcoming Tue–Mon week.
+ * Tuesday–Sunday = only the next Tue–Mon week.
  */
 export function getSchedulableEventWeekRange(now = new Date()): { start: Date; end: Date } {
   const parts = getESTDateParts(now);
@@ -47,6 +47,45 @@ export function getSchedulableEventWeekRange(now = new Date()): { start: Date; e
     start,
     end: estLocalToUtc(parts.year, parts.month, tuesdayDay + 7, 0, 0, 0),
   };
+}
+
+export type ExportWeekChoice = "auto" | "current" | "previous" | "next";
+
+export function getCurrentEventWeekRange(now = new Date()): { start: Date; end: Date } {
+  return getEventWeekRangeForDate(now);
+}
+
+export function getPreviousEventWeekRange(now = new Date()): { start: Date; end: Date } {
+  const current = getCurrentEventWeekRange(now);
+  return getEventWeekRangeForDate(new Date(current.start.getTime() - 1));
+}
+
+export function getNextEventWeekRange(now = new Date()): { start: Date; end: Date } {
+  const current = getCurrentEventWeekRange(now);
+  return getEventWeekRangeForDate(current.end);
+}
+
+export function getExportWeekRangeByChoice(
+  choice: Exclude<ExportWeekChoice, "auto">,
+  now = new Date(),
+): { start: Date; end: Date } {
+  switch (choice) {
+    case "previous":
+      return getPreviousEventWeekRange(now);
+    case "next":
+      return getNextEventWeekRange(now);
+    case "current":
+    default:
+      return getCurrentEventWeekRange(now);
+  }
+}
+
+export function formatEventWeekRangeLabel(range: {
+  start: Date;
+  end: Date;
+}): string {
+  const lastDay = new Date(range.end.getTime() - 1);
+  return `${formatEstWeekdayMonthDay(range.start)} through ${formatEstWeekdayMonthDay(lastDay)}`;
 }
 
 export function isWithinSchedulableEventWeek(

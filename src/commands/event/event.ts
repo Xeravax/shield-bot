@@ -35,7 +35,7 @@ import { EventDuty, PlannedEventStatus } from "../../generated/prisma/client.js"
 import {
   formatScheduleMessage,
   getExportableEvents,
-  getPendingEventsForSchedulableWeek,
+  getPendingEventsForWeek,
   formatExportPendingWarning,
   refreshDraftPanel,
   cancelPlannedEvent,
@@ -47,6 +47,7 @@ import {
   canManageEventDraft,
   DRAFT_PLACEHOLDER_TITLE,
   resolveDraftStartTime,
+  resolveExportWeekRange,
 } from "../../managers/events/eventPlanningManager.js";
 import { respondPlannedEventAutocomplete } from "../../managers/events/eventAutocomplete.js";
 import { getScheduleExportSettings } from "../../managers/events/eventScheduleFormatter.js";
@@ -56,6 +57,7 @@ import {
   parseDurationOption,
   parseEventTypeOption,
 } from "../../managers/events/eventType.js";
+import type { ExportWeekChoice } from "../../managers/events/eventWeek.js";
 import { loggers } from "../../utility/logger.js";
 
 @Discord()
@@ -223,10 +225,22 @@ export class EventCommands {
 
   @Slash({
     name: "export",
-    description: "Export approved events for the upcoming week",
+    description: "Export approved events for a selected event week",
   })
   @Guard(PermissionNodeGuard("events.command.export"))
   async export(
+    @SlashChoice({ name: "Auto (first week with events)", value: "auto" })
+    @SlashChoice({ name: "Current week", value: "current" })
+    @SlashChoice({ name: "Previous week", value: "previous" })
+    @SlashChoice({ name: "Next week", value: "next" })
+    @SlashOption({
+      name: "week",
+      description:
+        "Which Tue–Mon event week to export (default: auto — current, then previous, then next)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    weekOption: string | null,
     @SlashOption({
       name: "ephemeral",
       description:
@@ -244,12 +258,17 @@ export class EventCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const manualPost = ephemeral !== false;
+    const weekChoice = (weekOption ?? "auto") as ExportWeekChoice;
+    const weekRange = await resolveExportWeekRange(
+      interaction.guildId,
+      weekChoice,
+    );
 
-    const events = await getExportableEvents(interaction.guildId);
+    const events = await getExportableEvents(interaction.guildId, weekRange);
 
     if (events.length === 0) {
       await interaction.editReply({
-        content: "ℹ️ No approved, unexported events found for the upcoming week.",
+        content: `ℹ️ No approved, unexported events found for **${weekRange.label}** (${weekRange.choice}).`,
       });
       return;
     }
@@ -274,7 +293,11 @@ export class EventCommands {
       where: { guildId: interaction.guildId },
     });
     const exportSettings = getScheduleExportSettings(settings);
-    const pending = await getPendingEventsForSchedulableWeek(interaction.guildId);
+    const pending = await getPendingEventsForWeek(
+      interaction.guildId,
+      weekRange.start,
+      weekRange.end,
+    );
     const pendingWarning = formatExportPendingWarning(
       pending,
       interaction.guildId,
@@ -282,7 +305,10 @@ export class EventCommands {
     );
     const preview = formatScheduleMessage(events, exportSettings);
 
-    const descriptionParts = [];
+    const descriptionParts = [
+      `**Week:** ${weekRange.label} (\`${weekRange.choice}\`)`,
+      "",
+    ];
     if (pendingWarning) {
       descriptionParts.push(pendingWarning, "", "---", "");
     }
@@ -309,8 +335,11 @@ export class EventCommands {
     }
 
     const confirmMode = manualPost ? "manual" : "channel";
+    const weekStartUnix = Math.floor(weekRange.start.getTime() / 1000);
     const confirm = new ButtonBuilder()
-      .setCustomId(`event:export:confirm:${interaction.guildId}:${confirmMode}`)
+      .setCustomId(
+        `event:export:confirm:${interaction.guildId}:${confirmMode}:${weekStartUnix}`,
+      )
       .setLabel("Confirm export")
       .setStyle(ButtonStyle.Success);
     const cancel = new ButtonBuilder()

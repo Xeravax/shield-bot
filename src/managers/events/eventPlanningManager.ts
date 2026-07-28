@@ -49,7 +49,10 @@ import {
 } from "./eventScheduleFormatter.js";
 import {
   buildPlanningMessageUrl,
+  formatEventWeekRangeLabel,
+  getExportWeekRangeByChoice,
   getSchedulableEventWeekRange,
+  type ExportWeekChoice,
 } from "./eventWeek.js";
 import {
   formatDurationLabel,
@@ -1014,11 +1017,61 @@ export async function cancelApprovedPlannedEvent(
   return cancelPlannedEvent(eventId, guild, cancelledById);
 }
 
-export async function getPendingEventsForSchedulableWeek(
+export async function countExportableEventsInRange(
   guildId: string,
+  start: Date,
+  end: Date,
+): Promise<number> {
+  return prisma.plannedEvent.count({
+    where: {
+      guildId,
+      status: PlannedEventStatus.APPROVED,
+      discordEventId: null,
+      startTime: { gte: start, lt: end },
+    },
+  });
+}
+
+export async function resolveExportWeekRange(
+  guildId: string,
+  choice: ExportWeekChoice = "auto",
   now = new Date(),
+): Promise<{ start: Date; end: Date; choice: Exclude<ExportWeekChoice, "auto">; label: string }> {
+  if (choice !== "auto") {
+    const range = getExportWeekRangeByChoice(choice, now);
+    return {
+      ...range,
+      choice,
+      label: formatEventWeekRangeLabel(range),
+    };
+  }
+
+  const preferenceOrder = ["current", "previous", "next"] as const;
+  for (const key of preferenceOrder) {
+    const range = getExportWeekRangeByChoice(key, now);
+    const count = await countExportableEventsInRange(guildId, range.start, range.end);
+    if (count > 0) {
+      return {
+        ...range,
+        choice: key,
+        label: formatEventWeekRangeLabel(range),
+      };
+    }
+  }
+
+  const fallback = getExportWeekRangeByChoice("current", now);
+  return {
+    ...fallback,
+    choice: "current",
+    label: formatEventWeekRangeLabel(fallback),
+  };
+}
+
+export async function getPendingEventsForWeek(
+  guildId: string,
+  start: Date,
+  end: Date,
 ): Promise<PlannedEvent[]> {
-  const { start, end } = getSchedulableEventWeekRange(now);
   return prisma.plannedEvent.findMany({
     where: {
       guildId,
@@ -1027,6 +1080,14 @@ export async function getPendingEventsForSchedulableWeek(
     },
     orderBy: { startTime: "asc" },
   });
+}
+
+export async function getPendingEventsForSchedulableWeek(
+  guildId: string,
+  now = new Date(),
+): Promise<PlannedEvent[]> {
+  const { start, end } = getSchedulableEventWeekRange(now);
+  return getPendingEventsForWeek(guildId, start, end);
 }
 
 export function formatExportPendingWarning(
@@ -1057,20 +1118,34 @@ export function formatExportPendingWarning(
   );
 }
 
-export async function denyPendingEventsForSchedulableWeek(
+export async function denyPendingEventsForWeek(
   guild: Guild,
   reviewerId: string,
+  start: Date,
+  end: Date,
   reason = "Not approved before the weekly schedule export.",
 ): Promise<PlannedEvent[]> {
-  const pending = await getPendingEventsForSchedulableWeek(guild.id);
+  const pending = await getPendingEventsForWeek(guild.id, start, end);
   for (const event of pending) {
     await denyPlannedEvent(event.id, reviewerId, reason, guild);
   }
   return pending;
 }
 
-export async function getExportableEvents(guildId: string): Promise<PlannedEvent[]> {
+export async function denyPendingEventsForSchedulableWeek(
+  guild: Guild,
+  reviewerId: string,
+  reason = "Not approved before the weekly schedule export.",
+): Promise<PlannedEvent[]> {
   const { start, end } = getSchedulableEventWeekRange();
+  return denyPendingEventsForWeek(guild, reviewerId, start, end, reason);
+}
+
+export async function getExportableEvents(
+  guildId: string,
+  range?: { start: Date; end: Date },
+): Promise<PlannedEvent[]> {
+  const { start, end } = range ?? (await resolveExportWeekRange(guildId));
   return prisma.plannedEvent.findMany({
     where: {
       guildId,
@@ -1134,6 +1209,8 @@ export async function createDiscordScheduledEvent(
 export interface ExportApprovedEventsOptions {
   /** When true, skip posting to schedule channels and return templates for manual posting. */
   manualPost?: boolean;
+  /** Event week to export. Defaults to auto-resolved week with exportable events. */
+  weekRange?: { start: Date; end: Date };
 }
 
 export function buildManualExportTemplates(
@@ -1169,6 +1246,8 @@ export async function exportApprovedEvents(
 
   try {
   const manualPost = options.manualPost ?? false;
+  const weekRange =
+    options.weekRange ?? (await resolveExportWeekRange(guild.id));
   const settings = await prisma.guildSettings.findUnique({
     where: { guildId: guild.id },
   });
@@ -1177,9 +1256,12 @@ export async function exportApprovedEvents(
   const onDutyChannelId = resolveOnDutyScheduleChannelId(settings);
   const offDutyChannelId = resolveOffDutyScheduleChannelId(settings);
 
-  const events = await getExportableEvents(guild.id);
+  const events = await getExportableEvents(guild.id, weekRange);
   if (events.length === 0) {
-    return { success: false, error: "No approved events to export for this week." };
+    return {
+      success: false,
+      error: `No approved events to export for ${formatEventWeekRangeLabel(weekRange)}.`,
+    };
   }
 
   const onDutyEvents = events.filter((e) => e.duty === EventDuty.ON_DUTY);
@@ -1277,9 +1359,11 @@ export async function exportApprovedEvents(
     };
   }
 
-  const deniedPending = await denyPendingEventsForSchedulableWeek(
+  const deniedPending = await denyPendingEventsForWeek(
     guild,
     exporterUserId,
+    weekRange.start,
+    weekRange.end,
   );
 
   const manualTemplates = manualPost
@@ -1322,8 +1406,11 @@ export async function exportApprovedEvents(
 export function buildExportConfirmPayload(
   guildId: string,
   manualPost = true,
+  weekStartUnix?: number,
 ): MessageCreateOptions {
   const mode = manualPost ? "manual" : "channel";
+  const weekSuffix =
+    weekStartUnix != null ? `:${weekStartUnix}` : "";
   return {
     content: manualPost
       ? "Export approved events? You will receive copy-paste schedule templates and Discord scheduled events will be created."
@@ -1331,7 +1418,7 @@ export function buildExportConfirmPayload(
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
-          .setCustomId(`event:export:confirm:${guildId}:${mode}`)
+          .setCustomId(`event:export:confirm:${guildId}:${mode}${weekSuffix}`)
           .setLabel("Confirm Export")
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
