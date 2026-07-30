@@ -1,11 +1,12 @@
 import { MessageFlags, UserSelectMenuInteraction } from "discord.js";
 import { Discord, SelectMenuComponent } from "discordx";
 import { prisma } from "../../../../main.js";
-import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import {
-  canManageEventDraft,
-  refreshDraftPanel,
+  canEditEventPanel,
   editDraftPanelMessage,
+  editablePanelUpdateWhere,
+  isEventPanelEditable,
+  refreshDraftPanel,
 } from "../../../../managers/events/eventPlanningManager.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
@@ -32,7 +33,7 @@ export class EventPanelSelectHandlers {
     }
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    if (!event || !isEventPanelEditable(event)) {
       await interaction.reply({
         content: "❌ Event draft not found.",
         flags: MessageFlags.Ephemeral,
@@ -41,7 +42,7 @@ export class EventPanelSelectHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditEventPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
@@ -62,13 +63,9 @@ export class EventPanelSelectHandlers {
 
     await interaction.deferUpdate();
     const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
+      where: editablePanelUpdateWhere(eventId),
       data: {
         hostId,
-        // Host and co-host must be different people
         ...(hostId === event.coHostId ? { coHostId: null } : {}),
       },
     });
@@ -92,7 +89,7 @@ export class EventPanelSelectHandlers {
     const coHostId = interaction.values[0] ?? null;
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    if (!event || !isEventPanelEditable(event)) {
       await interaction.reply({
         content: "❌ Event draft not found.",
         flags: MessageFlags.Ephemeral,
@@ -101,7 +98,7 @@ export class EventPanelSelectHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditEventPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
@@ -120,10 +117,7 @@ export class EventPanelSelectHandlers {
 
     await interaction.deferUpdate();
     const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
+      where: editablePanelUpdateWhere(eventId),
       data: { coHostId },
     });
     if (updated.count === 0) {

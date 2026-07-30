@@ -3,6 +3,7 @@ import {
   ButtonBuilder,
   ButtonInteraction,
   ButtonStyle,
+  ChannelType,
   Colors,
   EmbedBuilder,
   Guild,
@@ -14,11 +15,14 @@ import {
   ModalSubmitInteraction,
   UserSelectMenuBuilder,
   UserSelectMenuInteraction,
+  type GuildScheduledEvent,
 } from "discord.js";
 import {
   EventDuty,
+  EventType,
   PlannedEvent,
   PlannedEventStatus,
+  Prisma,
 } from "../../generated/prisma/client.js";
 import { prisma } from "../../main.js";
 import { hasNode } from "../../utility/permissionNodes.js";
@@ -51,6 +55,7 @@ import {
 import {
   buildPlanningMessageUrl,
   formatEventWeekRangeLabel,
+  getCurrentEventWeekRange,
   getExportWeekRangeByChoice,
   getSchedulableEventWeekRange,
   type ExportWeekChoice,
@@ -60,8 +65,196 @@ import {
   formatEventTypeDisplay,
 } from "./eventType.js";
 
+/** Fixed External location when no voice channel is configured. */
+export const DEFAULT_EXTERNAL_EVENT_LOCATION = "VRChat";
+
+/** Exported edit sessions expire after this long without Save/Cancel. */
+export const EXPORTED_EDIT_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
+
 export function isEventLocked(event: PlannedEvent): boolean {
   return event.discordEventId != null;
+}
+
+function isExportedEditSessionFresh(event: PlannedEvent, now = new Date()): boolean {
+  if (event.editSnapshot == null) {
+    return false;
+  }
+  if (!event.editStartedAt) {
+    return false;
+  }
+  return now.getTime() - event.editStartedAt.getTime() <= EXPORTED_EDIT_SESSION_TTL_MS;
+}
+
+/** Drafts, or APPROVED exported events currently open in a fresh edit panel. */
+export function isEventPanelEditable(event: PlannedEvent): boolean {
+  if (event.status === PlannedEventStatus.DRAFT) {
+    return true;
+  }
+  return (
+    event.status === PlannedEventStatus.APPROVED &&
+    event.discordEventId != null &&
+    isExportedEditSessionFresh(event)
+  );
+}
+
+export function isExportedEventInCurrentWeek(
+  event: PlannedEvent,
+  now = new Date(),
+): boolean {
+  if (event.status !== PlannedEventStatus.APPROVED || !event.discordEventId) {
+    return false;
+  }
+  const { start, end } = getCurrentEventWeekRange(now);
+  const t = event.startTime.getTime();
+  return t >= start.getTime() && t < end.getTime();
+}
+
+export interface EventEditSnapshot {
+  title: string;
+  startTime: string;
+  hostId: string;
+  coHostId: string | null;
+  coHostOpen: boolean;
+  duty: EventDuty;
+  eventType: EventType | null;
+  durationMinutes: number;
+  forceOverride: boolean;
+}
+
+export function buildEventEditSnapshot(event: PlannedEvent): EventEditSnapshot {
+  return {
+    title: event.title,
+    startTime: event.startTime.toISOString(),
+    hostId: event.hostId,
+    coHostId: event.coHostId,
+    coHostOpen: event.coHostOpen,
+    duty: event.duty,
+    eventType: event.eventType,
+    durationMinutes: event.durationMinutes,
+    forceOverride: event.forceOverride,
+  };
+}
+
+function parseEventEditSnapshot(raw: unknown): EventEditSnapshot | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const s = raw as Record<string, unknown>;
+  if (
+    typeof s.title !== "string" ||
+    typeof s.startTime !== "string" ||
+    typeof s.hostId !== "string" ||
+    typeof s.coHostOpen !== "boolean" ||
+    typeof s.durationMinutes !== "number" ||
+    typeof s.forceOverride !== "boolean" ||
+    (s.duty !== EventDuty.ON_DUTY && s.duty !== EventDuty.OFF_DUTY)
+  ) {
+    return null;
+  }
+  const eventType =
+    s.eventType === null || s.eventType === undefined
+      ? null
+      : Object.values(EventType).includes(s.eventType as EventType)
+        ? (s.eventType as EventType)
+        : null;
+  return {
+    title: s.title,
+    startTime: s.startTime,
+    hostId: s.hostId,
+    coHostId: typeof s.coHostId === "string" ? s.coHostId : null,
+    coHostOpen: s.coHostOpen,
+    duty: s.duty,
+    eventType,
+    durationMinutes: s.durationMinutes,
+    forceOverride: s.forceOverride,
+  };
+}
+
+/** Restore editable fields from a snapshot and clear edit-session state. */
+async function restoreEventFromSnapshot(
+  event: PlannedEvent,
+  snapshot: EventEditSnapshot,
+): Promise<PlannedEvent> {
+  return prisma.plannedEvent.update({
+    where: { id: event.id },
+    data: {
+      title: snapshot.title,
+      startTime: new Date(snapshot.startTime),
+      hostId: snapshot.hostId,
+      coHostId: snapshot.coHostId,
+      coHostOpen: snapshot.coHostOpen,
+      duty: snapshot.duty,
+      eventType: snapshot.eventType,
+      durationMinutes: snapshot.durationMinutes,
+      forceOverride: snapshot.forceOverride,
+      editResumeStatus: null,
+      editSnapshot: Prisma.DbNull,
+      editStartedAt: null,
+    },
+  });
+}
+
+/**
+ * If an exported edit session is stale, restore the snapshot and clear edit state.
+ * Returns the (possibly restored) event.
+ */
+export async function cleanupStaleExportedEditSession(
+  event: PlannedEvent,
+): Promise<PlannedEvent> {
+  if (
+    event.status !== PlannedEventStatus.APPROVED ||
+    event.editSnapshot == null ||
+    isExportedEditSessionFresh(event)
+  ) {
+    return event;
+  }
+
+  const snapshot = parseEventEditSnapshot(event.editSnapshot);
+  if (!snapshot) {
+    return prisma.plannedEvent.update({
+      where: { id: event.id },
+      data: {
+        editResumeStatus: null,
+        editSnapshot: Prisma.DbNull,
+        editStartedAt: null,
+      },
+    });
+  }
+
+  return restoreEventFromSnapshot(event, snapshot);
+}
+
+export async function resolveEventLocationChannelId(
+  guild: Guild,
+  channelId: string | null | undefined,
+): Promise<string | null> {
+  if (!channelId) {
+    return null;
+  }
+  try {
+    const channel = await guild.channels.fetch(channelId);
+    if (
+      channel &&
+      channel.type === ChannelType.GuildVoice
+    ) {
+      return channel.id;
+    }
+  } catch {
+    // missing channel
+  }
+  loggers.bot.warn(
+    `Configured event location channel ${channelId} is missing or not voice; falling back to External "${DEFAULT_EXTERNAL_EVENT_LOCATION}"`,
+  );
+  return null;
+}
+
+function buildDiscordEventDescription(event: PlannedEvent): string {
+  const coHostLine = event.coHostId
+    ? `Co-host: <@${event.coHostId}>`
+    : event.coHostOpen
+      ? "Co-host: Open"
+      : "Co-host: None";
+  return `Host: <@${event.hostId}>\n${coHostLine}\nDuty: ${dutyLabel(event.duty)}`;
 }
 
 function assertEventInGuild(event: PlannedEvent, guildId: string): boolean {
@@ -209,9 +402,14 @@ export function buildDraftPanelEmbed(
   ruleResults: EventRuleResult[],
   overriddenIds: string[],
 ): EmbedBuilder {
+  const editingExported = isEventPanelEditable(event) && isEventLocked(event);
   const embed = buildSummaryFields(event)
-    .setColor(EVENT_COLORS.draft)
-    .setFooter({ text: `Event #${event.id} — Draft` });
+    .setColor(editingExported ? EVENT_COLORS.approved : EVENT_COLORS.draft)
+    .setFooter({
+      text: editingExported
+        ? `Event #${event.id} — Editing exported event`
+        : `Event #${event.id} — Draft`,
+    });
 
   embed.addFields({
     name: "Validation",
@@ -254,7 +452,9 @@ export function buildPlanningEmbed(
     .setColor(color)
     .setFooter({
       text: isEventLocked(event)
-        ? `Event #${event.id} — ${statusText} (exported — locked)`
+        ? isExportedEventInCurrentWeek(event)
+          ? `Event #${event.id} — ${statusText} (exported — editable this week)`
+          : `Event #${event.id} — ${statusText} (exported — locked)`
         : `Event #${event.id} — ${statusText}`,
     });
 
@@ -350,16 +550,25 @@ export function buildDraftPanelComponents(
     );
   }
 
+  const editingExported = isEventLocked(event) && event.editSnapshot != null;
   rows.push(
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(`event-panel:submit:${event.id}`)
-        .setLabel("Submit for approval")
+        .setCustomId(
+          editingExported
+            ? `event-panel:save:${event.id}`
+            : `event-panel:submit:${event.id}`,
+        )
+        .setLabel(editingExported ? "Save changes" : "Submit for approval")
         .setStyle(ButtonStyle.Success)
         .setDisabled(blocking),
       new ButtonBuilder()
         .setCustomId(`event-panel:cancel:${event.id}`)
         .setLabel("Cancel")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`event-panel:cancel-delete:${event.id}`)
+        .setLabel("Cancel and Delete")
         .setStyle(ButtonStyle.Danger),
     ),
   );
@@ -438,12 +647,24 @@ export function buildPlanningComponents(
       );
     }
   } else if (event.status === PlannedEventStatus.APPROVED) {
+    const approvedButtons: ButtonBuilder[] = [];
+    if (isExportedEventInCurrentWeek(event)) {
+      approvedButtons.push(
+        new ButtonBuilder()
+          .setCustomId(`event:edit:${event.id}`)
+          .setLabel("Edit")
+          .setStyle(ButtonStyle.Secondary),
+      );
+    }
+    approvedButtons.push(
+      new ButtonBuilder()
+        .setCustomId(`event:cancel:${event.id}`)
+        .setLabel("Cancel Event")
+        .setStyle(ButtonStyle.Danger),
+    );
     rows.push(
       new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`event:cancel:${event.id}`)
-          .setLabel("Cancel Event")
-          .setStyle(ButtonStyle.Danger),
+        ...approvedButtons,
       ),
     );
 
@@ -486,6 +707,38 @@ export async function canManageEventDraft(
     return true;
   }
   return false;
+}
+
+/** Host/behalf, or event leads (`events.manage.approve`) — used by panel modals/selects. */
+export async function canEditEventPanel(
+  userId: string,
+  member: GuildMember | null,
+  eventHostId: string,
+): Promise<boolean> {
+  if (await canManageEventDraft(userId, member, eventHostId)) {
+    return true;
+  }
+  return !!(member && (await hasNode(member, "events.manage.approve")));
+}
+
+/**
+ * Atomic where-clause for panel field writes: DRAFT, or a fresh exported-edit session.
+ * Use with updateMany; treat count === 0 as no-longer-editable.
+ */
+export function editablePanelUpdateWhere(eventId: number) {
+  const sessionFloor = new Date(Date.now() - EXPORTED_EDIT_SESSION_TTL_MS);
+  return {
+    id: eventId,
+    OR: [
+      { status: PlannedEventStatus.DRAFT },
+      {
+        status: PlannedEventStatus.APPROVED,
+        discordEventId: { not: null },
+        editSnapshot: { not: Prisma.DbNull },
+        editStartedAt: { gte: sessionFloor },
+      },
+    ],
+  };
 }
 
 export async function refreshDraftPanel(
@@ -697,6 +950,9 @@ export async function submitEventForApproval(
       denialReason: null,
       reviewedById: null,
       planningMessageId: messageId,
+      editResumeStatus: null,
+      editSnapshot: Prisma.DbNull,
+      editStartedAt: null,
     },
   });
   if (submitted.count === 0) {
@@ -829,11 +1085,39 @@ export async function beginEventEditForHost(
   if (!event || event.guildId !== guild.id) {
     return { success: false, error: "Event not found." };
   }
+
+  if (isExportedEventInCurrentWeek(event)) {
+    if (!(await canEditExportedEvent(userId, member, event))) {
+      return {
+        success: false,
+        error:
+          "Only the event host or event leads can edit this exported event.",
+      };
+    }
+    const cleaned = await cleanupStaleExportedEditSession(event);
+    if (cleaned.editSnapshot != null && isExportedEditSessionFresh(cleaned)) {
+      return { success: true };
+    }
+    await prisma.plannedEvent.update({
+      where: { id: eventId },
+      data: {
+        editResumeStatus: PlannedEventStatus.APPROVED,
+        editSnapshot: buildEventEditSnapshot(cleaned) as unknown as Prisma.InputJsonValue,
+        editStartedAt: new Date(),
+      },
+    });
+    return { success: true };
+  }
+
   if (
     event.status !== PlannedEventStatus.PENDING &&
     event.status !== PlannedEventStatus.DENIED
   ) {
-    return { success: false, error: "Only pending or denied events can be edited." };
+    return {
+      success: false,
+      error:
+        "Only pending, denied, or current-week exported events can be edited.",
+    };
   }
   if (!(await canManageEventDraft(userId, member, event.hostId))) {
     return {
@@ -859,6 +1143,23 @@ export async function beginEventEditForHost(
   return { success: true };
 }
 
+export async function canEditExportedEvent(
+  userId: string,
+  member: GuildMember | null,
+  event: PlannedEvent,
+): Promise<boolean> {
+  if (!isExportedEventInCurrentWeek(event)) {
+    return false;
+  }
+  if (userId === event.hostId) {
+    return true;
+  }
+  if (member && (await hasNode(member, "events.manage.approve"))) {
+    return true;
+  }
+  return false;
+}
+
 export async function reopenUnapprovedEventForEdit(
   eventId: number,
   guildId: string,
@@ -877,6 +1178,7 @@ export async function reopenUnapprovedEventForEdit(
     where: { id: eventId },
     data: {
       status: PlannedEventStatus.DRAFT,
+      editResumeStatus: event.status,
       pendingCoHostUserId: null,
     },
   });
@@ -887,6 +1189,144 @@ export async function reopenDeniedEventForEdit(
   guildId: string,
 ): Promise<PlannedEvent | null> {
   return reopenUnapprovedEventForEdit(eventId, guildId);
+}
+
+/** Non-destructive Cancel on the draft/edit panel. */
+export async function abortEventPanelEdit(
+  eventId: number,
+  guild: Guild,
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+  if (!event || !assertEventInGuild(event, guild.id)) {
+    return { success: false, error: "Event not found." };
+  }
+
+  if (event.status === PlannedEventStatus.APPROVED && event.editSnapshot != null) {
+    const snapshot = parseEventEditSnapshot(event.editSnapshot);
+    if (!snapshot) {
+      return { success: false, error: "Could not restore event snapshot." };
+    }
+    const restored = await restoreEventFromSnapshot(event, snapshot);
+    await updatePlanningChannelMessage(guild, restored);
+    return { success: true, message: "Editing cancelled." };
+  }
+
+  if (
+    event.status === PlannedEventStatus.DRAFT &&
+    (event.editResumeStatus === PlannedEventStatus.PENDING ||
+      event.editResumeStatus === PlannedEventStatus.DENIED)
+  ) {
+    const resumeStatus = event.editResumeStatus;
+    const restored = await prisma.plannedEvent.update({
+      where: { id: eventId },
+      data: {
+        status: resumeStatus,
+        editResumeStatus: null,
+        editSnapshot: Prisma.DbNull,
+        editStartedAt: null,
+      },
+    });
+    await updatePlanningChannelMessage(guild, restored);
+    return { success: true, message: "Editing cancelled." };
+  }
+
+  if (event.status === PlannedEventStatus.DRAFT) {
+    return {
+      success: true,
+      message:
+        "Panel closed. The draft was kept — use Cancel and Delete to remove it.",
+    };
+  }
+
+  return { success: false, error: "This event cannot be cancelled from the panel." };
+}
+
+/** Cancel and Delete from the draft/edit panel. */
+export async function cancelAndDeleteFromPanel(
+  eventId: number,
+  guild: Guild,
+  userId: string,
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+  if (!event || !assertEventInGuild(event, guild.id)) {
+    return { success: false, error: "Event not found." };
+  }
+
+  if (event.status === PlannedEventStatus.APPROVED && event.discordEventId) {
+    const result = await cancelPlannedEvent(eventId, guild, userId);
+    if (!result.success) {
+      return result;
+    }
+    return {
+      success: true,
+      message: "Event cancelled and deleted.",
+    };
+  }
+
+  if (event.status !== PlannedEventStatus.DRAFT) {
+    return { success: false, error: "Only draft or exported events can be deleted from this panel." };
+  }
+
+  const deleted = await prisma.plannedEvent.deleteMany({
+    where: {
+      id: eventId,
+      status: PlannedEventStatus.DRAFT,
+    },
+  });
+  if (deleted.count === 0) {
+    return { success: false, error: "This event is no longer editable." };
+  }
+  return { success: true, message: "Draft cancelled and deleted." };
+}
+
+/** Save changes for an exported APPROVED event and sync Discord. */
+export async function saveExportedEventChanges(
+  eventId: number,
+  guild: Guild,
+): Promise<{ success: boolean; error?: string }> {
+  const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+  if (!event || !assertEventInGuild(event, guild.id)) {
+    return { success: false, error: "Event not found." };
+  }
+  if (
+    event.status !== PlannedEventStatus.APPROVED ||
+    !event.discordEventId ||
+    event.editSnapshot == null
+  ) {
+    return { success: false, error: "This event is not open for exported editing." };
+  }
+
+  const { results } = await runEventValidation(event, guild);
+  if (hasBlockingFailures(results)) {
+    return {
+      success: false,
+      error: "Blocking validation failures must be resolved before saving.",
+    };
+  }
+
+  if (await jrHostMissingFullCoHost(guild, event.hostId, event.coHostId)) {
+    return {
+      success: false,
+      error: "Jr. Host events require a full Host as co-host.",
+    };
+  }
+
+  const sync = await updateDiscordScheduledEvent(guild, event);
+  if (!sync.success) {
+    return sync;
+  }
+
+  const updated = await prisma.plannedEvent.update({
+    where: { id: eventId },
+    data: {
+      editResumeStatus: null,
+      editSnapshot: Prisma.DbNull,
+      editStartedAt: null,
+      forceOverride: false,
+    },
+  });
+  await updatePlanningChannelMessage(guild, updated);
+  return { success: true };
 }
 
 export function getUpcomingWeekRange(now = new Date()): { start: Date; end: Date } {
@@ -1167,27 +1607,34 @@ export { formatScheduleMessage } from "./eventScheduleFormatter.js";
 export async function createDiscordScheduledEvent(
   guild: Guild,
   event: PlannedEvent,
-  location: string,
   durationMinutes: number,
+  /** Already-resolved voice channel id, or null for External VRChat. */
+  resolvedVoiceChannelId: string | null,
 ): Promise<{ success: boolean; discordEventId?: string; error?: string }> {
   try {
     const startMs = event.startTime.getTime();
     const endMs = startMs + durationMinutes * 60 * 1000;
-    const coHostLine = event.coHostId
-      ? `Co-host: <@${event.coHostId}>`
-      : event.coHostOpen
-        ? "Co-host: Open"
-        : "Co-host: None";
+    const description = buildDiscordEventDescription(event);
 
-    const scheduled = await guild.scheduledEvents.create({
-      name: event.title,
-      scheduledStartTime: new Date(startMs),
-      scheduledEndTime: new Date(endMs),
-      privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-      entityType: GuildScheduledEventEntityType.External,
-      entityMetadata: { location },
-      description: `Host: <@${event.hostId}>\n${coHostLine}\nDuty: ${dutyLabel(event.duty)}`,
-    });
+    const scheduled = resolvedVoiceChannelId
+      ? await guild.scheduledEvents.create({
+          name: event.title,
+          scheduledStartTime: new Date(startMs),
+          scheduledEndTime: new Date(endMs),
+          privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+          entityType: GuildScheduledEventEntityType.Voice,
+          channel: resolvedVoiceChannelId,
+          description,
+        })
+      : await guild.scheduledEvents.create({
+          name: event.title,
+          scheduledStartTime: new Date(startMs),
+          scheduledEndTime: new Date(endMs),
+          privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+          entityType: GuildScheduledEventEntityType.External,
+          entityMetadata: { location: DEFAULT_EXTERNAL_EVENT_LOCATION },
+          description,
+        });
 
     const updated = await prisma.plannedEvent.updateMany({
       where: { id: event.id, discordEventId: null },
@@ -1211,6 +1658,59 @@ export async function createDiscordScheduledEvent(
   }
 }
 
+export async function updateDiscordScheduledEvent(
+  guild: Guild,
+  event: PlannedEvent,
+): Promise<{ success: boolean; error?: string }> {
+  if (!event.discordEventId) {
+    return { success: false, error: "Event has no Discord scheduled event." };
+  }
+
+  try {
+    const settings = await prisma.guildSettings.findUnique({
+      where: { guildId: guild.id },
+    });
+    const voiceChannelId = await resolveEventLocationChannelId(
+      guild,
+      settings?.eventLocationChannelId,
+    );
+
+    const scheduled = await guild.scheduledEvents.fetch(event.discordEventId);
+    const startMs = event.startTime.getTime();
+    const endMs = startMs + event.durationMinutes * 60 * 1000;
+    const description = buildDiscordEventDescription(event);
+
+    if (voiceChannelId) {
+      await scheduled.edit({
+        name: event.title,
+        scheduledStartTime: new Date(startMs),
+        scheduledEndTime: new Date(endMs),
+        description,
+        channel: voiceChannelId,
+        entityType: GuildScheduledEventEntityType.Voice,
+        entityMetadata: null,
+      } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
+    } else {
+      await scheduled.edit({
+        name: event.title,
+        scheduledStartTime: new Date(startMs),
+        scheduledEndTime: new Date(endMs),
+        description,
+        entityType: GuildScheduledEventEntityType.External,
+        entityMetadata: { location: DEFAULT_EXTERNAL_EVENT_LOCATION },
+        channel: null,
+      } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
 export interface ExportApprovedEventsOptions {
   /** When true, skip posting to schedule channels and return templates for manual posting. */
   manualPost?: boolean;
@@ -1221,10 +1721,11 @@ export interface ExportApprovedEventsOptions {
 export function buildManualExportTemplates(
   events: PlannedEvent[],
   exportSettings: ScheduleExportSettings,
+  guildId: string,
 ): { onDuty: string; offDuty: string } {
   return {
-    onDuty: formatOnDutyScheduleMessage(events, exportSettings),
-    offDuty: formatOffDutyScheduleMessage(events, exportSettings),
+    onDuty: formatOnDutyScheduleMessage(events, exportSettings, guildId),
+    offDuty: formatOffDutyScheduleMessage(events, exportSettings, guildId),
   };
 }
 
@@ -1306,7 +1807,10 @@ export async function exportApprovedEvents(
     };
   }
 
-  const location = settings?.eventDefaultLocation ?? "See event description";
+  const resolvedVoiceChannelId = await resolveEventLocationChannelId(
+    guild,
+    settings?.eventLocationChannelId ?? null,
+  );
 
   const results: {
     eventId: number;
@@ -1320,8 +1824,8 @@ export async function exportApprovedEvents(
     const result = await createDiscordScheduledEvent(
       guild,
       event,
-      location,
       event.durationMinutes,
+      resolvedVoiceChannelId,
     );
     results.push({
       eventId: event.id,
@@ -1372,7 +1876,7 @@ export async function exportApprovedEvents(
   );
 
   const manualTemplates = manualPost
-    ? buildManualExportTemplates(events, exportSettings)
+    ? buildManualExportTemplates(events, exportSettings, guild.id)
     : undefined;
 
   if (!manualPost) {
@@ -1381,7 +1885,11 @@ export async function exportApprovedEvents(
       if (!onDutyChannel?.isTextBased()) {
         return { success: false, error: "On-duty schedule channel is invalid." };
       }
-      const onDutyText = formatOnDutyScheduleMessage(events, exportSettings);
+      const onDutyText = formatOnDutyScheduleMessage(
+        events,
+        exportSettings,
+        guild.id,
+      );
       await onDutyChannel.send({ content: onDutyText });
     }
 
@@ -1390,7 +1898,11 @@ export async function exportApprovedEvents(
       if (!offDutyChannel?.isTextBased()) {
         return { success: false, error: "Off-duty schedule channel is invalid." };
       }
-      const offDutyText = formatOffDutyScheduleMessage(events, exportSettings);
+      const offDutyText = formatOffDutyScheduleMessage(
+        events,
+        exportSettings,
+        guild.id,
+      );
       await offDutyChannel.send({ content: offDutyText });
     }
   }

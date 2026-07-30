@@ -16,17 +16,9 @@ const FALLBACK_DURATION_MINUTES = 120;
 export class SettingsEventsDefaultsCommand {
   @Slash({
     name: "event-defaults",
-    description:
-      "Set default location and duration for exported Discord scheduled events",
+    description: "Set default duration for planned events",
   })
   async eventDefaults(
-    @SlashOption({
-      name: "location",
-      description: "Default location for exported external Discord events",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-    })
-    location: string | null,
     @SlashOption({
       name: "duration-minutes",
       description: "Default event duration in minutes (fallback: 120)",
@@ -47,43 +39,34 @@ export class SettingsEventsDefaultsCommand {
         return;
       }
 
-      if (location === null && durationMinutes === null) {
+      if (durationMinutes === null) {
         const settings = await prisma.guildSettings.findUnique({
           where: { guildId: interaction.guildId },
         });
 
-        const currentLocation =
-          settings?.eventDefaultLocation ?? "*(not set)*";
         const currentDuration =
           settings?.eventDefaultDurationMinutes ?? FALLBACK_DURATION_MINUTES;
+        const locationChannel = settings?.eventLocationChannelId
+          ? `<#${settings.eventLocationChannelId}>`
+          : "*(none — External VRChat)*";
 
         await interaction.reply({
           content:
             `ℹ️ Current event defaults:\n` +
-            `• Location: ${currentLocation}\n` +
-            `• Duration: **${currentDuration} minutes**`,
+            `• Duration: **${currentDuration} minutes**\n` +
+            `• Location channel: ${locationChannel}\n` +
+            `_(Set location with \`/settings events location-channel\`)_`,
           flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
-      const update: {
-        eventDefaultLocation?: string;
-        eventDefaultDurationMinutes?: number;
-      } = {};
-      if (location !== null) {
-        update.eventDefaultLocation = location;
-      }
-      if (durationMinutes !== null) {
-        update.eventDefaultDurationMinutes = durationMinutes;
-      }
-
       const settings = await prisma.guildSettings.upsert({
         where: { guildId: interaction.guildId },
-        update,
+        update: { eventDefaultDurationMinutes: durationMinutes },
         create: {
           guildId: interaction.guildId,
-          ...update,
+          eventDefaultDurationMinutes: durationMinutes,
         },
       });
 
@@ -96,7 +79,6 @@ export class SettingsEventsDefaultsCommand {
       await interaction.reply({
         content:
           `✅ Event defaults updated:\n` +
-          `• Location: ${settings.eventDefaultLocation ?? "*(not set)*"}\n` +
           `• Duration: **${settings.eventDefaultDurationMinutes ?? FALLBACK_DURATION_MINUTES} minutes**`,
         flags: MessageFlags.Ephemeral,
       });

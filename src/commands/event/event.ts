@@ -48,8 +48,14 @@ import {
   DRAFT_PLACEHOLDER_TITLE,
   resolveDraftStartTime,
   resolveExportWeekRange,
+  isExportedEventInCurrentWeek,
 } from "../../managers/events/eventPlanningManager.js";
-import { respondPlannedEventAutocomplete } from "../../managers/events/eventAutocomplete.js";
+import {
+  filterEventsByAutocompleteQuery,
+  formatEventAutocompleteLabel,
+  resolveHostLabels,
+  respondPlannedEventAutocomplete,
+} from "../../managers/events/eventAutocomplete.js";
 import {
   getScheduleExportSettings,
   rewriteAnnouncementTimestampsToFull,
@@ -62,14 +68,57 @@ import {
 } from "../../managers/events/eventType.js";
 import { normalizeEventTitle } from "../../managers/events/eventDraftDefaults.js";
 import type { ExportWeekChoice } from "../../managers/events/eventWeek.js";
+import { getCurrentEventWeekRange } from "../../managers/events/eventWeek.js";
 import { parseDiscordMessageLink } from "../../utility/generalUtils.js";
 import { loggers } from "../../utility/logger.js";
+import {
+  getGuildCalendarFeedUrl,
+  getHostCalendarFeedUrl,
+} from "../../managers/events/discordEventCalendarFeed.js";
 
 @Discord()
 @SlashGroup({
   name: "event",
   description: "Event scheduling commands",
 })
+@SlashGroup("event")
+@Guard(GuildGuard)
+export class EventCalendarCommand {
+  @Slash({
+    name: "calendar",
+    description:
+      "Get Google Calendar / iCal links for all Shield events and your hosted events",
+  })
+  @Guard(PermissionNodeGuard("events.command.calendar"))
+  async calendar(interaction: CommandInteraction): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const guildUrl = getGuildCalendarFeedUrl(interaction.guildId);
+    const hostUrl = getHostCalendarFeedUrl(
+      interaction.guildId,
+      interaction.user.id,
+    );
+    await interaction.reply({
+      content:
+        `📅 **Calendar subscribe links**\n\n` +
+        `**All Shield events** (Discord Events tab)\n` +
+        `\`${guildUrl}\`\n\n` +
+        `**Your hosted events** (pending + approved, where you are the host)\n` +
+        `\`${hostUrl}\`\n\n` +
+        `Add each as a separate calendar in Google Calendar → Other calendars → From URL.\n` +
+        `Google refreshes subscribed calendars on its own schedule (often hours).`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+@Discord()
 @SlashGroup("event")
 @Guard(GuildGuard, RequireTimezoneGuard)
 export class EventCommands {
@@ -310,7 +359,7 @@ export class EventCommands {
       interaction.guildId,
       settings?.eventPlanningChannelId,
     );
-    const preview = formatScheduleMessage(events, exportSettings);
+    const preview = formatScheduleMessage(events, exportSettings, interaction.guildId);
 
     const descriptionParts = [
       `**Week:** ${weekRange.label} (\`${weekRange.choice}\`)`,
@@ -330,14 +379,14 @@ export class EventCommands {
     if (pending.length > 0) {
       embed.setFooter({
         text: manualPost
-          ? "Events will be locked on confirm. Pending events will be denied. You will receive copy-paste templates."
-          : "Exported events are locked. Remaining pending events will be denied on confirm.",
+          ? "Events get Discord scheduled events on confirm. Pending events will be denied. You will receive copy-paste templates. Current-week exports remain editable."
+          : "Events get Discord scheduled events on confirm. Remaining pending events will be denied. Current-week exports remain editable.",
       });
     } else {
       embed.setFooter({
         text: manualPost
-          ? "Events will be locked on confirm. You will receive copy-paste templates to post yourself."
-          : "Exported events are locked and cannot be edited.",
+          ? "Discord scheduled events will be created. You will receive copy-paste templates. Current-week exports remain editable."
+          : "Discord scheduled events will be created. Current-week exported events can still be edited if adjustments are needed.",
       });
     }
 
@@ -447,7 +496,8 @@ export class EventCommands {
 
   @Slash({
     name: "edit",
-    description: "Reopen a pending or denied event for editing (host only)",
+    description:
+      "Edit a pending/denied event, or a current-week exported event",
   })
   @Guard(PermissionNodeGuard("events.command.edit"))
   async edit(
@@ -735,18 +785,67 @@ export class EventCommands {
   }
 
   async autocompleteEditEvent(interaction: AutocompleteInteraction): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.respond([]);
+      return;
+    }
+
     const member = await resolveGuildMember(interaction);
     const canBehalf = member
       ? await hasNode(member, "events.schedule.behalf")
       : false;
-    await respondPlannedEventAutocomplete(
-      interaction,
-      [PlannedEventStatus.PENDING, PlannedEventStatus.DENIED],
-      {
-        restrictToCallerHost: true,
-        leadCanSeeAll: true,
-        isLead: canBehalf,
+    const isLead = member
+      ? await hasNode(member, "events.manage.approve")
+      : false;
+    const restrict = !(canBehalf || isLead);
+    const week = getCurrentEventWeekRange();
+
+    const events = await prisma.plannedEvent.findMany({
+      where: {
+        guildId: interaction.guildId,
+        OR: [
+          {
+            status: {
+              in: [PlannedEventStatus.PENDING, PlannedEventStatus.DENIED],
+            },
+            ...(restrict ? { hostId: interaction.user.id } : {}),
+          },
+          {
+            status: PlannedEventStatus.APPROVED,
+            discordEventId: { not: null },
+            startTime: { gte: week.start, lt: week.end },
+            ...(restrict ? { hostId: interaction.user.id } : {}),
+          },
+        ],
       },
+      orderBy: { startTime: "asc" },
+    });
+
+    const editable = events.filter(
+      (e) =>
+        e.status === PlannedEventStatus.PENDING ||
+        e.status === PlannedEventStatus.DENIED ||
+        isExportedEventInCurrentWeek(e),
+    );
+
+    const focused = interaction.options.getFocused();
+    const hostLabels = await resolveHostLabels(
+      interaction.guild,
+      editable.map((e) => e.hostId),
+    );
+    const filtered = filterEventsByAutocompleteQuery(editable, focused, hostLabels);
+    const sorted = [...filtered].sort(
+      (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+    );
+
+    await interaction.respond(
+      sorted.slice(0, 25).map((event) => ({
+        name: formatEventAutocompleteLabel(
+          event,
+          hostLabels.get(event.hostId) ?? "Unknown host",
+        ),
+        value: event.id,
+      })),
     );
   }
 

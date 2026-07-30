@@ -46,8 +46,9 @@ model GuildSettings {
   eventOffDutyPingRoleIds    Json?   // Role IDs pinged at top of off-duty schedule post
   eventPatrolEmojiName       String? // Custom emoji name for patrol events (e.g. EventHosts)
   eventPatrolEmojiId         String? // Custom emoji ID for patrol events
-  eventDefaultLocation       String? // Default location for exported external Discord scheduled events
+  eventDefaultLocation       String? // Legacy; export uses voice channel or External "VRChat"
   eventDefaultDurationMinutes Int? // Default event duration in minutes (null treated as 120 in code)
+  eventLocationChannelId     String? // Voice channel for exported Discord scheduled events (Voice entity)
   // VRChat instance settings
   avatarWorldId              String? // VRChat world ID for avatar world invites (e.g., wrld_xxx)
   // VRChat group settings

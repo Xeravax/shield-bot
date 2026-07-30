@@ -17,6 +17,7 @@ export const EVENT_HOST_COMMAND_NODES = [
   "events.command.edit",
   "events.command.submit",
   "events.command.cancel",
+  "events.command.calendar",
 ] as const;
 
 /**
@@ -134,8 +135,17 @@ export const PERMISSION_NODE_REGISTRY: Record<
         "/event edit-announcement — rewrite a posted schedule announcement to full timestamps",
     },
     { node: "events.command.cancel", description: "/event cancel — cancel own pending/approved events" },
-    { node: "events.command.edit", description: "/event edit — reopen own pending/denied events for editing" },
+    {
+      node: "events.command.edit",
+      description:
+        "/event edit — reopen pending/denied events, or edit current-week exported events",
+    },
     { node: "events.command.submit", description: "/event submit — submit a draft for approval" },
+    {
+      node: "events.command.calendar",
+      description:
+        "/event calendar — get guild + personal host Google Calendar / iCal subscribe URLs",
+    },
     { node: "events.manage.approve", description: "Approve/deny/cancel planned events in the planning channel" },
     { node: "events.schedule.force", description: "Bypass event scheduling rule failures with force" },
     {

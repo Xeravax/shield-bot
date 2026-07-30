@@ -5,6 +5,7 @@ import {
   formatEstMonthDay,
   formatEstWeekdayMonthDay,
 } from "../../utility/estTime.js";
+import { getGuildCalendarFeedUrl } from "./discordEventCalendarFeed.js";
 import { getEventWeekRangeForDate } from "./eventWeek.js";
 import { resolveEventType } from "./eventType.js";
 
@@ -134,6 +135,7 @@ function formatDaySections(
 export function formatOnDutyScheduleMessage(
   events: PlannedEvent[],
   settings: ScheduleExportSettings,
+  guildId?: string,
 ): string {
   const onDuty = events
     .filter((e) => e.duty === EventDuty.ON_DUTY)
@@ -160,12 +162,20 @@ export function formatOnDutyScheduleMessage(
     "That is all our Events Folks! Have an fantastic Week!",
   ];
 
+  if (guildId) {
+    lines.push(
+      "",
+      `Add to Google Calendar: ${getGuildCalendarFeedUrl(guildId)}`,
+    );
+  }
+
   return lines.join("\n").trim();
 }
 
 export function formatOffDutyScheduleMessage(
   events: PlannedEvent[],
   settings: ScheduleExportSettings,
+  guildId?: string,
 ): string {
   const offDuty = events
     .filter((e) => e.duty === EventDuty.OFF_DUTY)
@@ -190,6 +200,13 @@ export function formatOffDutyScheduleMessage(
     }),
   ];
 
+  if (guildId) {
+    lines.push(
+      "",
+      `Add to Google Calendar: ${getGuildCalendarFeedUrl(guildId)}`,
+    );
+  }
+
   return lines.join("\n").trim();
 }
 
@@ -197,10 +214,11 @@ export function formatOffDutyScheduleMessage(
 export function formatScheduleMessage(
   events: PlannedEvent[],
   settings: ScheduleExportSettings = {},
+  guildId?: string,
 ): string {
   const parts = [
-    formatOnDutyScheduleMessage(events, settings),
-    formatOffDutyScheduleMessage(events, settings),
+    formatOnDutyScheduleMessage(events, settings, guildId),
+    formatOffDutyScheduleMessage(events, settings, guildId),
   ].filter((part) => part.length > 0);
 
   if (parts.length === 0) {

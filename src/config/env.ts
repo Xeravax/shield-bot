@@ -21,6 +21,11 @@ const envSchema = z.object({
     .transform((val) => parseInt(val, 10))
     .pipe(z.number().int().min(1).max(65535)),
 
+  PUBLIC_API_BASE_URL: z
+    .string()
+    .url("PUBLIC_API_BASE_URL must be a valid URL")
+    .default("https://api.vrcshield.com"),
+
   ENV: z.enum(["development", "production", "test"]).default("development"),
 
   // Logging Configuration (Optional)
