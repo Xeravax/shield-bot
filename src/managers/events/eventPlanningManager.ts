@@ -15,6 +15,7 @@ import {
   ModalSubmitInteraction,
   UserSelectMenuBuilder,
   UserSelectMenuInteraction,
+  type GuildScheduledEvent,
 } from "discord.js";
 import {
   EventDuty,
@@ -67,11 +68,24 @@ import {
 /** Fixed External location when no voice channel is configured. */
 export const DEFAULT_EXTERNAL_EVENT_LOCATION = "VRChat";
 
+/** Exported edit sessions expire after this long without Save/Cancel. */
+export const EXPORTED_EDIT_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
+
 export function isEventLocked(event: PlannedEvent): boolean {
   return event.discordEventId != null;
 }
 
-/** Drafts, or APPROVED exported events currently open in the edit panel. */
+function isExportedEditSessionFresh(event: PlannedEvent, now = new Date()): boolean {
+  if (event.editSnapshot == null) {
+    return false;
+  }
+  if (!event.editStartedAt) {
+    return false;
+  }
+  return now.getTime() - event.editStartedAt.getTime() <= EXPORTED_EDIT_SESSION_TTL_MS;
+}
+
+/** Drafts, or APPROVED exported events currently open in a fresh edit panel. */
 export function isEventPanelEditable(event: PlannedEvent): boolean {
   if (event.status === PlannedEventStatus.DRAFT) {
     return true;
@@ -79,8 +93,54 @@ export function isEventPanelEditable(event: PlannedEvent): boolean {
   return (
     event.status === PlannedEventStatus.APPROVED &&
     event.discordEventId != null &&
-    event.editSnapshot != null
+    isExportedEditSessionFresh(event)
   );
+}
+
+/**
+ * If an exported edit session is stale, restore the snapshot and clear edit state.
+ * Returns the (possibly restored) event.
+ */
+export async function cleanupStaleExportedEditSession(
+  event: PlannedEvent,
+): Promise<PlannedEvent> {
+  if (
+    event.status !== PlannedEventStatus.APPROVED ||
+    event.editSnapshot == null ||
+    isExportedEditSessionFresh(event)
+  ) {
+    return event;
+  }
+
+  const snapshot = parseEventEditSnapshot(event.editSnapshot);
+  if (!snapshot) {
+    return prisma.plannedEvent.update({
+      where: { id: event.id },
+      data: {
+        editResumeStatus: null,
+        editSnapshot: Prisma.DbNull,
+        editStartedAt: null,
+      },
+    });
+  }
+
+  return prisma.plannedEvent.update({
+    where: { id: event.id },
+    data: {
+      title: snapshot.title,
+      startTime: new Date(snapshot.startTime),
+      hostId: snapshot.hostId,
+      coHostId: snapshot.coHostId,
+      coHostOpen: snapshot.coHostOpen,
+      duty: snapshot.duty,
+      eventType: snapshot.eventType,
+      durationMinutes: snapshot.durationMinutes,
+      forceOverride: snapshot.forceOverride,
+      editResumeStatus: null,
+      editSnapshot: Prisma.DbNull,
+      editStartedAt: null,
+    },
+  });
 }
 
 export function isExportedEventInCurrentWeek(
@@ -641,6 +701,18 @@ export async function canManageEventDraft(
   return false;
 }
 
+/** Host/behalf, or event leads (`events.manage.approve`) — used by panel modals/selects. */
+export async function canEditEventPanel(
+  userId: string,
+  member: GuildMember | null,
+  eventHostId: string,
+): Promise<boolean> {
+  if (await canManageEventDraft(userId, member, eventHostId)) {
+    return true;
+  }
+  return !!(member && (await hasNode(member, "events.manage.approve")));
+}
+
 export async function refreshDraftPanel(
   eventId: number,
   guild: Guild | null,
@@ -852,6 +924,7 @@ export async function submitEventForApproval(
       planningMessageId: messageId,
       editResumeStatus: null,
       editSnapshot: Prisma.DbNull,
+      editStartedAt: null,
     },
   });
   if (submitted.count === 0) {
@@ -993,14 +1066,16 @@ export async function beginEventEditForHost(
           "Only the event host or event leads can edit this exported event.",
       };
     }
-    if (event.editSnapshot != null) {
+    const cleaned = await cleanupStaleExportedEditSession(event);
+    if (cleaned.editSnapshot != null && isExportedEditSessionFresh(cleaned)) {
       return { success: true };
     }
     await prisma.plannedEvent.update({
       where: { id: eventId },
       data: {
         editResumeStatus: PlannedEventStatus.APPROVED,
-        editSnapshot: buildEventEditSnapshot(event) as unknown as Prisma.InputJsonValue,
+        editSnapshot: buildEventEditSnapshot(cleaned) as unknown as Prisma.InputJsonValue,
+        editStartedAt: new Date(),
       },
     });
     return { success: true };
@@ -1117,6 +1192,7 @@ export async function abortEventPanelEdit(
         forceOverride: snapshot.forceOverride,
         editResumeStatus: null,
         editSnapshot: Prisma.DbNull,
+        editStartedAt: null,
       },
     });
     await updatePlanningChannelMessage(guild, restored);
@@ -1135,6 +1211,7 @@ export async function abortEventPanelEdit(
         status: resumeStatus,
         editResumeStatus: null,
         editSnapshot: Prisma.DbNull,
+        editStartedAt: null,
       },
     });
     await updatePlanningChannelMessage(guild, restored);
@@ -1232,6 +1309,7 @@ export async function saveExportedEventChanges(
     data: {
       editResumeStatus: null,
       editSnapshot: Prisma.DbNull,
+      editStartedAt: null,
       forceOverride: false,
     },
   });

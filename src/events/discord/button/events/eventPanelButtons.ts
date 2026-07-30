@@ -13,13 +13,16 @@ import {
   abortEventPanelEdit,
   canManageEventDraft,
   cancelAndDeleteFromPanel,
+  cleanupStaleExportedEditSession,
   editDraftPanelMessage,
+  isEventLocked,
   isEventPanelEditable,
   refreshDraftPanel,
   runEventValidation,
   saveExportedEventChanges,
   submitEventForApproval,
 } from "../../../../managers/events/eventPlanningManager.js";
+import type { PlannedEvent } from "../../../../generated/prisma/client.js";
 import {
   defaultDurationMinutes,
   nextDurationMinutes,
@@ -46,25 +49,20 @@ const EVENT_PANEL_CANCEL_DELETE_PATTERN = /^event-panel:cancel-delete:(\d+)$/;
 
 async function denyUnlessCanManageDraft(
   interaction: ButtonInteraction,
-  eventHostId: string,
+  event: PlannedEvent,
   action: "edit" | "submit" | "cancel" = "edit",
 ): Promise<boolean> {
   const member = await resolveGuildMember(interaction);
-  if (await canManageEventDraft(interaction.user.id, member, eventHostId)) {
+  if (await canManageEventDraft(interaction.user.id, member, event.hostId)) {
     return true;
   }
-  // Exported-edit openers may be event leads (manage.approve) without behalf.
+  // Event leads may act on an open exported-edit session without behalf.
+  const exportedEditSession =
+    isEventLocked(event) && event.editSnapshot != null;
   if (
+    exportedEditSession &&
     member &&
-    (await hasNode(member, "events.manage.approve")) &&
-    action === "edit"
-  ) {
-    return true;
-  }
-  if (
-    member &&
-    (await hasNode(member, "events.manage.approve")) &&
-    (action === "cancel" || action === "submit")
+    (await hasNode(member, "events.manage.approve"))
   ) {
     return true;
   }
@@ -83,8 +81,17 @@ async function denyUnlessCanManageDraft(
 }
 
 async function loadEditableEvent(eventId: number) {
-  const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-  if (!event || !isEventPanelEditable(event)) {
+  let event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+  if (!event) {
+    return null;
+  }
+  if (
+    event.status === PlannedEventStatus.APPROVED &&
+    event.editSnapshot != null
+  ) {
+    event = await cleanupStaleExportedEditSession(event);
+  }
+  if (!isEventPanelEditable(event)) {
     return null;
   }
   return event;
@@ -107,7 +114,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event))) {
       return;
     }
 
@@ -141,7 +148,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event))) {
       return;
     }
 
@@ -180,7 +187,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event))) {
       return;
     }
 
@@ -214,7 +221,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event))) {
       return;
     }
 
@@ -242,7 +249,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event))) {
       return;
     }
 
@@ -275,7 +282,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event))) {
       return;
     }
 
@@ -307,7 +314,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event))) {
       return;
     }
 
@@ -347,7 +354,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId, "submit"))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event, "submit"))) {
       return;
     }
 
@@ -408,7 +415,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId, "submit"))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event, "submit"))) {
       return;
     }
 
@@ -451,7 +458,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId, "cancel"))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event, "cancel"))) {
       return;
     }
 
@@ -496,7 +503,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event.hostId, "cancel"))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event, "cancel"))) {
       return;
     }
 

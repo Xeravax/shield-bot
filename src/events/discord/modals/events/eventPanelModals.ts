@@ -7,7 +7,7 @@ import {
   hasStoredTimezone,
 } from "../../../../utility/userPreferences.js";
 import {
-  canManageEventDraft,
+  canEditEventPanel,
   editDraftPanelMessage,
   isEventPanelEditable,
   refreshDraftPanel,
@@ -16,21 +16,9 @@ import { loggers } from "../../../../utility/logger.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
 import { resolveGuildMember } from "../../../../utility/guards.js";
 import { normalizeEventTitle } from "../../../../managers/events/eventDraftDefaults.js";
-import { hasNode } from "../../../../utility/permissionNodes.js";
 
 const EVENT_MODAL_TITLE_PATTERN = /^event-modal:title:(\d+)$/;
 const EVENT_MODAL_TIME_PATTERN = /^event-modal:time:(\d+)$/;
-
-async function canEditPanel(
-  userId: string,
-  member: Awaited<ReturnType<typeof resolveGuildMember>>,
-  hostId: string,
-): Promise<boolean> {
-  if (await canManageEventDraft(userId, member, hostId)) {
-    return true;
-  }
-  return !!(member && (await hasNode(member, "events.manage.approve")));
-}
 
 @Discord()
 export class EventPanelModalHandlers {
@@ -66,7 +54,7 @@ export class EventPanelModalHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canEditPanel(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditEventPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
@@ -116,7 +104,7 @@ export class EventPanelModalHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canEditPanel(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditEventPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",

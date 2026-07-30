@@ -2,7 +2,7 @@ import { MessageFlags, UserSelectMenuInteraction } from "discord.js";
 import { Discord, SelectMenuComponent } from "discordx";
 import { prisma } from "../../../../main.js";
 import {
-  canManageEventDraft,
+  canEditEventPanel,
   editDraftPanelMessage,
   isEventPanelEditable,
   refreshDraftPanel,
@@ -13,17 +13,6 @@ import { resolveGuildMember } from "../../../../utility/guards.js";
 
 const EVENT_PANEL_HOST_PATTERN = /^event-panel-select:host:(\d+)$/;
 const EVENT_PANEL_COHOST_PATTERN = /^event-panel-select:cohost:(\d+)$/;
-
-async function canEditPanel(
-  userId: string,
-  member: Awaited<ReturnType<typeof resolveGuildMember>>,
-  hostId: string,
-): Promise<boolean> {
-  if (await canManageEventDraft(userId, member, hostId)) {
-    return true;
-  }
-  return !!(member && (await hasNode(member, "events.manage.approve")));
-}
 
 @Discord()
 export class EventPanelSelectHandlers {
@@ -52,7 +41,7 @@ export class EventPanelSelectHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canEditPanel(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditEventPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
@@ -101,7 +90,7 @@ export class EventPanelSelectHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canEditPanel(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditEventPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
