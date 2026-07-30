@@ -15,6 +15,7 @@ import {
   cancelAndDeleteFromPanel,
   cleanupStaleExportedEditSession,
   editDraftPanelMessage,
+  editablePanelUpdateWhere,
   isEventLocked,
   isEventPanelEditable,
   refreshDraftPanel,
@@ -50,7 +51,7 @@ const EVENT_PANEL_CANCEL_DELETE_PATTERN = /^event-panel:cancel-delete:(\d+)$/;
 async function denyUnlessCanManageDraft(
   interaction: ButtonInteraction,
   event: PlannedEvent,
-  action: "edit" | "submit" | "cancel" = "edit",
+  action: "edit" | "submit" | "save" | "cancel" = "edit",
 ): Promise<boolean> {
   const member = await resolveGuildMember(interaction);
   if (await canManageEventDraft(interaction.user.id, member, event.hostId)) {
@@ -70,6 +71,8 @@ async function denyUnlessCanManageDraft(
     edit: "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
     submit:
       "❌ Only the event host (or someone with `events.schedule.behalf`) can submit this event.",
+    save:
+      "❌ Only the event host (or someone with `events.schedule.behalf`) can save this event.",
     cancel:
       "❌ Only the event host (or someone with `events.schedule.behalf`) can cancel this draft.",
   };
@@ -195,13 +198,20 @@ export class EventPanelButtonHandlers {
       event.duty === EventDuty.ON_DUTY ? EventDuty.OFF_DUTY : EventDuty.ON_DUTY;
 
     await interaction.deferUpdate();
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const updated = await prisma.plannedEvent.updateMany({
+      where: editablePanelUpdateWhere(eventId),
       data: {
         duty: newDuty,
         durationMinutes: defaultDurationMinutes(newDuty),
       },
     });
+    if (updated.count === 0) {
+      await interaction.followUp({
+        content: "❌ This event is no longer editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -226,10 +236,17 @@ export class EventPanelButtonHandlers {
     }
 
     await interaction.deferUpdate();
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const updated = await prisma.plannedEvent.updateMany({
+      where: editablePanelUpdateWhere(eventId),
       data: { eventType: nextEventType(event.eventType) },
     });
+    if (updated.count === 0) {
+      await interaction.followUp({
+        content: "❌ This event is no longer editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -254,12 +271,19 @@ export class EventPanelButtonHandlers {
     }
 
     await interaction.deferUpdate();
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const updated = await prisma.plannedEvent.updateMany({
+      where: editablePanelUpdateWhere(eventId),
       data: {
         durationMinutes: nextDurationMinutes(event.durationMinutes, event.duty),
       },
     });
+    if (updated.count === 0) {
+      await interaction.followUp({
+        content: "❌ This event is no longer editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -288,13 +312,20 @@ export class EventPanelButtonHandlers {
 
     const coHostOpen = !event.coHostOpen;
     await interaction.deferUpdate();
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const updated = await prisma.plannedEvent.updateMany({
+      where: editablePanelUpdateWhere(eventId),
       data: {
         coHostOpen,
         ...(coHostOpen ? { coHostId: null } : {}),
       },
     });
+    if (updated.count === 0) {
+      await interaction.followUp({
+        content: "❌ This event is no longer editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -331,10 +362,17 @@ export class EventPanelButtonHandlers {
     }
 
     await interaction.deferUpdate();
-    await prisma.plannedEvent.update({
-      where: { id: eventId },
+    const updated = await prisma.plannedEvent.updateMany({
+      where: editablePanelUpdateWhere(eventId),
       data: { forceOverride: enabling },
     });
+    if (updated.count === 0) {
+      await interaction.followUp({
+        content: "❌ This event is no longer editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -415,7 +453,7 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (!(await denyUnlessCanManageDraft(interaction, event, "submit"))) {
+    if (!(await denyUnlessCanManageDraft(interaction, event, "save"))) {
       return;
     }
 

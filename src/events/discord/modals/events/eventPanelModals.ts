@@ -9,6 +9,7 @@ import {
 import {
   canEditEventPanel,
   editDraftPanelMessage,
+  editablePanelUpdateWhere,
   isEventPanelEditable,
   refreshDraftPanel,
 } from "../../../../managers/events/eventPlanningManager.js";
@@ -66,10 +67,17 @@ export class EventPanelModalHandlers {
     await interaction.deferUpdate();
 
     try {
-      await prisma.plannedEvent.update({
-        where: { id: eventId },
+      const updated = await prisma.plannedEvent.updateMany({
+        where: editablePanelUpdateWhere(eventId),
         data: { title },
       });
+      if (updated.count === 0) {
+        await interaction.followUp({
+          content: "❌ This event is no longer editable.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
 
       const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
       await editDraftPanelMessage(interaction, embed, components);
@@ -140,10 +148,17 @@ export class EventPanelModalHandlers {
     await interaction.deferUpdate();
 
     try {
-      await prisma.plannedEvent.update({
-        where: { id: eventId },
+      const updated = await prisma.plannedEvent.updateMany({
+        where: editablePanelUpdateWhere(eventId),
         data: { startTime },
       });
+      if (updated.count === 0) {
+        await interaction.followUp({
+          content: "❌ This event is no longer editable.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
 
       const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
       await editDraftPanelMessage(interaction, embed, components);

@@ -721,6 +721,26 @@ export async function canEditEventPanel(
   return !!(member && (await hasNode(member, "events.manage.approve")));
 }
 
+/**
+ * Atomic where-clause for panel field writes: DRAFT, or a fresh exported-edit session.
+ * Use with updateMany; treat count === 0 as no-longer-editable.
+ */
+export function editablePanelUpdateWhere(eventId: number) {
+  const sessionFloor = new Date(Date.now() - EXPORTED_EDIT_SESSION_TTL_MS);
+  return {
+    id: eventId,
+    OR: [
+      { status: PlannedEventStatus.DRAFT },
+      {
+        status: PlannedEventStatus.APPROVED,
+        discordEventId: { not: null },
+        editSnapshot: { not: Prisma.DbNull },
+        editStartedAt: { gte: sessionFloor },
+      },
+    ],
+  };
+}
+
 export async function refreshDraftPanel(
   eventId: number,
   guild: Guild | null,
