@@ -97,52 +97,6 @@ export function isEventPanelEditable(event: PlannedEvent): boolean {
   );
 }
 
-/**
- * If an exported edit session is stale, restore the snapshot and clear edit state.
- * Returns the (possibly restored) event.
- */
-export async function cleanupStaleExportedEditSession(
-  event: PlannedEvent,
-): Promise<PlannedEvent> {
-  if (
-    event.status !== PlannedEventStatus.APPROVED ||
-    event.editSnapshot == null ||
-    isExportedEditSessionFresh(event)
-  ) {
-    return event;
-  }
-
-  const snapshot = parseEventEditSnapshot(event.editSnapshot);
-  if (!snapshot) {
-    return prisma.plannedEvent.update({
-      where: { id: event.id },
-      data: {
-        editResumeStatus: null,
-        editSnapshot: Prisma.DbNull,
-        editStartedAt: null,
-      },
-    });
-  }
-
-  return prisma.plannedEvent.update({
-    where: { id: event.id },
-    data: {
-      title: snapshot.title,
-      startTime: new Date(snapshot.startTime),
-      hostId: snapshot.hostId,
-      coHostId: snapshot.coHostId,
-      coHostOpen: snapshot.coHostOpen,
-      duty: snapshot.duty,
-      eventType: snapshot.eventType,
-      durationMinutes: snapshot.durationMinutes,
-      forceOverride: snapshot.forceOverride,
-      editResumeStatus: null,
-      editSnapshot: Prisma.DbNull,
-      editStartedAt: null,
-    },
-  });
-}
-
 export function isExportedEventInCurrentWeek(
   event: PlannedEvent,
   now = new Date(),
@@ -214,6 +168,60 @@ function parseEventEditSnapshot(raw: unknown): EventEditSnapshot | null {
     durationMinutes: s.durationMinutes,
     forceOverride: s.forceOverride,
   };
+}
+
+/** Restore editable fields from a snapshot and clear edit-session state. */
+async function restoreEventFromSnapshot(
+  event: PlannedEvent,
+  snapshot: EventEditSnapshot,
+): Promise<PlannedEvent> {
+  return prisma.plannedEvent.update({
+    where: { id: event.id },
+    data: {
+      title: snapshot.title,
+      startTime: new Date(snapshot.startTime),
+      hostId: snapshot.hostId,
+      coHostId: snapshot.coHostId,
+      coHostOpen: snapshot.coHostOpen,
+      duty: snapshot.duty,
+      eventType: snapshot.eventType,
+      durationMinutes: snapshot.durationMinutes,
+      forceOverride: snapshot.forceOverride,
+      editResumeStatus: null,
+      editSnapshot: Prisma.DbNull,
+      editStartedAt: null,
+    },
+  });
+}
+
+/**
+ * If an exported edit session is stale, restore the snapshot and clear edit state.
+ * Returns the (possibly restored) event.
+ */
+export async function cleanupStaleExportedEditSession(
+  event: PlannedEvent,
+): Promise<PlannedEvent> {
+  if (
+    event.status !== PlannedEventStatus.APPROVED ||
+    event.editSnapshot == null ||
+    isExportedEditSessionFresh(event)
+  ) {
+    return event;
+  }
+
+  const snapshot = parseEventEditSnapshot(event.editSnapshot);
+  if (!snapshot) {
+    return prisma.plannedEvent.update({
+      where: { id: event.id },
+      data: {
+        editResumeStatus: null,
+        editSnapshot: Prisma.DbNull,
+        editStartedAt: null,
+      },
+    });
+  }
+
+  return restoreEventFromSnapshot(event, snapshot);
 }
 
 export async function resolveEventLocationChannelId(
@@ -1178,23 +1186,7 @@ export async function abortEventPanelEdit(
     if (!snapshot) {
       return { success: false, error: "Could not restore event snapshot." };
     }
-    const restored = await prisma.plannedEvent.update({
-      where: { id: eventId },
-      data: {
-        title: snapshot.title,
-        startTime: new Date(snapshot.startTime),
-        hostId: snapshot.hostId,
-        coHostId: snapshot.coHostId,
-        coHostOpen: snapshot.coHostOpen,
-        duty: snapshot.duty,
-        eventType: snapshot.eventType,
-        durationMinutes: snapshot.durationMinutes,
-        forceOverride: snapshot.forceOverride,
-        editResumeStatus: null,
-        editSnapshot: Prisma.DbNull,
-        editStartedAt: null,
-      },
-    });
+    const restored = await restoreEventFromSnapshot(event, snapshot);
     await updatePlanningChannelMessage(guild, restored);
     return { success: true, message: "Editing cancelled." };
   }
