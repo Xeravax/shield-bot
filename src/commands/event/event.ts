@@ -68,6 +68,7 @@ import {
 } from "../../managers/events/eventType.js";
 import { normalizeEventTitle } from "../../managers/events/eventDraftDefaults.js";
 import type { ExportWeekChoice } from "../../managers/events/eventWeek.js";
+import { getCurrentEventWeekRange } from "../../managers/events/eventWeek.js";
 import { parseDiscordMessageLink } from "../../utility/generalUtils.js";
 import { loggers } from "../../utility/logger.js";
 import {
@@ -797,6 +798,7 @@ export class EventCommands {
       ? await hasNode(member, "events.manage.approve")
       : false;
     const restrict = !(canBehalf || isLead);
+    const week = getCurrentEventWeekRange();
 
     const events = await prisma.plannedEvent.findMany({
       where: {
@@ -811,6 +813,7 @@ export class EventCommands {
           {
             status: PlannedEventStatus.APPROVED,
             discordEventId: { not: null },
+            startTime: { gte: week.start, lt: week.end },
             ...(restrict ? { hostId: interaction.user.id } : {}),
           },
         ],
