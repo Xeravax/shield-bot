@@ -2,9 +2,14 @@ import crypto from "crypto";
 import {
   GuildScheduledEventEntityType,
   GuildScheduledEventStatus,
+  type Guild,
   type GuildScheduledEvent,
 } from "discord.js";
-import { PlannedEventStatus } from "../../generated/prisma/client.js";
+import {
+  EventDuty,
+  PlannedEventStatus,
+  type PlannedEvent,
+} from "../../generated/prisma/client.js";
 import { getEnv } from "../../config/env.js";
 import { bot, prisma } from "../../main.js";
 import {
@@ -13,6 +18,7 @@ import {
   type IcalEventInput,
 } from "../../utility/ical.js";
 import { isDraftPlaceholderTime } from "./eventDraftDefaults.js";
+import { buildDiscordScheduledEventName } from "./eventCalendarNaming.js";
 
 const FALLBACK_LOCATION = "VRChat";
 
@@ -37,9 +43,47 @@ function discordEventLocation(event: GuildScheduledEvent): string | undefined {
   return undefined;
 }
 
+async function resolveDisplayName(
+  guild: Guild,
+  userId: string,
+): Promise<string> {
+  const cached = guild.members.cache.get(userId);
+  if (cached) {
+    return cached.displayName || cached.user.username;
+  }
+  try {
+    const member = await guild.members.fetch(userId);
+    return member.displayName || member.user.username;
+  } catch {
+    return "Unknown";
+  }
+}
+
+async function buildPlannedEventCalendarFields(
+  guild: Guild,
+  event: Pick<
+    PlannedEvent,
+    "title" | "hostId" | "coHostId" | "coHostOpen" | "duty"
+  >,
+): Promise<{ summary: string; description: string }> {
+  const hostName = await resolveDisplayName(guild, event.hostId);
+  const coHostLine = event.coHostId
+    ? `Co-host: ${await resolveDisplayName(guild, event.coHostId)}`
+    : event.coHostOpen
+      ? "Co-host: Open"
+      : "Co-host: None";
+  const duty =
+    event.duty === EventDuty.ON_DUTY ? "On-duty" : "Off-duty";
+  return {
+    summary: buildDiscordScheduledEventName(hostName, event.title),
+    description: `Host: ${hostName}\n${coHostLine}\nDuty: ${duty}`,
+  };
+}
+
 function mapDiscordEventToIcal(
   event: GuildScheduledEvent,
   guildId: string,
+  override?: { summary: string; description: string },
 ): IcalEventInput | null {
   if (!event.scheduledStartTimestamp) {
     return null;
@@ -50,13 +94,12 @@ function mapDiscordEventToIcal(
     ? new Date(event.scheduledEndTimestamp)
     : undefined;
 
-  const description = event.description
-    ? stripDiscordMarkup(event.description)
-    : undefined;
+  const description = override?.description
+    ?? (event.description ? stripDiscordMarkup(event.description) : undefined);
 
   return {
     uid: `discord-event-${event.id}@vrcshield.com`,
-    summary: event.name,
+    summary: override?.summary ?? event.name,
     description: description || undefined,
     location: discordEventLocation(event),
     url: `https://discord.com/events/${guildId}/${event.id}`,
@@ -78,14 +121,40 @@ export async function buildGuildDiscordEventCalendar(guildId: string): Promise<{
     return null;
   }
 
-  const events = await guild.scheduledEvents.fetch();
+  const [events, planned] = await Promise.all([
+    guild.scheduledEvents.fetch(),
+    prisma.plannedEvent.findMany({
+      where: { guildId, discordEventId: { not: null } },
+      select: {
+        discordEventId: true,
+        title: true,
+        hostId: true,
+        coHostId: true,
+        coHostOpen: true,
+        duty: true,
+      },
+    }),
+  ]);
+
+  const plannedByDiscordId = new Map(
+    planned
+      .filter((p): p is typeof p & { discordEventId: string } =>
+        p.discordEventId != null,
+      )
+      .map((p) => [p.discordEventId, p]),
+  );
+
   const icalEvents: IcalEventInput[] = [];
 
   for (const event of events.values()) {
     if (!FEEDABLE_STATUSES.has(event.status)) {
       continue;
     }
-    const mapped = mapDiscordEventToIcal(event, guildId);
+    const linked = plannedByDiscordId.get(event.id);
+    const override = linked
+      ? await buildPlannedEventCalendarFields(guild, linked)
+      : undefined;
+    const mapped = mapDiscordEventToIcal(event, guildId, override);
     if (mapped) {
       icalEvents.push(mapped);
     }
@@ -146,9 +215,13 @@ export async function buildHostPlannedEventCalendar(
     const end = new Date(
       event.startTime.getTime() + event.durationMinutes * 60 * 1000,
     );
+    const { summary, description } = await buildPlannedEventCalendarFields(
+      guild,
+      event,
+    );
     const descParts = [
+      description,
       "Role: Host",
-      `Duty: ${event.duty === "ON_DUTY" ? "On-duty" : "Off-duty"}`,
       `Status: ${event.status}`,
     ];
     if (event.discordEventId) {
@@ -159,7 +232,7 @@ export async function buildHostPlannedEventCalendar(
 
     icalEvents.push({
       uid: `planned-event-${event.id}@vrcshield.com`,
-      summary: event.title,
+      summary,
       description: descParts.join("\n"),
       location,
       url: event.discordEventId

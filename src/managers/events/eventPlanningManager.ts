@@ -248,13 +248,35 @@ export async function resolveEventLocationChannelId(
   return null;
 }
 
-function buildDiscordEventDescription(event: PlannedEvent): string {
+async function resolveMemberDisplayName(
+  guild: Guild,
+  userId: string,
+): Promise<string> {
+  const cached = guild.members.cache.get(userId);
+  if (cached) {
+    return cached.displayName || cached.user.username;
+  }
+  try {
+    const member = await guild.members.fetch(userId);
+    return member.displayName || member.user.username;
+  } catch {
+    return "Unknown";
+  }
+}
+
+import { buildDiscordScheduledEventName } from "./eventCalendarNaming.js";
+
+async function buildDiscordEventDescription(
+  guild: Guild,
+  event: PlannedEvent,
+): Promise<string> {
+  const hostName = await resolveMemberDisplayName(guild, event.hostId);
   const coHostLine = event.coHostId
-    ? `Co-host: <@${event.coHostId}>`
+    ? `Co-host: ${await resolveMemberDisplayName(guild, event.coHostId)}`
     : event.coHostOpen
       ? "Co-host: Open"
       : "Co-host: None";
-  return `Host: <@${event.hostId}>\n${coHostLine}\nDuty: ${dutyLabel(event.duty)}`;
+  return `Host: ${hostName}\n${coHostLine}\nDuty: ${dutyLabel(event.duty)}`;
 }
 
 function assertEventInGuild(event: PlannedEvent, guildId: string): boolean {
@@ -1614,11 +1636,13 @@ export async function createDiscordScheduledEvent(
   try {
     const startMs = event.startTime.getTime();
     const endMs = startMs + durationMinutes * 60 * 1000;
-    const description = buildDiscordEventDescription(event);
+    const hostName = await resolveMemberDisplayName(guild, event.hostId);
+    const name = buildDiscordScheduledEventName(hostName, event.title);
+    const description = await buildDiscordEventDescription(guild, event);
 
     const scheduled = resolvedVoiceChannelId
       ? await guild.scheduledEvents.create({
-          name: event.title,
+          name,
           scheduledStartTime: new Date(startMs),
           scheduledEndTime: new Date(endMs),
           privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
@@ -1627,7 +1651,7 @@ export async function createDiscordScheduledEvent(
           description,
         })
       : await guild.scheduledEvents.create({
-          name: event.title,
+          name,
           scheduledStartTime: new Date(startMs),
           scheduledEndTime: new Date(endMs),
           privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
@@ -1678,11 +1702,13 @@ export async function updateDiscordScheduledEvent(
     const scheduled = await guild.scheduledEvents.fetch(event.discordEventId);
     const startMs = event.startTime.getTime();
     const endMs = startMs + event.durationMinutes * 60 * 1000;
-    const description = buildDiscordEventDescription(event);
+    const hostName = await resolveMemberDisplayName(guild, event.hostId);
+    const name = buildDiscordScheduledEventName(hostName, event.title);
+    const description = await buildDiscordEventDescription(guild, event);
 
     if (voiceChannelId) {
       await scheduled.edit({
-        name: event.title,
+        name,
         scheduledStartTime: new Date(startMs),
         scheduledEndTime: new Date(endMs),
         description,
@@ -1692,7 +1718,7 @@ export async function updateDiscordScheduledEvent(
       } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
     } else {
       await scheduled.edit({
-        name: event.title,
+        name,
         scheduledStartTime: new Date(startMs),
         scheduledEndTime: new Date(endMs),
         description,
