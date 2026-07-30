@@ -37,6 +37,8 @@ model PlannedEvent {
   coHostRequestMessageId String?
   discordEventId         String? // set on export
   forceOverride          Boolean            @default(false) // bypass policy rule failures while drafting
+  editResumeStatus       PlannedEventStatus? // prior status when reopened for edit (PENDING/DENIED)
+  editSnapshot           Json? // field snapshot while editing an exported APPROVED event
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
 

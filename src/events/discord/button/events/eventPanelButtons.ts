@@ -10,11 +10,15 @@ import { Discord, ButtonComponent } from "discordx";
 import { EventDuty, PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import { prisma } from "../../../../main.js";
 import {
+  abortEventPanelEdit,
   canManageEventDraft,
+  cancelAndDeleteFromPanel,
+  editDraftPanelMessage,
+  isEventPanelEditable,
   refreshDraftPanel,
   runEventValidation,
+  saveExportedEventChanges,
   submitEventForApproval,
-  editDraftPanelMessage,
 } from "../../../../managers/events/eventPlanningManager.js";
 import {
   defaultDurationMinutes,
@@ -36,7 +40,9 @@ const EVENT_PANEL_TOGGLE_DURATION_PATTERN = /^event-panel:toggle-duration:(\d+)$
 const EVENT_PANEL_TOGGLE_COHOST_OPEN_PATTERN = /^event-panel:toggle-cohost-open:(\d+)$/;
 const EVENT_PANEL_TOGGLE_FORCE_PATTERN = /^event-panel:toggle-force:(\d+)$/;
 const EVENT_PANEL_SUBMIT_PATTERN = /^event-panel:submit:(\d+)$/;
+const EVENT_PANEL_SAVE_PATTERN = /^event-panel:save:(\d+)$/;
 const EVENT_PANEL_CANCEL_PATTERN = /^event-panel:cancel:(\d+)$/;
+const EVENT_PANEL_CANCEL_DELETE_PATTERN = /^event-panel:cancel-delete:(\d+)$/;
 
 async function denyUnlessCanManageDraft(
   interaction: ButtonInteraction,
@@ -45,6 +51,21 @@ async function denyUnlessCanManageDraft(
 ): Promise<boolean> {
   const member = await resolveGuildMember(interaction);
   if (await canManageEventDraft(interaction.user.id, member, eventHostId)) {
+    return true;
+  }
+  // Exported-edit openers may be event leads (manage.approve) without behalf.
+  if (
+    member &&
+    (await hasNode(member, "events.manage.approve")) &&
+    action === "edit"
+  ) {
+    return true;
+  }
+  if (
+    member &&
+    (await hasNode(member, "events.manage.approve")) &&
+    (action === "cancel" || action === "submit")
+  ) {
     return true;
   }
   const messages = {
@@ -61,6 +82,14 @@ async function denyUnlessCanManageDraft(
   return false;
 }
 
+async function loadEditableEvent(eventId: number) {
+  const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+  if (!event || !isEventPanelEditable(event)) {
+    return null;
+  }
+  return event;
+}
+
 @Discord()
 export class EventPanelButtonHandlers {
   /** No @Guard before showModal — Discord 3s ack window. */
@@ -69,8 +98,8 @@ export class EventPanelButtonHandlers {
     const match = matchComponentId(interaction.customId, EVENT_PANEL_TITLE_PATTERN);
     if (!match) return;
     const eventId = parseInt(match[1], 10);
-    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    const event = await loadEditableEvent(eventId);
+    if (!event) {
       await interaction.reply({
         content: "❌ Event not found or not editable.",
         flags: MessageFlags.Ephemeral,
@@ -103,8 +132,8 @@ export class EventPanelButtonHandlers {
     const match = matchComponentId(interaction.customId, EVENT_PANEL_TIME_PATTERN);
     if (!match) return;
     const eventId = parseInt(match[1], 10);
-    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    const event = await loadEditableEvent(eventId);
+    if (!event) {
       await interaction.reply({
         content: "❌ Event not found or not editable.",
         flags: MessageFlags.Ephemeral,
@@ -142,8 +171,8 @@ export class EventPanelButtonHandlers {
     const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_DUTY_PATTERN);
     if (!match) return;
     const eventId = parseInt(match[1], 10);
-    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    const event = await loadEditableEvent(eventId);
+    if (!event) {
       await interaction.reply({
         content: "❌ Event not found or not editable.",
         flags: MessageFlags.Ephemeral,
@@ -159,23 +188,13 @@ export class EventPanelButtonHandlers {
       event.duty === EventDuty.ON_DUTY ? EventDuty.OFF_DUTY : EventDuty.ON_DUTY;
 
     await interaction.deferUpdate();
-    const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
+    await prisma.plannedEvent.update({
+      where: { id: eventId },
       data: {
         duty: newDuty,
         durationMinutes: defaultDurationMinutes(newDuty),
       },
     });
-    if (updated.count === 0) {
-      await interaction.followUp({
-        content: "❌ This event is no longer editable.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -186,8 +205,8 @@ export class EventPanelButtonHandlers {
     const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_TYPE_PATTERN);
     if (!match) return;
     const eventId = parseInt(match[1], 10);
-    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    const event = await loadEditableEvent(eventId);
+    if (!event) {
       await interaction.reply({
         content: "❌ Event not found or not editable.",
         flags: MessageFlags.Ephemeral,
@@ -200,20 +219,10 @@ export class EventPanelButtonHandlers {
     }
 
     await interaction.deferUpdate();
-    const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
+    await prisma.plannedEvent.update({
+      where: { id: eventId },
       data: { eventType: nextEventType(event.eventType) },
     });
-    if (updated.count === 0) {
-      await interaction.followUp({
-        content: "❌ This event is no longer editable.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -224,8 +233,8 @@ export class EventPanelButtonHandlers {
     const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_DURATION_PATTERN);
     if (!match) return;
     const eventId = parseInt(match[1], 10);
-    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    const event = await loadEditableEvent(eventId);
+    if (!event) {
       await interaction.reply({
         content: "❌ Event not found or not editable.",
         flags: MessageFlags.Ephemeral,
@@ -238,20 +247,12 @@ export class EventPanelButtonHandlers {
     }
 
     await interaction.deferUpdate();
-    const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
+    await prisma.plannedEvent.update({
+      where: { id: eventId },
+      data: {
+        durationMinutes: nextDurationMinutes(event.durationMinutes, event.duty),
       },
-      data: { durationMinutes: nextDurationMinutes(event.durationMinutes, event.duty) },
     });
-    if (updated.count === 0) {
-      await interaction.followUp({
-        content: "❌ This event is no longer editable.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -259,11 +260,14 @@ export class EventPanelButtonHandlers {
 
   @ButtonComponent({ id: EVENT_PANEL_TOGGLE_COHOST_OPEN_PATTERN })
   async handleToggleCoHostOpen(interaction: ButtonInteraction): Promise<void> {
-    const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_COHOST_OPEN_PATTERN);
+    const match = matchComponentId(
+      interaction.customId,
+      EVENT_PANEL_TOGGLE_COHOST_OPEN_PATTERN,
+    );
     if (!match) return;
     const eventId = parseInt(match[1], 10);
-    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    const event = await loadEditableEvent(eventId);
+    if (!event) {
       await interaction.reply({
         content: "❌ Event not found or not editable.",
         flags: MessageFlags.Ephemeral,
@@ -277,23 +281,13 @@ export class EventPanelButtonHandlers {
 
     const coHostOpen = !event.coHostOpen;
     await interaction.deferUpdate();
-    const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
+    await prisma.plannedEvent.update({
+      where: { id: eventId },
       data: {
         coHostOpen,
         ...(coHostOpen ? { coHostId: null } : {}),
       },
     });
-    if (updated.count === 0) {
-      await interaction.followUp({
-        content: "❌ This event is no longer editable.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -304,8 +298,8 @@ export class EventPanelButtonHandlers {
     const match = matchComponentId(interaction.customId, EVENT_PANEL_TOGGLE_FORCE_PATTERN);
     if (!match) return;
     const eventId = parseInt(match[1], 10);
-    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    const event = await loadEditableEvent(eventId);
+    if (!event) {
       await interaction.reply({
         content: "❌ Event not found or not editable.",
         flags: MessageFlags.Ephemeral,
@@ -330,20 +324,10 @@ export class EventPanelButtonHandlers {
     }
 
     await interaction.deferUpdate();
-    const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
+    await prisma.plannedEvent.update({
+      where: { id: eventId },
       data: { forceOverride: enabling },
     });
-    if (updated.count === 0) {
-      await interaction.followUp({
-        content: "❌ This event is no longer editable.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
 
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
@@ -370,6 +354,14 @@ export class EventPanelButtonHandlers {
     if (!interaction.guild) {
       await interaction.reply({
         content: "❌ This can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (event.status !== PlannedEventStatus.DRAFT) {
+      await interaction.reply({
+        content: "❌ Only draft events can be submitted for approval.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -402,6 +394,49 @@ export class EventPanelButtonHandlers {
     });
   }
 
+  @ButtonComponent({ id: EVENT_PANEL_SAVE_PATTERN })
+  async handleSave(interaction: ButtonInteraction): Promise<void> {
+    const match = matchComponentId(interaction.customId, EVENT_PANEL_SAVE_PATTERN);
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
+    const event = await loadEditableEvent(eventId);
+    if (!event) {
+      await interaction.reply({
+        content: "❌ Event not found or not editable.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId, "submit"))) {
+      return;
+    }
+
+    if (!interaction.guild) {
+      await interaction.reply({
+        content: "❌ This can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferUpdate();
+    const result = await saveExportedEventChanges(eventId, interaction.guild);
+    if (!result.success) {
+      await interaction.followUp({
+        content: `❌ ${result.error}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.editReply({
+      content: "✅ Exported event updated (Discord scheduled event synced).",
+      embeds: [],
+      components: [],
+    });
+  }
+
   @ButtonComponent({ id: EVENT_PANEL_CANCEL_PATTERN })
   async handleCancel(interaction: ButtonInteraction): Promise<void> {
     const match = matchComponentId(interaction.customId, EVENT_PANEL_CANCEL_PATTERN);
@@ -420,30 +455,74 @@ export class EventPanelButtonHandlers {
       return;
     }
 
-    if (event.status !== PlannedEventStatus.DRAFT) {
+    if (!interaction.guild) {
       await interaction.reply({
-        content: "❌ Only draft events can be cancelled from this panel.",
+        content: "❌ This can only be used in a server.",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    const deleted = await prisma.plannedEvent.deleteMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
-    });
-    if (deleted.count === 0) {
+    const result = await abortEventPanelEdit(eventId, interaction.guild);
+    if (!result.success) {
       await interaction.reply({
-        content: "❌ This event is no longer editable.",
+        content: `❌ ${result.error}`,
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     await interaction.update({
-      content: "❌ Draft cancelled and deleted.",
+      content: `❌ ${result.message ?? "Cancelled."}`,
+      embeds: [],
+      components: [],
+    });
+  }
+
+  @ButtonComponent({ id: EVENT_PANEL_CANCEL_DELETE_PATTERN })
+  async handleCancelDelete(interaction: ButtonInteraction): Promise<void> {
+    const match = matchComponentId(
+      interaction.customId,
+      EVENT_PANEL_CANCEL_DELETE_PATTERN,
+    );
+    if (!match) return;
+    const eventId = parseInt(match[1], 10);
+    const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
+    if (!event) {
+      await interaction.reply({
+        content: "❌ Event not found.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (!(await denyUnlessCanManageDraft(interaction, event.hostId, "cancel"))) {
+      return;
+    }
+
+    if (!interaction.guild) {
+      await interaction.reply({
+        content: "❌ This can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const result = await cancelAndDeleteFromPanel(
+      eventId,
+      interaction.guild,
+      interaction.user.id,
+    );
+    if (!result.success) {
+      await interaction.reply({
+        content: `❌ ${result.error}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.update({
+      content: `❌ ${result.message ?? "Cancelled and deleted."}`,
       embeds: [],
       components: [],
     });

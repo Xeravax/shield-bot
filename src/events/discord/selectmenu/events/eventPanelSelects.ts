@@ -1,11 +1,11 @@
 import { MessageFlags, UserSelectMenuInteraction } from "discord.js";
 import { Discord, SelectMenuComponent } from "discordx";
 import { prisma } from "../../../../main.js";
-import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import {
   canManageEventDraft,
-  refreshDraftPanel,
   editDraftPanelMessage,
+  isEventPanelEditable,
+  refreshDraftPanel,
 } from "../../../../managers/events/eventPlanningManager.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
 import { hasNode } from "../../../../utility/permissionNodes.js";
@@ -13,6 +13,17 @@ import { resolveGuildMember } from "../../../../utility/guards.js";
 
 const EVENT_PANEL_HOST_PATTERN = /^event-panel-select:host:(\d+)$/;
 const EVENT_PANEL_COHOST_PATTERN = /^event-panel-select:cohost:(\d+)$/;
+
+async function canEditPanel(
+  userId: string,
+  member: Awaited<ReturnType<typeof resolveGuildMember>>,
+  hostId: string,
+): Promise<boolean> {
+  if (await canManageEventDraft(userId, member, hostId)) {
+    return true;
+  }
+  return !!(member && (await hasNode(member, "events.manage.approve")));
+}
 
 @Discord()
 export class EventPanelSelectHandlers {
@@ -32,7 +43,7 @@ export class EventPanelSelectHandlers {
     }
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    if (!event || !isEventPanelEditable(event)) {
       await interaction.reply({
         content: "❌ Event draft not found.",
         flags: MessageFlags.Ephemeral,
@@ -41,7 +52,7 @@ export class EventPanelSelectHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
@@ -61,24 +72,13 @@ export class EventPanelSelectHandlers {
     }
 
     await interaction.deferUpdate();
-    const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
+    await prisma.plannedEvent.update({
+      where: { id: eventId },
       data: {
         hostId,
-        // Host and co-host must be different people
         ...(hostId === event.coHostId ? { coHostId: null } : {}),
       },
     });
-    if (updated.count === 0) {
-      await interaction.followUp({
-        content: "❌ This event is no longer editable.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
   }
@@ -92,7 +92,7 @@ export class EventPanelSelectHandlers {
     const coHostId = interaction.values[0] ?? null;
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    if (!event || !isEventPanelEditable(event)) {
       await interaction.reply({
         content: "❌ Event draft not found.",
         flags: MessageFlags.Ephemeral,
@@ -101,7 +101,7 @@ export class EventPanelSelectHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
@@ -119,20 +119,10 @@ export class EventPanelSelectHandlers {
     }
 
     await interaction.deferUpdate();
-    const updated = await prisma.plannedEvent.updateMany({
-      where: {
-        id: eventId,
-        status: PlannedEventStatus.DRAFT,
-      },
+    await prisma.plannedEvent.update({
+      where: { id: eventId },
       data: { coHostId },
     });
-    if (updated.count === 0) {
-      await interaction.followUp({
-        content: "❌ This event is no longer editable.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
     const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
     await editDraftPanelMessage(interaction, embed, components);
   }

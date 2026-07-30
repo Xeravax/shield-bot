@@ -6,19 +6,31 @@ import {
   getUserTimezone,
   hasStoredTimezone,
 } from "../../../../utility/userPreferences.js";
-import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import {
   canManageEventDraft,
-  refreshDraftPanel,
   editDraftPanelMessage,
+  isEventPanelEditable,
+  refreshDraftPanel,
 } from "../../../../managers/events/eventPlanningManager.js";
 import { loggers } from "../../../../utility/logger.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
 import { resolveGuildMember } from "../../../../utility/guards.js";
 import { normalizeEventTitle } from "../../../../managers/events/eventDraftDefaults.js";
+import { hasNode } from "../../../../utility/permissionNodes.js";
 
 const EVENT_MODAL_TITLE_PATTERN = /^event-modal:title:(\d+)$/;
 const EVENT_MODAL_TIME_PATTERN = /^event-modal:time:(\d+)$/;
+
+async function canEditPanel(
+  userId: string,
+  member: Awaited<ReturnType<typeof resolveGuildMember>>,
+  hostId: string,
+): Promise<boolean> {
+  if (await canManageEventDraft(userId, member, hostId)) {
+    return true;
+  }
+  return !!(member && (await hasNode(member, "events.manage.approve")));
+}
 
 @Discord()
 export class EventPanelModalHandlers {
@@ -45,7 +57,7 @@ export class EventPanelModalHandlers {
     }
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    if (!event || !isEventPanelEditable(event)) {
       await interaction.reply({
         content: "❌ Event draft not found.",
         flags: MessageFlags.Ephemeral,
@@ -54,7 +66,7 @@ export class EventPanelModalHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
@@ -66,20 +78,10 @@ export class EventPanelModalHandlers {
     await interaction.deferUpdate();
 
     try {
-      const updated = await prisma.plannedEvent.updateMany({
-        where: {
-          id: eventId,
-          status: PlannedEventStatus.DRAFT,
-        },
+      await prisma.plannedEvent.update({
+        where: { id: eventId },
         data: { title },
       });
-      if (updated.count === 0) {
-        await interaction.followUp({
-          content: "❌ This event is no longer editable.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
 
       const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
       await editDraftPanelMessage(interaction, embed, components);
@@ -105,7 +107,7 @@ export class EventPanelModalHandlers {
     const eventId = parseInt(match[1], 10);
 
     const event = await prisma.plannedEvent.findUnique({ where: { id: eventId } });
-    if (!event || event.status !== PlannedEventStatus.DRAFT) {
+    if (!event || !isEventPanelEditable(event)) {
       await interaction.reply({
         content: "❌ Event draft not found.",
         flags: MessageFlags.Ephemeral,
@@ -114,7 +116,7 @@ export class EventPanelModalHandlers {
     }
 
     const member = await resolveGuildMember(interaction);
-    if (!(await canManageEventDraft(interaction.user.id, member, event.hostId))) {
+    if (!(await canEditPanel(interaction.user.id, member, event.hostId))) {
       await interaction.reply({
         content:
           "❌ Only the event host (or someone with `events.schedule.behalf`) can edit this panel.",
@@ -150,20 +152,10 @@ export class EventPanelModalHandlers {
     await interaction.deferUpdate();
 
     try {
-      const updated = await prisma.plannedEvent.updateMany({
-        where: {
-          id: eventId,
-          status: PlannedEventStatus.DRAFT,
-        },
+      await prisma.plannedEvent.update({
+        where: { id: eventId },
         data: { startTime },
       });
-      if (updated.count === 0) {
-        await interaction.followUp({
-          content: "❌ This event is no longer editable.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
 
       const { embed, components } = await refreshDraftPanel(eventId, interaction.guild);
       await editDraftPanelMessage(interaction, embed, components);
