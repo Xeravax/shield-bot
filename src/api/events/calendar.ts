@@ -6,6 +6,35 @@ import {
 } from "../../managers/events/discordEventCalendarFeed.js";
 import { loggers } from "../../utility/logger.js";
 
+const ICS_CACHE_TTL_MS = 300_000;
+
+type IcsCacheEntry = {
+  ics: string;
+  etag: string;
+  expiresAt: number;
+};
+
+const icsCache = new Map<string, IcsCacheEntry>();
+
+function getCachedIcs(key: string): { ics: string; etag: string } | null {
+  const entry = icsCache.get(key);
+  if (!entry) {
+    return null;
+  }
+  if (Date.now() >= entry.expiresAt) {
+    icsCache.delete(key);
+    return null;
+  }
+  return { ics: entry.ics, etag: entry.etag };
+}
+
+function setCachedIcs(key: string, feed: { ics: string; etag: string }): void {
+  icsCache.set(key, {
+    ...feed,
+    expiresAt: Date.now() + ICS_CACHE_TTL_MS,
+  });
+}
+
 function sendIcs(
   ctx: Context,
   feed: { ics: string; etag: string },
@@ -35,11 +64,17 @@ export class EventsCalendarAPI {
         return;
       }
 
-      const feed = await buildGuildDiscordEventCalendar(guildId);
+      const cacheKey = `guild:${guildId}`;
+      let feed = getCachedIcs(cacheKey);
       if (!feed) {
-        ctx.status = 404;
-        ctx.body = "Guild not found";
-        return;
+        const built = await buildGuildDiscordEventCalendar(guildId);
+        if (!built) {
+          ctx.status = 404;
+          ctx.body = "Guild not found";
+          return;
+        }
+        setCachedIcs(cacheKey, built);
+        feed = built;
       }
 
       sendIcs(ctx, feed, "shield-events.ics");
@@ -72,11 +107,17 @@ export class EventsCalendarAPI {
         return;
       }
 
-      const feed = await buildHostPlannedEventCalendar(guildId, userId);
+      const cacheKey = `host:${guildId}:${userId}`;
+      let feed = getCachedIcs(cacheKey);
       if (!feed) {
-        ctx.status = 404;
-        ctx.body = "Guild not found";
-        return;
+        const built = await buildHostPlannedEventCalendar(guildId, userId);
+        if (!built) {
+          ctx.status = 404;
+          ctx.body = "Guild not found";
+          return;
+        }
+        setCachedIcs(cacheKey, built);
+        feed = built;
       }
 
       sendIcs(ctx, feed, "shield-host-events.ics");
