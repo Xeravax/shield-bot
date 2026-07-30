@@ -1518,26 +1518,22 @@ export async function createDiscordScheduledEvent(
   guild: Guild,
   event: PlannedEvent,
   durationMinutes: number,
-  locationChannelId: string | null,
+  /** Already-resolved voice channel id, or null for External VRChat. */
+  resolvedVoiceChannelId: string | null,
 ): Promise<{ success: boolean; discordEventId?: string; error?: string }> {
   try {
     const startMs = event.startTime.getTime();
     const endMs = startMs + durationMinutes * 60 * 1000;
     const description = buildDiscordEventDescription(event);
 
-    const voiceChannelId = await resolveEventLocationChannelId(
-      guild,
-      locationChannelId,
-    );
-
-    const scheduled = voiceChannelId
+    const scheduled = resolvedVoiceChannelId
       ? await guild.scheduledEvents.create({
           name: event.title,
           scheduledStartTime: new Date(startMs),
           scheduledEndTime: new Date(endMs),
           privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
           entityType: GuildScheduledEventEntityType.Voice,
-          channel: voiceChannelId,
+          channel: resolvedVoiceChannelId,
           description,
         })
       : await guild.scheduledEvents.create({
@@ -1602,7 +1598,8 @@ export async function updateDiscordScheduledEvent(
         description,
         channel: voiceChannelId,
         entityType: GuildScheduledEventEntityType.Voice,
-      });
+        entityMetadata: null,
+      } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
     } else {
       await scheduled.edit({
         name: event.title,
@@ -1611,7 +1608,8 @@ export async function updateDiscordScheduledEvent(
         description,
         entityType: GuildScheduledEventEntityType.External,
         entityMetadata: { location: DEFAULT_EXTERNAL_EVENT_LOCATION },
-      });
+        channel: null,
+      } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
     }
 
     return { success: true };
@@ -1719,7 +1717,10 @@ export async function exportApprovedEvents(
     };
   }
 
-  const locationChannelId = settings?.eventLocationChannelId ?? null;
+  const resolvedVoiceChannelId = await resolveEventLocationChannelId(
+    guild,
+    settings?.eventLocationChannelId ?? null,
+  );
 
   const results: {
     eventId: number;
@@ -1734,7 +1735,7 @@ export async function exportApprovedEvents(
       guild,
       event,
       event.durationMinutes,
-      locationChannelId,
+      resolvedVoiceChannelId,
     );
     results.push({
       eventId: event.id,
