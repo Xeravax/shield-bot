@@ -5,6 +5,7 @@ import {
   type GuildScheduledEvent,
 } from "discord.js";
 import { PlannedEventStatus } from "../../generated/prisma/client.js";
+import { getEnv } from "../../config/env.js";
 import { bot, prisma } from "../../main.js";
 import {
   buildVcalendar,
@@ -174,7 +175,11 @@ export async function buildHostPlannedEventCalendar(
 }
 
 export function getPublicApiBaseUrl(): string {
-  return "https://api.vrcshield.com";
+  try {
+    return getEnv().PUBLIC_API_BASE_URL.replace(/\/$/, "");
+  } catch {
+    return "https://api.vrcshield.com";
+  }
 }
 
 export function getGuildCalendarFeedUrl(guildId: string): string {

@@ -5,6 +5,7 @@ import {
   formatEstMonthDay,
   formatEstWeekdayMonthDay,
 } from "../../utility/estTime.js";
+import { getGuildCalendarFeedUrl } from "./discordEventCalendarFeed.js";
 import { getEventWeekRangeForDate } from "./eventWeek.js";
 import { resolveEventType } from "./eventType.js";
 
@@ -164,7 +165,7 @@ export function formatOnDutyScheduleMessage(
   if (guildId) {
     lines.push(
       "",
-      `Add to Google Calendar: https://api.vrcshield.com/api/events/${guildId}/calendar.ics`,
+      `Add to Google Calendar: ${getGuildCalendarFeedUrl(guildId)}`,
     );
   }
 
@@ -202,7 +203,7 @@ export function formatOffDutyScheduleMessage(
   if (guildId) {
     lines.push(
       "",
-      `Add to Google Calendar: https://api.vrcshield.com/api/events/${guildId}/calendar.ics`,
+      `Add to Google Calendar: ${getGuildCalendarFeedUrl(guildId)}`,
     );
   }
 
