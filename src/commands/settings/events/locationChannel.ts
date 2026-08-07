@@ -17,12 +17,12 @@ export class SettingsEventsLocationChannelCommand {
   @Slash({
     name: "location-channel",
     description:
-      "Set the voice channel used as location for exported Discord scheduled events",
+      "Set the voice channel name used as location in calendar feeds (Discord events always use External VRChat)",
   })
   async locationChannel(
     @SlashOption({
       name: "channel",
-      description: "Voice channel for Discord scheduled events",
+      description: "Voice channel name shown in calendar feed location",
       type: ApplicationCommandOptionType.Channel,
       channelTypes: [ChannelType.GuildVoice],
       required: false,
@@ -30,7 +30,7 @@ export class SettingsEventsLocationChannelCommand {
     channel: GuildBasedChannel | null,
     @SlashOption({
       name: "clear",
-      description: "Clear the location channel (use External location VRChat)",
+      description: "Clear the calendar feed location channel",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
@@ -64,14 +64,16 @@ export class SettingsEventsLocationChannelCommand {
         if (!channelId) {
           await interaction.reply({
             content:
-              "ℹ️ No event location voice channel is set. Exported events use External location **VRChat**.",
+              "ℹ️ No calendar feed location channel is set. Discord scheduled events always use External **VRChat**.",
             flags: MessageFlags.Ephemeral,
           });
           return;
         }
 
         await interaction.reply({
-          content: `ℹ️ Event location channel is set to <#${channelId}>`,
+          content:
+            `ℹ️ Calendar feed location channel is <#${channelId}>.\n` +
+            `Discord scheduled events always use External **VRChat**.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -104,8 +106,8 @@ export class SettingsEventsLocationChannelCommand {
 
       await interaction.editReply({
         content: shouldClear
-          ? "✅ Cleared event location channel. Exports will use External location **VRChat**."
-          : `✅ Event location channel set to <#${channelId}>.`,
+          ? "✅ Cleared calendar feed location channel. Discord scheduled events still use External **VRChat**."
+          : `✅ Calendar feed location channel set to <#${channelId}>. Discord scheduled events still use External **VRChat**.`,
       });
     } catch (error: unknown) {
       loggers.bot.error("Error setting event location channel", error);

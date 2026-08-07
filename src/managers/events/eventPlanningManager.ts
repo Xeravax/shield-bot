@@ -1614,8 +1614,6 @@ export async function createDiscordScheduledEvent(
   guild: Guild,
   event: PlannedEvent,
   durationMinutes: number,
-  /** Already-resolved voice channel id, or null for External VRChat. */
-  resolvedVoiceChannelId: string | null,
 ): Promise<{ success: boolean; discordEventId?: string; error?: string }> {
   try {
     const startMs = event.startTime.getTime();
@@ -1624,25 +1622,18 @@ export async function createDiscordScheduledEvent(
     const name = buildDiscordScheduledEventName(hostName, event.title);
     const description = await buildDiscordEventDescription(guild, event);
 
-    const scheduled = resolvedVoiceChannelId
-      ? await guild.scheduledEvents.create({
-          name,
-          scheduledStartTime: new Date(startMs),
-          scheduledEndTime: new Date(endMs),
-          privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-          entityType: GuildScheduledEventEntityType.Voice,
-          channel: resolvedVoiceChannelId,
-          description,
-        })
-      : await guild.scheduledEvents.create({
-          name,
-          scheduledStartTime: new Date(startMs),
-          scheduledEndTime: new Date(endMs),
-          privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-          entityType: GuildScheduledEventEntityType.External,
-          entityMetadata: { location: DEFAULT_EXTERNAL_EVENT_LOCATION },
-          description,
-        });
+    // Always External (VRChat): Discord only auto-starts/ends External events and
+    // requires/shows scheduledEndTime for them. Voice events stay SCHEDULED forever
+    // until manually started and only end after the channel empties.
+    const scheduled = await guild.scheduledEvents.create({
+      name,
+      scheduledStartTime: new Date(startMs),
+      scheduledEndTime: new Date(endMs),
+      privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
+      entityType: GuildScheduledEventEntityType.External,
+      entityMetadata: { location: DEFAULT_EXTERNAL_EVENT_LOCATION },
+      description,
+    });
 
     const updated = await prisma.plannedEvent.updateMany({
       where: { id: event.id, discordEventId: null },
@@ -1675,14 +1666,6 @@ export async function updateDiscordScheduledEvent(
   }
 
   try {
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId: guild.id },
-    });
-    const voiceChannelId = await resolveEventLocationChannelId(
-      guild,
-      settings?.eventLocationChannelId,
-    );
-
     const scheduled = await guild.scheduledEvents.fetch(event.discordEventId);
     const startMs = event.startTime.getTime();
     const endMs = startMs + event.durationMinutes * 60 * 1000;
@@ -1690,27 +1673,15 @@ export async function updateDiscordScheduledEvent(
     const name = buildDiscordScheduledEventName(hostName, event.title);
     const description = await buildDiscordEventDescription(guild, event);
 
-    if (voiceChannelId) {
-      await scheduled.edit({
-        name,
-        scheduledStartTime: new Date(startMs),
-        scheduledEndTime: new Date(endMs),
-        description,
-        channel: voiceChannelId,
-        entityType: GuildScheduledEventEntityType.Voice,
-        entityMetadata: null,
-      } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
-    } else {
-      await scheduled.edit({
-        name,
-        scheduledStartTime: new Date(startMs),
-        scheduledEndTime: new Date(endMs),
-        description,
-        entityType: GuildScheduledEventEntityType.External,
-        entityMetadata: { location: DEFAULT_EXTERNAL_EVENT_LOCATION },
-        channel: null,
-      } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
-    }
+    await scheduled.edit({
+      name,
+      scheduledStartTime: new Date(startMs),
+      scheduledEndTime: new Date(endMs),
+      description,
+      entityType: GuildScheduledEventEntityType.External,
+      entityMetadata: { location: DEFAULT_EXTERNAL_EVENT_LOCATION },
+      channel: null,
+    } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
 
     return { success: true };
   } catch (error) {
@@ -1817,11 +1788,6 @@ export async function exportApprovedEvents(
     };
   }
 
-  const resolvedVoiceChannelId = await resolveEventLocationChannelId(
-    guild,
-    settings?.eventLocationChannelId ?? null,
-  );
-
   const results: {
     eventId: number;
     title: string;
@@ -1835,7 +1801,6 @@ export async function exportApprovedEvents(
       guild,
       event,
       event.durationMinutes,
-      resolvedVoiceChannelId,
     );
     results.push({
       eventId: event.id,

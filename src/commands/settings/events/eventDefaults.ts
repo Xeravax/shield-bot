@@ -47,15 +47,16 @@ export class SettingsEventsDefaultsCommand {
         const currentDuration =
           settings?.eventDefaultDurationMinutes ?? FALLBACK_DURATION_MINUTES;
         const locationChannel = settings?.eventLocationChannelId
-          ? `<#${settings.eventLocationChannelId}>`
-          : "*(none — External VRChat)*";
+          ? `<#${settings.eventLocationChannelId}> (calendar feed only)`
+          : "*(none)*";
 
         await interaction.reply({
           content:
             `ℹ️ Current event defaults:\n` +
             `• Duration: **${currentDuration} minutes**\n` +
-            `• Location channel: ${locationChannel}\n` +
-            `_(Set location with \`/settings events location-channel\`)_`,
+            `• Discord event location: External **VRChat**\n` +
+            `• Calendar feed location channel: ${locationChannel}\n` +
+            `_(Set calendar feed location with \`/settings events location-channel\`)_`,
           flags: MessageFlags.Ephemeral,
         });
         return;
