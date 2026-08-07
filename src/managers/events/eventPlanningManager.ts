@@ -64,6 +64,7 @@ import {
   formatDurationLabel,
   formatEventTypeDisplay,
 } from "./eventType.js";
+import { resolveEventMemberDisplayName } from "./eventUserDisplay.js";
 
 /** Fixed External location when no voice channel is configured. */
 export const DEFAULT_EXTERNAL_EVENT_LOCATION = "VRChat";
@@ -248,35 +249,21 @@ export async function resolveEventLocationChannelId(
   return null;
 }
 
-async function resolveMemberDisplayName(
-  guild: Guild,
-  userId: string,
-): Promise<string> {
-  const cached = guild.members.cache.get(userId);
-  if (cached) {
-    return cached.displayName || cached.user.username;
-  }
-  try {
-    const member = await guild.members.fetch(userId);
-    return member.displayName || member.user.username;
-  } catch {
-    return "Unknown";
-  }
-}
-
 import { buildDiscordScheduledEventName } from "./eventCalendarNaming.js";
 
 async function buildDiscordEventDescription(
   guild: Guild,
   event: PlannedEvent,
 ): Promise<string> {
-  const hostName = await resolveMemberDisplayName(guild, event.hostId);
-  const coHostLine = event.coHostId
-    ? `Co-host: ${await resolveMemberDisplayName(guild, event.coHostId)}`
-    : event.coHostOpen
-      ? "Co-host: Open"
-      : "Co-host: None";
-  return `Host: ${hostName}\n${coHostLine}\nDuty: ${dutyLabel(event.duty)}`;
+  const hostName = await resolveEventMemberDisplayName(guild, event.hostId);
+  const lines = [`Host: ${hostName}`];
+  if (event.coHostId) {
+    lines.push(
+      `Co-host: ${await resolveEventMemberDisplayName(guild, event.coHostId)}`,
+    );
+  }
+  lines.push(`Duty: ${dutyLabel(event.duty)}`);
+  return lines.join("\n");
 }
 
 function assertEventInGuild(event: PlannedEvent, guildId: string): boolean {
@@ -355,16 +342,6 @@ function dutyLabel(duty: EventDuty): string {
   return duty === EventDuty.ON_DUTY ? "On-duty" : "Off-duty";
 }
 
-function coHostDisplay(event: PlannedEvent): string {
-  if (event.coHostId) {
-    return `<@${event.coHostId}>`;
-  }
-  if (event.coHostOpen) {
-    return "Open";
-  }
-  return "None";
-}
-
 export async function runEventValidation(
   event: PlannedEvent,
   guild: Guild | null,
@@ -403,20 +380,27 @@ function buildSummaryFields(event: PlannedEvent): EmbedBuilder {
   const title = isDraftPlaceholderTitle(event.title)
     ? "*(not set)*"
     : event.title;
-  return new EmbedBuilder()
-    .setTitle(title)
-    .addFields(
-      { name: "Time", value: formatEventTimeField(event.startTime), inline: false },
-      { name: "Host", value: `<@${event.hostId}>`, inline: true },
-      { name: "Co-host", value: coHostDisplay(event), inline: true },
-      { name: "Duty", value: dutyLabel(event.duty), inline: true },
-      { name: "Type", value: formatEventTypeDisplay(event), inline: true },
-      {
-        name: "Duration",
-        value: formatDurationLabel(event.durationMinutes),
-        inline: true,
-      },
-    );
+  const embed = new EmbedBuilder().setTitle(title).addFields(
+    { name: "Time", value: formatEventTimeField(event.startTime), inline: false },
+    { name: "Host", value: `<@${event.hostId}>`, inline: true },
+  );
+  if (event.coHostId) {
+    embed.addFields({
+      name: "Co-host",
+      value: `<@${event.coHostId}>`,
+      inline: true,
+    });
+  }
+  embed.addFields(
+    { name: "Duty", value: dutyLabel(event.duty), inline: true },
+    { name: "Type", value: formatEventTypeDisplay(event), inline: true },
+    {
+      name: "Duration",
+      value: formatDurationLabel(event.durationMinutes),
+      inline: true,
+    },
+  );
+  return embed;
 }
 
 export function buildDraftPanelEmbed(
@@ -1636,7 +1620,7 @@ export async function createDiscordScheduledEvent(
   try {
     const startMs = event.startTime.getTime();
     const endMs = startMs + durationMinutes * 60 * 1000;
-    const hostName = await resolveMemberDisplayName(guild, event.hostId);
+    const hostName = await resolveEventMemberDisplayName(guild, event.hostId);
     const name = buildDiscordScheduledEventName(hostName, event.title);
     const description = await buildDiscordEventDescription(guild, event);
 
@@ -1702,7 +1686,7 @@ export async function updateDiscordScheduledEvent(
     const scheduled = await guild.scheduledEvents.fetch(event.discordEventId);
     const startMs = event.startTime.getTime();
     const endMs = startMs + event.durationMinutes * 60 * 1000;
-    const hostName = await resolveMemberDisplayName(guild, event.hostId);
+    const hostName = await resolveEventMemberDisplayName(guild, event.hostId);
     const name = buildDiscordScheduledEventName(hostName, event.title);
     const description = await buildDiscordEventDescription(guild, event);
 

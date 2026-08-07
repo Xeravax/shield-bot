@@ -19,6 +19,7 @@ import {
 } from "../../utility/ical.js";
 import { isDraftPlaceholderTime } from "./eventDraftDefaults.js";
 import { buildDiscordScheduledEventName } from "./eventCalendarNaming.js";
+import { resolveEventMemberDisplayName } from "./eventUserDisplay.js";
 
 const FALLBACK_LOCATION = "VRChat";
 
@@ -43,40 +44,23 @@ function discordEventLocation(event: GuildScheduledEvent): string | undefined {
   return undefined;
 }
 
-async function resolveDisplayName(
-  guild: Guild,
-  userId: string,
-): Promise<string> {
-  const cached = guild.members.cache.get(userId);
-  if (cached) {
-    return cached.displayName || cached.user.username;
-  }
-  try {
-    const member = await guild.members.fetch(userId);
-    return member.displayName || member.user.username;
-  } catch {
-    return "Unknown";
-  }
-}
-
 async function buildPlannedEventCalendarFields(
   guild: Guild,
-  event: Pick<
-    PlannedEvent,
-    "title" | "hostId" | "coHostId" | "coHostOpen" | "duty"
-  >,
+  event: Pick<PlannedEvent, "title" | "hostId" | "coHostId" | "duty">,
 ): Promise<{ summary: string; description: string }> {
-  const hostName = await resolveDisplayName(guild, event.hostId);
-  const coHostLine = event.coHostId
-    ? `Co-host: ${await resolveDisplayName(guild, event.coHostId)}`
-    : event.coHostOpen
-      ? "Co-host: Open"
-      : "Co-host: None";
-  const duty =
-    event.duty === EventDuty.ON_DUTY ? "On-duty" : "Off-duty";
+  const hostName = await resolveEventMemberDisplayName(guild, event.hostId);
+  const lines = [`Host: ${hostName}`];
+  if (event.coHostId) {
+    lines.push(
+      `Co-host: ${await resolveEventMemberDisplayName(guild, event.coHostId)}`,
+    );
+  }
+  lines.push(
+    `Duty: ${event.duty === EventDuty.ON_DUTY ? "On-duty" : "Off-duty"}`,
+  );
   return {
     summary: buildDiscordScheduledEventName(hostName, event.title),
-    description: `Host: ${hostName}\n${coHostLine}\nDuty: ${duty}`,
+    description: lines.join("\n"),
   };
 }
 
@@ -130,7 +114,6 @@ export async function buildGuildDiscordEventCalendar(guildId: string): Promise<{
         title: true,
         hostId: true,
         coHostId: true,
-        coHostOpen: true,
         duty: true,
       },
     }),

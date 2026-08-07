@@ -359,7 +359,11 @@ export class EventCommands {
       interaction.guildId,
       settings?.eventPlanningChannelId,
     );
-    const preview = formatScheduleMessage(events, exportSettings, interaction.guildId);
+    const preview = formatScheduleMessage(
+      events,
+      exportSettings,
+      interaction.guildId,
+    );
 
     const descriptionParts = [
       `**Week:** ${weekRange.label} (\`${weekRange.choice}\`)`,

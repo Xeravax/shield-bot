@@ -8,6 +8,7 @@ import {
 import { getGuildCalendarFeedUrl } from "./discordEventCalendarFeed.js";
 import { getEventWeekRangeForDate } from "./eventWeek.js";
 import { resolveEventType } from "./eventType.js";
+import { formatEventUserMention } from "./eventUserDisplay.js";
 
 export interface ScheduleExportSettings {
   onDutyPingRoleId?: string | null;
@@ -95,11 +96,9 @@ function formatEventTitleLine(
 }
 
 function formatHostLines(event: PlannedEvent): string[] {
-  const lines = [`Host: <@${event.hostId}>`];
+  const lines = [`Host: ${formatEventUserMention(event.hostId)}`];
   if (event.coHostId) {
-    lines.push(`Co-Host: <@${event.coHostId}>`);
-  } else if (event.coHostOpen) {
-    lines.push("Co-Host: Open");
+    lines.push(`Co-Host: ${formatEventUserMention(event.coHostId)}`);
   }
   return lines;
 }
@@ -135,7 +134,7 @@ function formatDaySections(
 export function formatOnDutyScheduleMessage(
   events: PlannedEvent[],
   settings: ScheduleExportSettings,
-  guildId?: string,
+  guildId?: string | null,
 ): string {
   const onDuty = events
     .filter((e) => e.duty === EventDuty.ON_DUTY)
@@ -175,7 +174,7 @@ export function formatOnDutyScheduleMessage(
 export function formatOffDutyScheduleMessage(
   events: PlannedEvent[],
   settings: ScheduleExportSettings,
-  guildId?: string,
+  guildId?: string | null,
 ): string {
   const offDuty = events
     .filter((e) => e.duty === EventDuty.OFF_DUTY)
@@ -214,7 +213,7 @@ export function formatOffDutyScheduleMessage(
 export function formatScheduleMessage(
   events: PlannedEvent[],
   settings: ScheduleExportSettings = {},
-  guildId?: string,
+  guildId?: string | null,
 ): string {
   const parts = [
     formatOnDutyScheduleMessage(events, settings, guildId),
