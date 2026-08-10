@@ -17,7 +17,7 @@ export class SettingsEventsLocationChannelCommand {
   @Slash({
     name: "location-channel",
     description:
-      "Set the voice channel name used as location in calendar feeds (Discord events always use External VRChat)",
+      "Set voice channel name used as location in calendar feeds (Discord events stay External VRChat)",
   })
   async locationChannel(
     @SlashOption({
