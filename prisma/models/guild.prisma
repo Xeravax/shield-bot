@@ -64,6 +64,12 @@ model GuildSettings {
   roleTrackingStaffChannelId String? // Channel ID for role tracking staff notifications
   roleTrackingAdvisorRoleId  String? // Discord role ID excluded from all role tracking checks
   roleTrackingInitializedAt  DateTime? // Timestamp when role tracking was first enabled for this guild
+  // Server stats display channels (replaces external ServerStats bot)
+  serverStatsCategoryId        String? // Category holding the four stats voice channels
+  serverStatsGoalChannelId     String? // Voice channel: Current Goal
+  serverStatsMembersChannelId  String? // Voice channel: Members
+  serverStatsDeputiesChannelId String? // Voice channel: Deputies (patrol.tracked)
+  serverStatsBoostsChannelId   String? // Voice channel: Boosts
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 }

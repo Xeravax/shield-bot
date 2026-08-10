@@ -8,6 +8,10 @@ import {
   initializeHostWeeklyEventReminderSchedule,
   stopHostWeeklyEventReminderSchedule,
 } from "./events/hostWeeklyEventReminder.js";
+import {
+  initializeServerStatsSchedule,
+  stopServerStatsSchedule,
+} from "./serverStats/serverStatsRefresh.js";
 import * as cron from "node-cron";
 
 let patrolTopJob: cron.ScheduledTask | null = null;
@@ -15,6 +19,7 @@ let promotionCheckJob: cron.ScheduledTask | null = null;
 let loaExpirationJob: cron.ScheduledTask | null = null;
 let roleTrackingJob: cron.ScheduledTask | null = null;
 let hostWeeklyEventReminderJob: cron.ScheduledTask | null = null;
+let serverStatsJob: cron.ScheduledTask | null = null;
 
 export function initializeSchedules(client: Client) {
   loggers.schedules.info("Initializing scheduled tasks...");
@@ -33,6 +38,9 @@ export function initializeSchedules(client: Client) {
 
   // Host weekly event reminder (Thursday 15:00 Europe/Amsterdam)
   hostWeeklyEventReminderJob = initializeHostWeeklyEventReminderSchedule(client);
+
+  // Server stats voice channel refresh (every 10 minutes)
+  serverStatsJob = initializeServerStatsSchedule(client);
 
   loggers.schedules.info("All scheduled tasks initialized.");
 }
@@ -58,6 +66,9 @@ export function stopSchedules() {
 
   stopHostWeeklyEventReminderSchedule(hostWeeklyEventReminderJob);
   hostWeeklyEventReminderJob = null;
+
+  stopServerStatsSchedule(serverStatsJob);
+  serverStatsJob = null;
 
   loggers.schedules.info("All scheduled tasks stopped.");
 }

@@ -82,6 +82,7 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "settings.command.promotion", description: "/settings patrol promotion — promotion rules and channels" },
     { node: "settings.command.role-tracking", description: "/settings role-tracking — role tracking configuration" },
     { node: "settings.command.roles", description: "/settings roles — legacy permission role management" },
+    { node: "settings.command.server-stats", description: "/settings server-stats — member/deputy/boost display channels" },
     { node: "settings.command.vrchat", description: "/settings vrchat — VRChat world settings" },
     { node: "settings.command.whitelist", description: "/settings whitelist — whitelist GitHub settings" },
   ],
@@ -223,6 +224,23 @@ const guildNodeCache = new Map<string, GuildNodeCache>();
 /** Drop the cached role->nodes map for a guild (call after grant/revoke). */
 export function invalidatePermissionNodeCache(guildId: string): void {
   guildNodeCache.delete(guildId);
+}
+
+/**
+ * Role IDs in the guild that grant the given node (including via wildcards).
+ */
+export async function getRoleIdsWithNode(
+  guildId: string,
+  node: string,
+): Promise<string[]> {
+  const byRole = await getGuildRoleNodes(guildId);
+  const roleIds: string[] = [];
+  for (const [roleId, grants] of byRole) {
+    if (grants.some((g) => nodeMatches(g, node))) {
+      roleIds.push(roleId);
+    }
+  }
+  return roleIds;
 }
 
 async function getGuildRoleNodes(

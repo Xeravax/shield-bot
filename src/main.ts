@@ -14,6 +14,7 @@ import { PatrolTimerManager } from "./managers/patrol/patrolTimerManager.js";
 import { AoCPanelManager } from "./managers/aoc/aocPanelManager.js";
 import { LOAManager } from "./managers/loa/loaManager.js";
 import { RoleTrackingManager } from "./managers/roleTracking/roleTrackingManager.js";
+import { ServerStatsManager } from "./managers/serverStats/serverStatsManager.js";
 import {
   isLoggedInAndVerified,
   loginAndGetCurrentUser,
@@ -82,6 +83,9 @@ export const loaManager = new LOAManager(bot);
 
 // Global role tracking manager singleton
 export const roleTrackingManager = new RoleTrackingManager(bot, patrolTimer);
+
+// Global server stats channel manager (replaces external ServerStats bot)
+export const serverStatsManager = new ServerStatsManager(bot);
 
 bot.rest.on("rateLimited", (info) => {
   loggers.bot.warn("Rate limit hit!", {
