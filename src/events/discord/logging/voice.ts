@@ -100,23 +100,129 @@ export class LoggingVoiceEvents {
         });
       }
 
-      // Server mute / deaf
+      // Server mute / deaf (moderator-attributed)
       if (oldState.serverMute !== newState.serverMute) {
+        const { fields: extra, components } = await resolveAuditExecutor(
+          guild,
+          AuditLogEvent.MemberUpdate,
+          {
+            targetId: member.id,
+            maxAgeMs: 8_000,
+            claimIfUnresolved: true,
+          },
+        );
         await auditLogManager.postLog({
           guildId: guild.id,
           category: "voice",
           title: newState.serverMute ? "Server Mute" : "Server Unmute",
           severity: "warn",
-          fields: fieldsBase,
+          fields: [...fieldsBase, ...extra],
+          components,
           sourceChannelId: newState.channelId ?? oldState.channelId,
         });
       }
       if (oldState.serverDeaf !== newState.serverDeaf) {
+        const { fields: extra, components } = await resolveAuditExecutor(
+          guild,
+          AuditLogEvent.MemberUpdate,
+          {
+            targetId: member.id,
+            maxAgeMs: 8_000,
+            claimIfUnresolved: true,
+          },
+        );
         await auditLogManager.postLog({
           guildId: guild.id,
           category: "voice",
           title: newState.serverDeaf ? "Server Deafen" : "Server Undeafen",
           severity: "warn",
+          fields: [...fieldsBase, ...extra],
+          components,
+          sourceChannelId: newState.channelId ?? oldState.channelId,
+        });
+      }
+
+      // Self mute / deaf
+      if (oldState.selfMute !== newState.selfMute) {
+        await auditLogManager.postLog({
+          guildId: guild.id,
+          category: "voice",
+          title: newState.selfMute ? "Self Mute" : "Self Unmute",
+          severity: "info",
+          fields: fieldsBase,
+          sourceChannelId: newState.channelId ?? oldState.channelId,
+        });
+      }
+      if (oldState.selfDeaf !== newState.selfDeaf) {
+        await auditLogManager.postLog({
+          guildId: guild.id,
+          category: "voice",
+          title: newState.selfDeaf ? "Self Deafen" : "Self Undeafen",
+          severity: "info",
+          fields: fieldsBase,
+          sourceChannelId: newState.channelId ?? oldState.channelId,
+        });
+      }
+
+      // Stream / camera
+      if (oldState.streaming !== newState.streaming) {
+        await auditLogManager.postLog({
+          guildId: guild.id,
+          category: "voice",
+          title: newState.streaming ? "Stream Started" : "Stream Ended",
+          severity: "info",
+          fields: [
+            ...fieldsBase,
+            {
+              name: "Channel",
+              value: auditLogManager.formatChannel(
+                (newState.channelId ?? oldState.channelId)!,
+              ),
+            },
+          ],
+          sourceChannelId: newState.channelId ?? oldState.channelId,
+        });
+      }
+      if (oldState.selfVideo !== newState.selfVideo) {
+        await auditLogManager.postLog({
+          guildId: guild.id,
+          category: "voice",
+          title: newState.selfVideo ? "Camera On" : "Camera Off",
+          severity: "info",
+          fields: [
+            ...fieldsBase,
+            {
+              name: "Channel",
+              value: auditLogManager.formatChannel(
+                (newState.channelId ?? oldState.channelId)!,
+              ),
+            },
+          ],
+          sourceChannelId: newState.channelId ?? oldState.channelId,
+        });
+      }
+
+      // Stage suppress / request-to-speak
+      if (oldState.suppress !== newState.suppress) {
+        await auditLogManager.postLog({
+          guildId: guild.id,
+          category: "voice",
+          title: newState.suppress ? "Stage Suppressed" : "Stage Unsuppressed",
+          severity: "info",
+          fields: fieldsBase,
+          sourceChannelId: newState.channelId ?? oldState.channelId,
+        });
+      }
+      if (
+        oldState.requestToSpeakTimestamp !== newState.requestToSpeakTimestamp
+      ) {
+        await auditLogManager.postLog({
+          guildId: guild.id,
+          category: "voice",
+          title: newState.requestToSpeakTimestamp
+            ? "Request to Speak"
+            : "Request to Speak Cleared",
+          severity: "info",
           fields: fieldsBase,
           sourceChannelId: newState.channelId ?? oldState.channelId,
         });

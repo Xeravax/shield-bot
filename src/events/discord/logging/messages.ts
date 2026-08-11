@@ -14,6 +14,10 @@ import {
 } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import type { InviteFilterAction } from "../../../managers/logging/index.js";
+import {
+  claimComponentsIfUnresolved,
+  unknownExecutorField,
+} from "../../../managers/logging/auditExecutorFields.js";
 
 const INVITE_REGEX =
   /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg|discord(?:app)?\.com\/invite)\/[a-zA-Z0-9-]+/i;
@@ -113,6 +117,23 @@ export class LoggingMessageEvents {
         return;
       }
 
+      const authorRoleIds =
+        newMessage.member?.roles.cache.keys() ??
+        (
+          await newMessage.guild?.members
+            .fetch(newMessage.author.id)
+            .catch(() => null)
+        )?.roles.cache.keys();
+      if (
+        await auditLogManager.shouldIgnoreAuthor(
+          newMessage.guildId,
+          newMessage.author.id,
+          authorRoleIds,
+        )
+      ) {
+        return;
+      }
+
       const before =
         (await messageArchiveManager.getByMessageId(newMessage.id))?.content ??
         oldMessage.content ??
@@ -202,15 +223,28 @@ export class LoggingMessageEvents {
         (await messageArchiveManager.getByMessageId(message.id)) ??
         (await messageArchiveManager.snapshotFromDiscord(message));
 
-      if (cached?.authorId && (await auditLogManager.shouldIgnoreAuthor(
-        message.guildId,
-        cached.authorId,
-      ))) {
+      let authorRoleIds: Iterable<string> | undefined;
+      if (cached?.authorId && message.guild) {
+        const authorMember =
+          message.guild.members.cache.get(cached.authorId) ??
+          (await message.guild.members.fetch(cached.authorId).catch(() => null));
+        authorRoleIds = authorMember?.roles.cache.keys();
+      }
+
+      if (
+        cached?.authorId &&
+        (await auditLogManager.shouldIgnoreAuthor(
+          message.guildId,
+          cached.authorId,
+          authorRoleIds,
+        ))
+      ) {
         await messageArchiveManager.deleteCached(message.id);
         return;
       }
 
       let executorField: string | undefined;
+      let hasExecutor = false;
       if (message.guild) {
         const audit = await discordAuditResolver.resolve(
           message.guild,
@@ -218,6 +252,7 @@ export class LoggingMessageEvents {
           { targetId: cached?.authorId, maxAgeMs: 20_000 },
         );
         if (audit.executor) {
+          hasExecutor = true;
           executorField = auditLogManager.formatUser(
             audit.executor.id,
             audit.executor.tag,
@@ -241,6 +276,8 @@ export class LoggingMessageEvents {
       ];
       if (executorField) {
         fields.push({ name: "Executor", value: executorField, inline: true });
+      } else {
+        fields.push(unknownExecutorField());
       }
       fields.push({
         name: "Content",
@@ -271,6 +308,7 @@ export class LoggingMessageEvents {
         footer: `Message ID ${message.id}`,
         sourceChannelId: message.channelId,
         imageUrl: cached?.attachments?.[0]?.url,
+        components: claimComponentsIfUnresolved(hasExecutor),
       });
 
       await messageArchiveManager.deleteCached(message.id);
@@ -307,6 +345,30 @@ export class LoggingMessageEvents {
       }
 
       const txt = messageArchiveManager.buildPurgeTxt(channel.id, snapshots);
+
+      const extraFields: { name: string; value: string; inline?: boolean }[] = [];
+      let components;
+      if (channel.guild) {
+        const audit = await discordAuditResolver.resolve(
+          channel.guild,
+          AuditLogEvent.MessageBulkDelete,
+          { targetId: channel.id, maxAgeMs: 20_000 },
+        );
+        if (audit.executor) {
+          extraFields.push({
+            name: "Executor",
+            value: auditLogManager.formatUser(
+              audit.executor.id,
+              audit.executor.tag,
+            ),
+            inline: true,
+          });
+        } else {
+          extraFields.push(unknownExecutorField());
+          components = claimComponentsIfUnresolved(false);
+        }
+      }
+
       await auditLogManager.postLog({
         guildId,
         category: "messages",
@@ -328,6 +390,7 @@ export class LoggingMessageEvents {
             value: String(snapshots.length),
             inline: true,
           },
+          ...extraFields,
         ],
         files: [
           new AttachmentBuilder(Buffer.from(txt, "utf8"), {
@@ -335,6 +398,7 @@ export class LoggingMessageEvents {
           }),
         ],
         sourceChannelId: channel.id,
+        components,
       });
 
       await messageArchiveManager.deleteCachedMany([...messages.keys()]);

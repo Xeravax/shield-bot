@@ -19,16 +19,21 @@ export const BOT_INTENTS = [
   IntentsBitField.Flags.GuildEmojisAndStickers,
   IntentsBitField.Flags.GuildInvites,
   IntentsBitField.Flags.GuildWebhooks,
+  IntentsBitField.Flags.GuildIntegrations,
+  IntentsBitField.Flags.AutoModerationConfiguration,
+  IntentsBitField.Flags.AutoModerationExecution,
+  IntentsBitField.Flags.GuildExpressions,
 ] as const;
 
 /**
- * Partials so delete/edit/unban/leave still resolve when uncached.
+ * Partials so delete/edit/unban/leave/reactions still resolve when uncached.
  */
 export const BOT_PARTIALS = [
   Partials.Channel,
   Partials.Message,
   Partials.GuildMember,
   Partials.User,
+  Partials.Reaction,
 ] as const;
 
 /**

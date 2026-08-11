@@ -69,6 +69,40 @@ export class LoggingMemberEvents {
               name: "Bot",
               value: auditLogManager.formatUser(member.id, member.user.tag),
             },
+            {
+              name: "Account created",
+              value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
+              inline: true,
+            },
+            {
+              name: "Member count",
+              value: String(member.guild.memberCount),
+              inline: true,
+            },
+          ],
+          thumbnailUrl: member.user.displayAvatarURL(),
+        });
+      } else {
+        await auditLogManager.postLog({
+          guildId: member.guild.id,
+          category: "members",
+          title: "Member Joined",
+          severity: "success",
+          fields: [
+            {
+              name: "User",
+              value: auditLogManager.formatUser(member.id, member.user.tag),
+            },
+            {
+              name: "Account created",
+              value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
+              inline: true,
+            },
+            {
+              name: "Member count",
+              value: String(member.guild.memberCount),
+              inline: true,
+            },
           ],
           thumbnailUrl: member.user.displayAvatarURL(),
         });
@@ -133,6 +167,27 @@ export class LoggingMemberEvents {
         fields,
         thumbnailUrl: member.user?.displayAvatarURL(),
       });
+
+      // UI / external kicks → moderation case (slash kick suppresses + bot executor).
+      if (
+        audit.executor &&
+        !member.user?.bot &&
+        audit.executor.id !== member.client.user?.id &&
+        !modCaseManager.shouldSuppressGatewayCase(
+          member.guild.id,
+          "KICK",
+          member.id,
+        )
+      ) {
+        await modCaseManager.createCase({
+          guildId: member.guild.id,
+          type: "KICK",
+          targetId: member.id,
+          moderatorId: audit.executor.id,
+          reason: audit.reason ?? "Kick (gateway)",
+          active: false,
+        });
+      }
     } catch (error) {
       loggers.bot.debug("guildMemberRemove logging failed", {
         error: error instanceof Error ? error.message : String(error),

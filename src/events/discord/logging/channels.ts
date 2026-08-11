@@ -3,6 +3,8 @@ import {
   AuditLogEvent,
   ChannelType,
   GuildChannel,
+  OverwriteType,
+  PermissionOverwrites,
   ThreadChannel,
 } from "discord.js";
 import { auditLogManager } from "../../../main.js";
@@ -12,6 +14,99 @@ import { auditExecutorFields } from "../../../managers/logging/index.js";
 function channelLabel(channel: { id: string; name?: string; type: ChannelType }): string {
   const name = "name" in channel && channel.name ? `#${channel.name}` : channel.id;
   return `${name} (\`${channel.id}\`) · type ${ChannelType[channel.type] ?? channel.type}`;
+}
+
+function overwriteTargetLabel(
+  overwrite: PermissionOverwrites,
+  guildId: string,
+): string {
+  if (overwrite.type === OverwriteType.Role) {
+    return overwrite.id === guildId
+      ? `@everyone (\`${overwrite.id}\`)`
+      : `<@&${overwrite.id}> (\`${overwrite.id}\`)`;
+  }
+  return `<@${overwrite.id}> (\`${overwrite.id}\`)`;
+}
+
+function formatOverwritePerms(overwrite: PermissionOverwrites): string {
+  const allow = overwrite.allow.toArray();
+  const deny = overwrite.deny.toArray();
+  const parts: string[] = [];
+  if (allow.length) {
+    parts.push(`allow: ${allow.join(", ")}`);
+  }
+  if (deny.length) {
+    parts.push(`deny: ${deny.join(", ")}`);
+  }
+  return parts.length ? parts.join(" · ") : "*no grants*";
+}
+
+function diffPermissionOverwrites(
+  oldChannel: GuildChannel | ThreadChannel | { permissionOverwrites?: { cache: Map<string, PermissionOverwrites> }; guild?: { id: string } },
+  newChannel: GuildChannel | ThreadChannel | { permissionOverwrites?: { cache: Map<string, PermissionOverwrites> }; guild: { id: string } },
+): string[] {
+  if (
+    !("permissionOverwrites" in oldChannel) ||
+    !("permissionOverwrites" in newChannel) ||
+    !oldChannel.permissionOverwrites ||
+    !newChannel.permissionOverwrites
+  ) {
+    return [];
+  }
+
+  const guildId = newChannel.guild.id;
+  const oldMap = oldChannel.permissionOverwrites.cache;
+  const newMap = newChannel.permissionOverwrites.cache;
+  const changes: string[] = [];
+
+  for (const [id, nw] of newMap) {
+    const ow = oldMap.get(id);
+    if (!ow) {
+      changes.push(
+        `Added ${overwriteTargetLabel(nw, guildId)} — ${formatOverwritePerms(nw)}`,
+      );
+      continue;
+    }
+    if (
+      ow.allow.bitfield !== nw.allow.bitfield ||
+      ow.deny.bitfield !== nw.deny.bitfield
+    ) {
+      const addedAllow = nw.allow
+        .toArray()
+        .filter((p) => !ow.allow.has(p));
+      const removedAllow = ow.allow
+        .toArray()
+        .filter((p) => !nw.allow.has(p));
+      const addedDeny = nw.deny.toArray().filter((p) => !ow.deny.has(p));
+      const removedDeny = ow.deny.toArray().filter((p) => !nw.deny.has(p));
+      const bits: string[] = [];
+      if (addedAllow.length) {
+        bits.push(`+allow ${addedAllow.join(", ")}`);
+      }
+      if (removedAllow.length) {
+        bits.push(`-allow ${removedAllow.join(", ")}`);
+      }
+      if (addedDeny.length) {
+        bits.push(`+deny ${addedDeny.join(", ")}`);
+      }
+      if (removedDeny.length) {
+        bits.push(`-deny ${removedDeny.join(", ")}`);
+      }
+      changes.push(
+        `Updated ${overwriteTargetLabel(nw, guildId)} — ${bits.join("; ") || "changed"}`,
+      );
+    }
+  }
+
+  for (const [id, ow] of oldMap) {
+    if (!newMap.has(id)) {
+      changes.push(
+        `Removed ${overwriteTargetLabel(ow, guildId)} — ${formatOverwritePerms(ow)}`,
+      );
+    }
+  }
+
+  return changes;
 }
 
 @Discord()
@@ -142,21 +237,44 @@ export class LoggingChannelEvents {
           `Category: ${oldChannel.parentId ?? "none"} → ${newChannel.parentId ?? "none"}`,
         );
       }
+      if (
+        "rawPosition" in oldChannel &&
+        "rawPosition" in newChannel &&
+        oldChannel.rawPosition !== newChannel.rawPosition
+      ) {
+        changes.push(
+          `Position: ${oldChannel.rawPosition} → ${newChannel.rawPosition}`,
+        );
+      }
+
+      const overwriteChanges = diffPermissionOverwrites(
+        oldChannel as GuildChannel,
+        newChannel as GuildChannel,
+      );
+      changes.push(...overwriteChanges);
 
       if (changes.length === 0) {
         return;
       }
 
+      const title =
+        overwriteChanges.length > 0 &&
+        changes.length === overwriteChanges.length
+          ? "Channel Permissions Updated"
+          : "Channel Updated";
+
       const { fields: extra, components } = await auditExecutorFields(
         newChannel.guild,
-        AuditLogEvent.ChannelUpdate,
+        overwriteChanges.length > 0
+          ? AuditLogEvent.ChannelOverwriteUpdate
+          : AuditLogEvent.ChannelUpdate,
         newChannel.id,
       );
       await auditLogManager.postLog({
         guildId: newChannel.guild.id,
         category: "channels",
-        title: "Channel Updated",
-        severity: "info",
+        title,
+        severity: overwriteChanges.length > 0 ? "warn" : "info",
         fields: [
           { name: "Channel", value: channelLabel(newChannel as GuildChannel) },
           { name: "Changes", value: changes.join("\n").slice(0, 1024) },
@@ -250,6 +368,13 @@ export class LoggingChannelEvents {
           `Slowmode: ${oldThread.rateLimitPerUser}s → ${newThread.rateLimitPerUser}s`,
         );
       }
+      const oldTags = [...(oldThread.appliedTags ?? [])].sort().join(",");
+      const newTags = [...(newThread.appliedTags ?? [])].sort().join(",");
+      if (oldTags !== newTags) {
+        changes.push(
+          `Tags: \`${oldTags || "none"}\` → \`${newTags || "none"}\``,
+        );
+      }
       if (changes.length === 0) {
         return;
       }
@@ -265,6 +390,55 @@ export class LoggingChannelEvents {
       });
     } catch (error) {
       loggers.bot.debug("threadUpdate log failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  @On({ event: "threadMembersUpdate" })
+  async onThreadMembersUpdate([
+    added,
+    removed,
+    thread,
+  ]: ArgsOf<"threadMembersUpdate">): Promise<void> {
+    try {
+      const settings = await auditLogManager.getSettings(thread.guild.id);
+      if (settings?.loggingForumChannelId === thread.parentId) {
+        return;
+      }
+      if (added.size === 0 && removed.size === 0) {
+        return;
+      }
+      const fields: { name: string; value: string }[] = [
+        { name: "Thread", value: channelLabel(thread) },
+      ];
+      if (added.size) {
+        fields.push({
+          name: "Joined",
+          value: [...added.keys()]
+            .map((id) => `<@${id}>`)
+            .join(", ")
+            .slice(0, 1024),
+        });
+      }
+      if (removed.size) {
+        fields.push({
+          name: "Left",
+          value: [...removed.keys()]
+            .map((id) => `<@${id}>`)
+            .join(", ")
+            .slice(0, 1024),
+        });
+      }
+      await auditLogManager.postLog({
+        guildId: thread.guild.id,
+        category: "channels",
+        title: "Thread Members Updated",
+        severity: "info",
+        fields,
+      });
+    } catch (error) {
+      loggers.bot.debug("threadMembersUpdate log failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -291,6 +465,56 @@ export class LoggingChannelEvents {
       });
     } catch (error) {
       loggers.bot.debug("stageInstanceCreate log failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  @On({ event: "stageInstanceUpdate" })
+  async onStageUpdate([
+    oldStage,
+    newStage,
+  ]: ArgsOf<"stageInstanceUpdate">): Promise<void> {
+    try {
+      if (!newStage.guild || !oldStage) {
+        return;
+      }
+      const changes: string[] = [];
+      if (oldStage.topic !== newStage.topic) {
+        changes.push(
+          `Topic: ${auditLogManager.truncate(oldStage.topic)} → ${auditLogManager.truncate(newStage.topic)}`,
+        );
+      }
+      if (oldStage.privacyLevel !== newStage.privacyLevel) {
+        changes.push(
+          `Privacy: ${oldStage.privacyLevel} → ${newStage.privacyLevel}`,
+        );
+      }
+      if (changes.length === 0) {
+        return;
+      }
+      const { fields: extra, components } = await auditExecutorFields(
+        newStage.guild,
+        AuditLogEvent.StageInstanceUpdate,
+        newStage.id,
+      );
+      await auditLogManager.postLog({
+        guildId: newStage.guild.id,
+        category: "channels",
+        title: "Stage Updated",
+        severity: "info",
+        fields: [
+          {
+            name: "Channel",
+            value: auditLogManager.formatChannel(newStage.channelId),
+          },
+          { name: "Changes", value: changes.join("\n").slice(0, 1024) },
+          ...extra,
+        ],
+        components,
+      });
+    } catch (error) {
+      loggers.bot.debug("stageInstanceUpdate log failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     }

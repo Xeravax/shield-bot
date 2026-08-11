@@ -131,10 +131,14 @@ export class ModCaseManager {
   buildCaseEmbed(modCase: ModCase, options?: {
     claimedByTag?: string | null;
   }): EmbedBuilder {
+    const isChannelTarget =
+      modCase.type === "LOCK" || modCase.type === "UNLOCK";
     const fields: { name: string; value: string; inline?: boolean }[] = [
       {
-        name: "Target",
-        value: `<@${modCase.targetId}> (\`${modCase.targetId}\`)`,
+        name: isChannelTarget ? "Channel" : "Target",
+        value: isChannelTarget
+          ? `<#${modCase.targetId}> (\`${modCase.targetId}\`)`
+          : `<@${modCase.targetId}> (\`${modCase.targetId}\`)`,
         inline: true,
       },
       {

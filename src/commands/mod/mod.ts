@@ -1,8 +1,11 @@
 import {
   ApplicationCommandOptionType,
+  ChannelType,
   CommandInteraction,
+  GuildChannel,
   GuildMember,
   MessageFlags,
+  OverwriteType,
   User,
 } from "discord.js";
 import { Discord, Guard, Slash, SlashGroup, SlashOption } from "discordx";
@@ -174,6 +177,7 @@ export class ModCommands {
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    modCaseManager.suppressGatewayCase(interaction.guildId!, user.id, ["KICK"]);
     try {
       await member.kick(reason ?? undefined);
     } catch (error) {
@@ -816,5 +820,185 @@ export class ModCommands {
     await interaction.editReply({
       content: `✅ Updated reason for case #${caseNumber}.`,
     });
+  }
+
+  @Slash({
+    name: "lock",
+    description: "Lock a channel (deny @everyone Send Messages)",
+  })
+  @Guard(PermissionNodeGuard("mod.command.lock"))
+  async lock(
+    @SlashOption({
+      name: "channel",
+      description: "Channel to lock (defaults to current)",
+      type: ApplicationCommandOptionType.Channel,
+      required: false,
+    })
+    channel: GuildChannel | null,
+    @SlashOption({
+      name: "reason",
+      description: "Reason",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | null,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireGuild(interaction))) {
+      return;
+    }
+
+    const target =
+      channel ??
+      (interaction.channel && "permissionOverwrites" in interaction.channel
+        ? (interaction.channel as GuildChannel)
+        : null);
+    if (
+      !target ||
+      !("permissionOverwrites" in target) ||
+      target.isThread() ||
+      target.type === ChannelType.GuildCategory
+    ) {
+      await interaction.reply({
+        content: "❌ Provide a text/voice channel to lock.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      await target.permissionOverwrites.edit(
+        interaction.guild!.id,
+        { SendMessages: false, SendMessagesInThreads: false },
+        {
+          type: OverwriteType.Role,
+          reason: reason
+            ? `Lock by ${interaction.user.tag}: ${reason}`
+            : `Lock by ${interaction.user.tag}`,
+        },
+      );
+    } catch (error) {
+      loggers.bot.error("Channel lock failed", error);
+      await interaction.editReply({
+        content: `❌ Lock failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
+
+    try {
+      const modCase = await modCaseManager.createCase({
+        guildId: interaction.guildId!,
+        type: "LOCK",
+        targetId: target.id,
+        moderatorId: interaction.user.id,
+        reason: reason ?? null,
+        active: true,
+        extraFields: [
+          {
+            name: "Channel",
+            value: `<#${target.id}> (\`${target.id}\`)`,
+          },
+        ],
+      });
+      await interaction.editReply({
+        content: `✅ Locked <#${target.id}> — case #${modCase.caseNumber}.`,
+      });
+    } catch (error) {
+      loggers.bot.error("Lock case record failed", error);
+      await interaction.editReply({
+        content: `✅ Locked <#${target.id}> (case log failed to save).`,
+      });
+    }
+  }
+
+  @Slash({
+    name: "unlock",
+    description: "Unlock a channel (clear @everyone Send Messages deny)",
+  })
+  @Guard(PermissionNodeGuard("mod.command.unlock"))
+  async unlock(
+    @SlashOption({
+      name: "channel",
+      description: "Channel to unlock (defaults to current)",
+      type: ApplicationCommandOptionType.Channel,
+      required: false,
+    })
+    channel: GuildChannel | null,
+    @SlashOption({
+      name: "reason",
+      description: "Reason",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+    })
+    reason: string | null,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!(await requireGuild(interaction))) {
+      return;
+    }
+
+    const target =
+      channel ??
+      (interaction.channel && "permissionOverwrites" in interaction.channel
+        ? (interaction.channel as GuildChannel)
+        : null);
+    if (
+      !target ||
+      !("permissionOverwrites" in target) ||
+      target.isThread() ||
+      target.type === ChannelType.GuildCategory
+    ) {
+      await interaction.reply({
+        content: "❌ Provide a text/voice channel to unlock.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      await target.permissionOverwrites.edit(
+        interaction.guild!.id,
+        { SendMessages: null, SendMessagesInThreads: null },
+        {
+          type: OverwriteType.Role,
+          reason: reason
+            ? `Unlock by ${interaction.user.tag}: ${reason}`
+            : `Unlock by ${interaction.user.tag}`,
+        },
+      );
+    } catch (error) {
+      loggers.bot.error("Channel unlock failed", error);
+      await interaction.editReply({
+        content: `❌ Unlock failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
+
+    try {
+      const modCase = await modCaseManager.createCase({
+        guildId: interaction.guildId!,
+        type: "UNLOCK",
+        targetId: target.id,
+        moderatorId: interaction.user.id,
+        reason: reason ?? null,
+        active: false,
+        extraFields: [
+          {
+            name: "Channel",
+            value: `<#${target.id}> (\`${target.id}\`)`,
+          },
+        ],
+      });
+      await interaction.editReply({
+        content: `✅ Unlocked <#${target.id}> — case #${modCase.caseNumber}.`,
+      });
+    } catch (error) {
+      loggers.bot.error("Unlock case record failed", error);
+      await interaction.editReply({
+        content: `✅ Unlocked <#${target.id}> (case log failed to save).`,
+      });
+    }
   }
 }
