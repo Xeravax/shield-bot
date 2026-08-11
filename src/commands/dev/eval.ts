@@ -94,8 +94,8 @@ export class EvalCommand {
         member: cmdInteraction.member,
         process,
         console,
-        // Provide import for dynamic module loading (ES module way)
-        import: (module: string) => import(module),
+        // Dynamic import helper — cannot be named `import` (reserved; breaks Function params)
+        dynamicImport: (module: string) => import(module),
         // Prevent access to file system
         __dirname: undefined,
         __filename: undefined,
@@ -110,8 +110,7 @@ export class EvalCommand {
       if (hasImportExportStatement) {
         throw new Error(
           "ES6 import/export statements are not supported in eval. " +
-          "Use dynamic imports instead: `const module = await import('module-name');` " +
-          "or use the provided 'import' function in the context."
+          "Use dynamic imports instead: `const module = await dynamicImport('module-name');`"
         );
       }
       
