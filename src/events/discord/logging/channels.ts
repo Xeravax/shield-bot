@@ -25,7 +25,7 @@ export class LoggingChannelEvents {
       if (await auditLogManager.shouldIgnoreChannel(channel.guild.id, channel.id)) {
         return;
       }
-      const extra = await auditExecutorFields(
+      const { fields: extra, components } = await auditExecutorFields(
         channel.guild,
         AuditLogEvent.ChannelCreate,
         channel.id,
@@ -39,6 +39,7 @@ export class LoggingChannelEvents {
           { name: "Channel", value: channelLabel(channel) },
           ...extra,
         ],
+        components,
       });
     } catch (error) {
       loggers.bot.debug("channelCreate log failed", {
@@ -56,7 +57,7 @@ export class LoggingChannelEvents {
       if (await auditLogManager.shouldIgnoreChannel(channel.guild.id, channel.id)) {
         return;
       }
-      const extra = await auditExecutorFields(
+      const { fields: extra, components } = await auditExecutorFields(
         channel.guild,
         AuditLogEvent.ChannelDelete,
         channel.id,
@@ -70,6 +71,7 @@ export class LoggingChannelEvents {
           { name: "Channel", value: channelLabel(channel as GuildChannel) },
           ...extra,
         ],
+        components,
       });
     } catch (error) {
       loggers.bot.debug("channelDelete log failed", {
@@ -145,7 +147,7 @@ export class LoggingChannelEvents {
         return;
       }
 
-      const extra = await auditExecutorFields(
+      const { fields: extra, components } = await auditExecutorFields(
         newChannel.guild,
         AuditLogEvent.ChannelUpdate,
         newChannel.id,
@@ -160,6 +162,7 @@ export class LoggingChannelEvents {
           { name: "Changes", value: changes.join("\n").slice(0, 1024) },
           ...extra,
         ],
+        components,
         sourceChannelId: newChannel.id,
       });
     } catch (error) {

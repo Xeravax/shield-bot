@@ -40,7 +40,10 @@ export class LoggingServerEvents {
         return;
       }
 
-      const extra = await auditExecutorFields(newGuild, AuditLogEvent.GuildUpdate);
+      const { fields: extra, components } = await auditExecutorFields(
+        newGuild,
+        AuditLogEvent.GuildUpdate,
+      );
       await auditLogManager.postLog({
         guildId: newGuild.id,
         category: "server",
@@ -50,6 +53,7 @@ export class LoggingServerEvents {
           { name: "Changes", value: changes.join("\n").slice(0, 1024) },
           ...extra,
         ],
+        components,
       });
     } catch (error) {
       loggers.bot.debug("guildUpdate log failed", {

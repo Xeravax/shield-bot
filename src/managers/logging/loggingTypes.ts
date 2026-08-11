@@ -45,6 +45,9 @@ export const DEFAULT_MESSAGE_RETENTION_DAYS = 30;
 
 export const CLAIM_BUTTON_PREFIX = "logging:claim:";
 export const CLAIM_MODAL_PREFIX = "logging:claim-modal:";
+/** Claim an audit log embed when Discord did not resolve an executor. */
+export const UNRESOLVED_CLAIM_BUTTON_ID = "logging:claim-unresolved";
+export const UNRESOLVED_CLAIM_MODAL_PREFIX = "logging:claim-unresolved-modal:";
 
 export function claimButtonCustomId(caseId: number): string {
   return `${CLAIM_BUTTON_PREFIX}${caseId}`;
@@ -52,6 +55,17 @@ export function claimButtonCustomId(caseId: number): string {
 
 export function claimModalCustomId(caseId: number): string {
   return `${CLAIM_MODAL_PREFIX}${caseId}`;
+}
+
+export function unresolvedClaimButtonCustomId(): string {
+  return UNRESOLVED_CLAIM_BUTTON_ID;
+}
+
+export function unresolvedClaimModalCustomId(
+  channelId: string,
+  messageId: string,
+): string {
+  return `${UNRESOLVED_CLAIM_MODAL_PREFIX}${channelId}:${messageId}`;
 }
 
 export function parseLoggingThreadIds(

@@ -9,7 +9,7 @@ export class LoggingRoleEvents {
   @On({ event: "roleCreate" })
   async onCreate([role]: ArgsOf<"roleCreate">): Promise<void> {
     try {
-      const extra = await auditExecutorFields(
+      const { fields: extra, components } = await auditExecutorFields(
         role.guild,
         AuditLogEvent.RoleCreate,
         role.id,
@@ -26,6 +26,7 @@ export class LoggingRoleEvents {
           },
           ...extra,
         ],
+        components,
       });
     } catch (error) {
       loggers.bot.debug("roleCreate log failed", {
@@ -37,7 +38,7 @@ export class LoggingRoleEvents {
   @On({ event: "roleDelete" })
   async onDelete([role]: ArgsOf<"roleDelete">): Promise<void> {
     try {
-      const extra = await auditExecutorFields(
+      const { fields: extra, components } = await auditExecutorFields(
         role.guild,
         AuditLogEvent.RoleDelete,
         role.id,
@@ -54,6 +55,7 @@ export class LoggingRoleEvents {
           },
           ...extra,
         ],
+        components,
       });
     } catch (error) {
       loggers.bot.debug("roleDelete log failed", {
@@ -96,7 +98,7 @@ export class LoggingRoleEvents {
         return;
       }
 
-      const extra = await auditExecutorFields(
+      const { fields: extra, components } = await auditExecutorFields(
         newRole.guild,
         AuditLogEvent.RoleUpdate,
         newRole.id,
@@ -114,6 +116,7 @@ export class LoggingRoleEvents {
           { name: "Changes", value: changes.join("\n").slice(0, 1024) },
           ...extra,
         ],
+        components,
       });
     } catch (error) {
       loggers.bot.debug("roleUpdate log failed", {

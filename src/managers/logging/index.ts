@@ -6,8 +6,12 @@ export {
   DEFAULT_MESSAGE_RETENTION_DAYS,
   CLAIM_BUTTON_PREFIX,
   CLAIM_MODAL_PREFIX,
+  UNRESOLVED_CLAIM_BUTTON_ID,
+  UNRESOLVED_CLAIM_MODAL_PREFIX,
   claimButtonCustomId,
   claimModalCustomId,
+  unresolvedClaimButtonCustomId,
+  unresolvedClaimModalCustomId,
   parseLoggingThreadIds,
   parseStringIdArray,
 } from "./loggingTypes.js";
@@ -35,4 +39,10 @@ export type { CreateModCaseInput } from "./modCaseManager.js";
 export { LoggingSetupManager } from "./loggingSetup.js";
 export type { LoggingSetupResult } from "./loggingSetup.js";
 
-export { auditExecutorFields } from "./auditExecutorFields.js";
+export {
+  auditExecutorFields,
+  resolveAuditExecutor,
+  claimComponentsIfUnresolved,
+  unknownExecutorField,
+} from "./auditExecutorFields.js";
+export type { AuditExecutorResult } from "./auditExecutorFields.js";

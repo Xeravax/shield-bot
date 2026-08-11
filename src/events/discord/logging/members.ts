@@ -12,6 +12,10 @@ import {
 } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import { LOGGING_COLORS } from "../../../managers/logging/index.js";
+import {
+  claimComponentsIfUnresolved,
+  unknownExecutorField,
+} from "../../../managers/logging/auditExecutorFields.js";
 
 @Discord()
 export class LoggingMemberEvents {
@@ -248,6 +252,8 @@ export class LoggingMemberEvents {
         name: "Executor",
         value: auditLogManager.formatUser(audit.executor.id, audit.executor.tag),
       });
+    } else {
+      fields.push(unknownExecutorField());
     }
 
     await auditLogManager.postLog({
@@ -256,6 +262,7 @@ export class LoggingMemberEvents {
       title: "Member Roles Updated",
       severity: "info",
       fields,
+      components: claimComponentsIfUnresolved(!!audit.executor),
     });
   }
 
@@ -303,8 +310,9 @@ export class LoggingMemberEvents {
                 ),
               },
             ]
-          : []),
+          : [unknownExecutorField()]),
       ],
+      components: claimComponentsIfUnresolved(!!audit.executor),
       thumbnailUrl: newMember.displayAvatarURL(),
     });
   }
