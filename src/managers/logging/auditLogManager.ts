@@ -310,6 +310,73 @@ export class AuditLogManager {
     }
   }
 
+  /**
+   * Send an arbitrary message payload to a logging category thread.
+   * Soft-fails when the forum/thread is unset.
+   */
+  async postRawToCategory(
+    guildId: string,
+    category: LoggingThreadKey,
+    options: MessageCreateOptions,
+  ): Promise<Message | null> {
+    try {
+      const guild = await this.client.guilds.fetch(guildId).catch(() => null);
+      if (!guild) {
+        return null;
+      }
+      const thread = await this.resolveCategoryThread(guild, category);
+      if (!thread) {
+        return null;
+      }
+      return await thread.send(options);
+    } catch (error) {
+      loggers.bot.warn("Failed to post raw category log", error);
+      return null;
+    }
+  }
+
+  /**
+   * Fan out a bot-action log to the Bot Log forum thread, plus any legacy
+   * staff log channel IDs (whitelist / patrol / promotion channels, etc.).
+   */
+  async fanOutBotLog(
+    guildId: string,
+    options: MessageCreateOptions,
+    extraChannelIds: Array<string | null | undefined> = [],
+  ): Promise<void> {
+    const seen = new Set<string>();
+
+    try {
+      const posted = await this.postRawToCategory(guildId, "bot", options);
+      if (posted?.channelId) {
+        seen.add(posted.channelId);
+      }
+    } catch (error) {
+      loggers.bot.warn("Failed to post Bot Log forum entry", error);
+    }
+
+    for (const channelId of extraChannelIds) {
+      if (!channelId || seen.has(channelId)) {
+        continue;
+      }
+      try {
+        const channel = await this.client.channels
+          .fetch(channelId)
+          .catch(() => null);
+        if (!channel || !channel.isTextBased() || channel.isDMBased()) {
+          continue;
+        }
+        seen.add(channel.id);
+        await channel.send(options);
+      } catch (error) {
+        loggers.bot.warn(
+          `Failed to post Bot Log fan-out to channel ${channelId}`,
+          error,
+        );
+      }
+    }
+  }
+
   formatUser(userId: string, tag?: string | null): string {
     return tag ? `${tag} (\`${userId}\`)` : `<@${userId}> (\`${userId}\`)`;
   }

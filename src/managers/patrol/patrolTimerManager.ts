@@ -16,15 +16,15 @@ import {
   MessageFlags,
   SectionBuilder,
   roleMention,
+  type MessageCreateOptions,
 } from "discord.js";
-import { prisma } from "../../main.js";
+import { prisma, auditLogManager, loaManager } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
 import {
   formatPromotionUserLines,
   getMainVRChatAccountInfo,
   hasEnoughHoursSinceLastNotification,
 } from "../../utility/vrchat/promotionAccountInfo.js";
-import { loaManager } from "../../main.js";
 import { blocksPatrolTracking } from "../loa/loaManager.js";
 import { hasNode } from "../../utility/permissionNodes.js";
 
@@ -1432,7 +1432,84 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Log patrol completion to the configured log channel (Component V2 with remove button).
+   * Destinations for patrol hour / alone alerts: forum Patrol Hours thread
+   * (when logging is set up) plus optional legacy patrolLogChannelId.
+   */
+  private async resolvePatrolLogChannels(guildId: string): Promise<
+    {
+      id: string;
+      guild: Guild;
+      send: (
+        options: string | MessageCreateOptions,
+      ) => Promise<unknown>;
+    }[]
+  > {
+    const destinations: {
+      id: string;
+      guild: Guild;
+      send: (
+        options: string | MessageCreateOptions,
+      ) => Promise<unknown>;
+    }[] = [];
+    const seen = new Set<string>();
+
+    const push = (channel: {
+      id: string;
+      guild: Guild;
+      send: (
+        options: string | MessageCreateOptions,
+      ) => Promise<unknown>;
+    }) => {
+      if (seen.has(channel.id)) {
+        return;
+      }
+      seen.add(channel.id);
+      destinations.push(channel);
+    };
+
+    try {
+      const guild = await this.client.guilds.fetch(guildId).catch(() => null);
+      if (guild) {
+        const thread = await auditLogManager.resolveCategoryThread(
+          guild,
+          "patrol",
+        );
+        if (thread) {
+          push(thread);
+        }
+      }
+    } catch (error) {
+      loggers.patrol.debug("Failed to resolve patrol forum thread", {
+        guildId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const settings = await this.getSettings(guildId);
+    if (settings.patrolLogChannelId) {
+      const channel = await this.client.channels
+        .fetch(settings.patrolLogChannelId)
+        .catch(() => null);
+      if (
+        channel &&
+        channel.isTextBased() &&
+        !channel.isDMBased() &&
+        "guild" in channel &&
+        channel.guild
+      ) {
+        push(channel as TextChannel);
+      } else {
+        loggers.patrol.warn(
+          `Invalid patrol log channel ${settings.patrolLogChannelId} in guild ${guildId}`,
+        );
+      }
+    }
+
+    return destinations;
+  }
+
+  /**
+   * Log patrol completion to the Patrol Hours forum thread and/or configured log channel.
    */
   private async logPatrolCompletion(
     guildId: string,
@@ -1443,19 +1520,12 @@ export class PatrolTimerManager {
     sessionEndedAt: Date,
   ) {
     try {
-      const settings = await this.getSettings(guildId);
-      if (!settings.patrolLogChannelId) {
+      const destinations = await this.resolvePatrolLogChannels(guildId);
+      if (destinations.length === 0) {
         return;
       }
 
-      const channel = await this.client.channels.fetch(settings.patrolLogChannelId);
-      if (!channel || !channel.isTextBased() || channel.isDMBased()) {
-        loggers.patrol.warn(`Invalid patrol log channel ${settings.patrolLogChannelId} in guild ${guildId}`);
-        return;
-      }
-
-      const textChannel = channel as TextChannel;
-      const guild = textChannel.guild;
+      const guild = destinations[0].guild;
       let channelName = "Unknown Channel";
       if (channelId) {
         const patrolChannel = guild.channels.cache.get(channelId);
@@ -1521,11 +1591,20 @@ export class PatrolTimerManager {
         .addSectionComponents(userSection)
         .addTextDisplayComponents(totalsDisplay);
 
-      await textChannel.send({
+      const payload = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
         allowedMentions: { users: [userId] },
-      });
+      } as MessageCreateOptions;
+
+      for (const textChannel of destinations) {
+        await textChannel.send(payload).catch((err) => {
+          loggers.patrol.warn(
+            `Failed to post patrol completion to ${textChannel.id}`,
+            err,
+          );
+        });
+      }
       loggers.patrol.debug(`Logged patrol completion for ${userId} in guild ${guildId}`);
     } catch (err) {
       loggers.patrol.error("logPatrolCompletion error", err);
@@ -1533,7 +1612,7 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Log command usage to the configured log channel
+   * Log command / staff bot usage to Bot Log (+ legacy patrol log channel).
    */
   async logCommandUsage(
     guildId: string,
@@ -1544,34 +1623,20 @@ export class PatrolTimerManager {
   ) {
     try {
       const settings = await this.getSettings(guildId);
-      if (!settings.patrolLogChannelId) {
-        return; // No log channel configured
-      }
 
-      const channel = await this.client.channels.fetch(settings.patrolLogChannelId);
-      if (!channel || !channel.isTextBased() || channel.isDMBased()) {
-        loggers.patrol.warn(`Invalid patrol log channel ${settings.patrolLogChannelId} in guild ${guildId}`);
-        return;
-      }
-
-      // channel is now guaranteed to be a guild text channel
-      const textChannel = channel as TextChannel;
-
-      // Format action name for display
       const actionDisplay = action
         .split("-")
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(" ");
 
-      // Create log embed
       const embed = new EmbedBuilder()
-        .setTitle("⚙️ Patrol Command Usage")
+        .setTitle("⚙️ Bot Command Usage")
         .addFields(
           { name: "Action", value: actionDisplay, inline: true },
           { name: "Executor", value: `<@${executorId}>`, inline: true },
         )
         .setColor(Colors.Orange)
-        .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
+        .setFooter({ text: "S.H.I.E.L.D. Bot" })
         .setTimestamp();
 
       if (targetUserId) {
@@ -1582,7 +1647,11 @@ export class PatrolTimerManager {
         embed.addFields({ name: "Details", value: details, inline: false });
       }
 
-      await textChannel.send({ embeds: [embed], allowedMentions: { users: [] } });
+      await auditLogManager.fanOutBotLog(
+        guildId,
+        { embeds: [embed], allowedMentions: { users: [] } },
+        [settings.patrolLogChannelId],
+      );
       loggers.patrol.debug(`Logged command usage: ${action} by ${executorId} in guild ${guildId}`);
     } catch (err) {
       loggers.patrol.error("logCommandUsage error", err);
@@ -1758,9 +1827,10 @@ export class PatrolTimerManager {
     minutesAlone: number,
     settings: Awaited<ReturnType<typeof this.getSettings>>,
   ): Promise<void> {
-    if (!settings.patrolLogChannelId) {
+    const destinations = await this.resolvePatrolLogChannels(watch.guildId);
+    if (destinations.length === 0) {
       loggers.patrol.debug(
-        `Alone alert skipped: no patrol log channel for guild ${watch.guildId}`,
+        `Alone alert skipped: no patrol log destination for guild ${watch.guildId}`,
       );
       return;
     }
@@ -1773,17 +1843,6 @@ export class PatrolTimerManager {
       return;
     }
 
-    const channel = await this.client.channels
-      .fetch(settings.patrolLogChannelId)
-      .catch(() => null);
-    if (!channel || !channel.isTextBased() || channel.isDMBased()) {
-      loggers.patrol.warn(
-        `Invalid patrol log channel ${settings.patrolLogChannelId} in guild ${watch.guildId}`,
-      );
-      return;
-    }
-
-    const textChannel = channel as TextChannel;
     const aloneSinceUnix = Math.floor(watch.aloneSince.getTime() / 1000);
     const staffMentions = staffRoleIds.map((id) => roleMention(id)).join(" ");
 
@@ -1805,11 +1864,20 @@ export class PatrolTimerManager {
       .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
       .setTimestamp();
 
-    await textChannel.send({
+    const payload = {
       content: staffMentions,
       embeds: [embed],
       allowedMentions: { roles: staffRoleIds, users: [watch.userId] },
-    });
+    };
+
+    for (const textChannel of destinations) {
+      await textChannel.send(payload).catch((err) => {
+        loggers.patrol.warn(
+          `Failed to post alone alert to ${textChannel.id}`,
+          err,
+        );
+      });
+    }
 
     loggers.patrol.info(
       `Alone alert: ${watch.userId} alone ${minutesAlone}m in ${watch.channelId} (guild ${watch.guildId})`,

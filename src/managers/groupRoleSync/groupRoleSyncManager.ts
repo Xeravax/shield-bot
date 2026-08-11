@@ -1,11 +1,11 @@
-import { prisma, bot } from "../../main.js";
+import { prisma, bot, auditLogManager } from "../../main.js";
 import {
   getGroupMember,
   addRoleToGroupMember,
   removeRoleFromGroupMember,
   getGroupRoles,
 } from "../../utility/vrchat/groups.js";
-import { GuildMember, EmbedBuilder, Colors, TextChannel } from "discord.js";
+import { GuildMember, EmbedBuilder, Colors } from "discord.js";
 import { loggers } from "../../utility/logger.js";
 
 /**
@@ -397,17 +397,6 @@ export class GroupRoleSyncManager {
         where: { guildId },
       });
 
-      if (!settings?.botPromotionLogsChannelId) {
-        return; // No log channel configured
-      }
-
-      const channel = (await bot.channels.fetch(
-        settings.botPromotionLogsChannelId,
-      )) as TextChannel;
-      if (!channel || !channel.isTextBased()) {
-        return;
-      }
-
       // Format VRChat role IDs
       const addedRoles =
         vrcRolesAdded.length > 0
@@ -457,7 +446,11 @@ export class GroupRoleSyncManager {
         .setTimestamp()
         .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
 
-      await channel.send({ embeds: [embed] });
+      await auditLogManager.fanOutBotLog(
+        guildId,
+        { embeds: [embed] },
+        [settings?.botPromotionLogsChannelId],
+      );
     } catch (error) {
       loggers.vrchat.error("Error logging role sync", error);
     }
@@ -514,10 +507,6 @@ export class GroupRoleSyncManager {
         where: { guildId },
       });
 
-      if (!settings?.botPromotionLogsChannelId) {
-        return;
-      }
-
       const guild = await bot.guilds.fetch(guildId);
       if (!guild) {
         return;
@@ -525,13 +514,6 @@ export class GroupRoleSyncManager {
 
       const member = await guild.members.fetch(discordId).catch(() => null);
       const displayName = member?.displayName || discordId;
-
-      const channel = (await bot.channels.fetch(
-        settings.botPromotionLogsChannelId,
-      )) as TextChannel;
-      if (!channel || !channel.isTextBased()) {
-        return;
-      }
 
       const embed = new EmbedBuilder()
         .setTitle("⬅️ Member Left VRChat Group")
@@ -546,7 +528,11 @@ export class GroupRoleSyncManager {
         .setTimestamp()
         .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
 
-      await channel.send({ embeds: [embed] });
+      await auditLogManager.fanOutBotLog(
+        guildId,
+        { embeds: [embed] },
+        [settings?.botPromotionLogsChannelId],
+      );
     } catch (error) {
       loggers.vrchat.error("Error handling group left", error);
     }

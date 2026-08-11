@@ -1,5 +1,11 @@
-import { TextDisplayBuilder, MessageFlags, Client, ContainerBuilder } from "discord.js";
-import { prisma } from "../../main.js";
+import {
+  TextDisplayBuilder,
+  MessageFlags,
+  Client,
+  ContainerBuilder,
+  type MessageCreateOptions,
+} from "discord.js";
+import { auditLogManager, prisma } from "../../main.js";
 import { loggers } from "../logger.js";
 
 export interface WhitelistLogData {
@@ -13,59 +19,33 @@ export interface WhitelistLogData {
 }
 
 /**
- * Send a whitelist log message using componentsv2
+ * Send a whitelist log message using componentsv2 to Bot Log (+ legacy channel).
  */
 export async function sendWhitelistLog(
-  client: Client,
+  _client: Client,
   guildId: string,
   data: WhitelistLogData,
 ): Promise<void> {
   try {
-    // Get the whitelist log channel from guild settings
     const guildSettings = await prisma.guildSettings.findUnique({
       where: { guildId },
       select: { whitelistLogChannelId: true },
     });
 
-    if (!guildSettings?.whitelistLogChannelId) {
-      loggers.bot.debug(
-        `No whitelist log channel configured for guild ${guildId}`,
-      );
-      return;
-    }
-
-    // Fetch the log channel
-    const channel = await client.channels.fetch(
-      guildSettings.whitelistLogChannelId,
-    );
-    if (
-      !channel ||
-      !channel.isTextBased() ||
-      !("send" in channel)
-    ) {
-      loggers.bot.warn(
-        `Invalid log channel ${guildSettings.whitelistLogChannelId} for guild ${guildId}`,
-      );
-      return;
-    }
-
-    // Build the log message content
     const content = buildLogContent(data);
-
-    // Create the text display component with the content
-    const textDisplay = new TextDisplayBuilder()
-      .setContent(content);
-
-    // Create a container with yellow sidebar
+    const textDisplay = new TextDisplayBuilder().setContent(content);
     const container = new ContainerBuilder()
-      .setAccentColor(0xffd700) // Yellow/gold color
+      .setAccentColor(0xffd700)
       .addTextDisplayComponents([textDisplay]);
 
-    // Send the message with componentsv2
-    await channel.send({
+    const payload = {
       components: [container],
-      flags: MessageFlags.IsComponentsV2
-    });
+      flags: MessageFlags.IsComponentsV2,
+    } as MessageCreateOptions;
+
+    await auditLogManager.fanOutBotLog(guildId, payload, [
+      guildSettings?.whitelistLogChannelId,
+    ]);
 
     loggers.bot.info(
       `Logged ${data.action} action for ${data.displayName} in guild ${guildId}`,

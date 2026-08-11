@@ -1,5 +1,5 @@
-import { prisma, bot } from "../../../../main.js";
-import { EmbedBuilder, Colors, TextChannel } from "discord.js";
+import { prisma, bot, auditLogManager } from "../../../../main.js";
+import { EmbedBuilder, Colors } from "discord.js";
 import { getGroupMember, getGroupRoles } from "../../../../utility/vrchat/groups.js";
 import { loggers } from "../../../../utility/logger.js";
 
@@ -106,15 +106,8 @@ export async function handleGroupMemberUpdated(content: unknown) {
   const vrcUsername = vrcAccount.vrchatUsername || vrcUserId;
   const vrcUserLink = `[${vrcUsername}](https://vrchat.com/home/user/${vrcUserId})`;
 
-  // Log to promotion logs channel for each configured guild
+  // Log to Bot Log (+ legacy promotion channel) for each configured guild
   for (const settings of guildSettings) {
-    if (!settings.botPromotionLogsChannelId) {
-      loggers.vrchat.debug(
-        `Guild ${settings.guildId} has no promotion logs channel configured - skipping`,
-      );
-      continue;
-    }
-
     try {
       loggers.vrchat.debug(
         `Processing log for guild ${settings.guildId}...`,
@@ -138,22 +131,11 @@ export async function handleGroupMemberUpdated(content: unknown) {
         );
       }
 
-      const channel = (await bot.channels.fetch(
-        settings.botPromotionLogsChannelId,
-      )) as TextChannel;
-      if (!channel || !channel.isTextBased()) {
-        loggers.vrchat.warn(
-          `Invalid promotion logs channel ${settings.botPromotionLogsChannelId} in guild ${settings.guildId} - skipping`,
-        );
-        continue;
-      }
-
       const rolesText =
         currentRoleNames.length > 0
           ? currentRoleNames.map((name) => `• ${name}`).join("\n")
           : "_No roles assigned_";
 
-      // Log the role change event
       const embed = new EmbedBuilder()
         .setTitle("🔄 VRChat Group Roles Updated")
         .setDescription(
@@ -182,7 +164,11 @@ export async function handleGroupMemberUpdated(content: unknown) {
         .setTimestamp()
         .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
 
-      await channel.send({ embeds: [embed] });
+      await auditLogManager.fanOutBotLog(
+        settings.guildId,
+        { embeds: [embed] },
+        [settings.botPromotionLogsChannelId],
+      );
       loggers.vrchat.info(
         `Successfully logged role update for ${vrcUsername} in guild ${settings.guildId}`,
       );
