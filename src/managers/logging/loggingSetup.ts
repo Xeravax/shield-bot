@@ -5,6 +5,7 @@ import {
   Guild,
   OverwriteType,
   PermissionFlagsBits,
+  ThreadChannel,
   type GuildBasedChannel,
 } from "discord.js";
 import { prisma } from "../../main.js";
@@ -22,8 +23,14 @@ export type LoggingSetupResult = {
   createdForum: boolean;
 };
 
+const DEFAULT_FORUM_NAME = "staff-logs";
+
 function isForumChannel(channel: GuildBasedChannel | null): channel is ForumChannel {
   return !!channel && channel.type === ChannelType.GuildForum;
+}
+
+function normalizeChannelName(name: string): string {
+  return name.trim().toLowerCase();
 }
 
 /**
@@ -38,9 +45,22 @@ export class LoggingSetupManager {
   constructor(private readonly client: Client) {}
 
   async createSetup(guild: Guild): Promise<LoggingSetupResult> {
+    const existingForum = guild.channels.cache.find(
+      (ch): ch is ForumChannel =>
+        isForumChannel(ch) &&
+        normalizeChannelName(ch.name) === normalizeChannelName(DEFAULT_FORUM_NAME),
+    );
+
+    if (existingForum) {
+      loggers.bot.info(
+        `Reusing existing logging forum ${existingForum.id} in ${guild.id}`,
+      );
+      return this.bindForum(guild, existingForum.id);
+    }
+
     const me = guild.members.me;
     const forum = await guild.channels.create({
-      name: "staff-logs",
+      name: DEFAULT_FORUM_NAME,
       type: ChannelType.GuildForum,
       topic: "Staff audit and moderation logs (bot-managed category threads).",
       permissionOverwrites: [
@@ -189,6 +209,54 @@ export class LoggingSetupManager {
     return op;
   }
 
+  private async listForumThreads(
+    forum: ForumChannel,
+  ): Promise<Map<string, ThreadChannel>> {
+    const byName = new Map<string, ThreadChannel>();
+
+    const active = await forum.threads.fetchActive().catch(() => null);
+    if (active) {
+      for (const thread of active.threads.values()) {
+        byName.set(normalizeChannelName(thread.name), thread);
+      }
+    }
+
+    // Archived posts still count — reuse instead of duplicating.
+    let before: string | undefined;
+    for (let page = 0; page < 5; page++) {
+      const archived = await forum.threads
+        .fetchArchived({ type: "public", fetchAll: false, before })
+        .catch(() => null);
+      if (!archived || archived.threads.size === 0) {
+        break;
+      }
+      for (const thread of archived.threads.values()) {
+        const key = normalizeChannelName(thread.name);
+        if (!byName.has(key)) {
+          byName.set(key, thread);
+        }
+      }
+      if (!archived.hasMore) {
+        break;
+      }
+      const oldest = [...archived.threads.values()].sort(
+        (a, b) => (a.archiveTimestamp ?? 0) - (b.archiveTimestamp ?? 0),
+      )[0];
+      before = oldest?.id;
+      if (!before) {
+        break;
+      }
+    }
+
+    return byName;
+  }
+
+  private async adoptThread(thread: ThreadChannel): Promise<void> {
+    if (thread.archived) {
+      await thread.setArchived(false).catch(() => undefined);
+    }
+  }
+
   private async ensureThreadsUncached(
     guild: Guild,
     forumChannelId: string,
@@ -199,33 +267,51 @@ export class LoggingSetupManager {
       throw new Error("Logging forum channel is missing or not a forum.");
     }
 
+    const threadsByName = await this.listForumThreads(forum);
+    const claimedIds = new Set<string>();
     const result = {} as Record<LoggingThreadKey, string>;
 
     for (const key of LOGGING_THREAD_KEYS) {
+      const expectedName = LOGGING_THREAD_NAMES[key];
       const existingId = existing[key];
+
       if (existingId) {
         const thread = await guild.channels.fetch(existingId).catch(() => null);
         if (
           thread &&
           thread.isThread() &&
-          thread.parentId === forum.id
+          thread.parentId === forum.id &&
+          !claimedIds.has(thread.id)
         ) {
-          if (thread.archived) {
-            await thread.setArchived(false).catch(() => undefined);
-          }
+          await this.adoptThread(thread);
           result[key] = thread.id;
+          claimedIds.add(thread.id);
+          threadsByName.delete(normalizeChannelName(thread.name));
           continue;
         }
       }
 
+      const byName = threadsByName.get(normalizeChannelName(expectedName));
+      if (byName && !claimedIds.has(byName.id)) {
+        await this.adoptThread(byName);
+        result[key] = byName.id;
+        claimedIds.add(byName.id);
+        threadsByName.delete(normalizeChannelName(expectedName));
+        loggers.bot.info(`Reusing logging thread ${key} in ${guild.id}`, {
+          threadId: byName.id,
+        });
+        continue;
+      }
+
       const created = await forum.threads.create({
-        name: LOGGING_THREAD_NAMES[key],
+        name: expectedName,
         message: {
-          content: `**${LOGGING_THREAD_NAMES[key]}** log thread — managed by the bot. Do not delete.`,
+          content: `**${expectedName}** log thread — managed by the bot. Do not delete.`,
         },
         reason: `Ensure logging category thread: ${key}`,
       });
       result[key] = created.id;
+      claimedIds.add(created.id);
       loggers.bot.info(`Created logging thread ${key} in ${guild.id}`, {
         threadId: created.id,
       });
