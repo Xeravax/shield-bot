@@ -121,8 +121,10 @@ export class EvalCommand {
       
       let wrappedCode: string;
       if (hasAwait) {
-        // Wrap in async IIFE for await support
-        wrappedCode = `(async () => { ${code} })()`;
+        // Must `return` the IIFE so the Function exposes the Promise
+        const body =
+          hasReturn || endsWithSemicolon ? code : `return (${code})`;
+        wrappedCode = `return (async () => { ${body} })()`;
       } else if (!hasReturn && !endsWithSemicolon) {
         // Wrap expression to return value
         wrappedCode = `return (${code})`;
