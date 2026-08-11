@@ -70,6 +70,15 @@ model GuildSettings {
   serverStatsMembersChannelId  String? // Voice channel: Members
   serverStatsDeputiesChannelId String? // Voice channel: Deputies (patrol.tracked)
   serverStatsBoostsChannelId   String? // Voice channel: Boosts
+  // Audit / moderation logging (Dyno replacement)
+  loggingForumChannelId        String? // Staff forum channel for all private log threads
+  welcomeChannelId             String? // Public text channel for join welcomes
+  loggingThreadIds             Json?   // Map of category key → forum thread snowflake
+  messageArchiveRetentionDays  Int?    @default(30) // Cached message / purge archive retention
+  loggingIgnoredChannelIds     Json?   // Channel IDs excluded from message logging
+  loggingIgnoredRoleIds        Json?   // Role IDs whose members are excluded from message logging
+  inviteFilterEnabled          Boolean @default(false)
+  inviteFilterAction           String? // log | delete | delete_timeout
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 }

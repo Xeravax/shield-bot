@@ -12,6 +12,14 @@ import {
   initializeServerStatsSchedule,
   stopServerStatsSchedule,
 } from "./serverStats/serverStatsRefresh.js";
+import {
+  initializeMessageArchiveRetentionSchedule,
+  stopMessageArchiveRetentionSchedule,
+} from "./logging/messageRetention.js";
+import {
+  initializeTempBanExpirySchedule,
+  stopTempBanExpirySchedule,
+} from "./logging/tempBanExpiry.js";
 import * as cron from "node-cron";
 
 let patrolTopJob: cron.ScheduledTask | null = null;
@@ -20,6 +28,8 @@ let loaExpirationJob: cron.ScheduledTask | null = null;
 let roleTrackingJob: cron.ScheduledTask | null = null;
 let hostWeeklyEventReminderJob: cron.ScheduledTask | null = null;
 let serverStatsJob: cron.ScheduledTask | null = null;
+let messageArchiveRetentionJob: cron.ScheduledTask | null = null;
+let tempBanExpiryJob: cron.ScheduledTask | null = null;
 
 export function initializeSchedules(client: Client) {
   loggers.schedules.info("Initializing scheduled tasks...");
@@ -41,6 +51,12 @@ export function initializeSchedules(client: Client) {
 
   // Server stats voice channel refresh (every 10 minutes)
   serverStatsJob = initializeServerStatsSchedule(client);
+
+  // Message archive / purge TXT retention (daily)
+  messageArchiveRetentionJob = initializeMessageArchiveRetentionSchedule(client);
+
+  // Temp ban expiry (every 15 minutes)
+  tempBanExpiryJob = initializeTempBanExpirySchedule(client);
 
   loggers.schedules.info("All scheduled tasks initialized.");
 }
@@ -69,6 +85,12 @@ export function stopSchedules() {
 
   stopServerStatsSchedule(serverStatsJob);
   serverStatsJob = null;
+
+  stopMessageArchiveRetentionSchedule(messageArchiveRetentionJob);
+  messageArchiveRetentionJob = null;
+
+  stopTempBanExpirySchedule(tempBanExpiryJob);
+  tempBanExpiryJob = null;
 
   loggers.schedules.info("All scheduled tasks stopped.");
 }

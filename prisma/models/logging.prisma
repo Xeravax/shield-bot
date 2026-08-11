@@ -1,0 +1,79 @@
+model CachedMessage {
+  id          Int       @id @default(autoincrement())
+  guildId     String
+  channelId   String
+  messageId   String    @unique
+  authorId    String
+  content     String?   @db.LongText
+  attachments Json?
+  embeds      Json?
+  stickers    Json?
+  createdAt   DateTime  @default(now())
+  editedAt    DateTime?
+  expiresAt   DateTime
+  updatedAt   DateTime  @updatedAt
+
+  @@index([guildId])
+  @@index([guildId, channelId])
+  @@index([authorId])
+  @@index([expiresAt])
+  @@map("cached_messages")
+}
+
+model MessagePurgeArchive {
+  id              Int      @id @default(autoincrement())
+  guildId         String
+  channelId       String
+  moderatorId     String
+  messageCount    Int
+  txtContent      String   @db.LongText
+  logMessageId    String?
+  logThreadId     String?
+  caseId          Int?
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+  updatedAt       DateTime @updatedAt
+
+  @@index([guildId])
+  @@index([expiresAt])
+  @@map("message_purge_archives")
+}
+
+model ModCase {
+  id            Int         @id @default(autoincrement())
+  guildId       String
+  caseNumber    Int
+  type          ModCaseType
+  targetId      String
+  moderatorId   String
+  reason        String?     @db.Text
+  claimedBy     String?
+  claimedReason String?     @db.Text
+  claimedAt     DateTime?
+  logMessageId  String?
+  logThreadId   String?
+  expiresAt     DateTime?
+  active        Boolean     @default(true)
+  metadata      Json?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([guildId, caseNumber])
+  @@index([guildId, targetId])
+  @@index([expiresAt])
+  @@index([guildId, active])
+  @@map("mod_cases")
+}
+
+model ModUserNote {
+  id          Int      @id @default(autoincrement())
+  guildId     String
+  targetId    String
+  authorId    String
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([guildId, targetId])
+  @@map("mod_user_notes")
+}

@@ -32,8 +32,15 @@ import { validateEnv, getEnv, hasVRChatCredentials } from "./config/env.js";
 import { loggers, logger, LogLevel } from "./utility/logger.js";
 import { ConfigError } from "./utility/errors.js";
 import { ExceptionConstants } from "./config/constants.js";
-import { BOT_INTENTS, BOT_CONFIG } from "./config/discord.js";
+import { BOT_INTENTS, BOT_PARTIALS, BOT_CONFIG } from "./config/discord.js";
 import { seedPermissionNodesFromLegacyRoles } from "./utility/permissionNodeSeeder.js";
+import {
+  AuditLogManager,
+  DiscordAuditResolver,
+  LoggingSetupManager,
+  MessageArchiveManager,
+  ModCaseManager,
+} from "./managers/logging/index.js";
 
 // Validate environment variables at startup
 let env;
@@ -67,6 +74,7 @@ const devGuildIdForBot = "1241178553111019522";
 
 export const bot = new Client({
   intents: BOT_INTENTS,
+  partials: [...BOT_PARTIALS],
   silent: BOT_CONFIG.silent,
   botGuilds: isDevelopmentForBot ? [devGuildIdForBot] : undefined,
 });
@@ -86,6 +94,13 @@ export const roleTrackingManager = new RoleTrackingManager(bot, patrolTimer);
 
 // Global server stats channel manager (replaces external ServerStats bot)
 export const serverStatsManager = new ServerStatsManager(bot);
+
+// Forum audit logging + moderation (Dyno replacement)
+export const loggingSetupManager = new LoggingSetupManager(bot);
+export const auditLogManager = new AuditLogManager(bot, loggingSetupManager);
+export const discordAuditResolver = new DiscordAuditResolver();
+export const messageArchiveManager = new MessageArchiveManager();
+export const modCaseManager = new ModCaseManager(bot, auditLogManager);
 
 bot.rest.on("rateLimited", (info) => {
   loggers.bot.warn("Rate limit hit!", {
