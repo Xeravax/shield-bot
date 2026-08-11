@@ -45,6 +45,18 @@ const IGNORE_CHANNEL_TYPES = [
   ChannelType.GuildCategory,
 ] as const;
 
+/** Category → category id + all current children; otherwise just the channel. */
+function collectIgnoreChannelIds(channel: GuildBasedChannel): string[] {
+  if (channel.type === ChannelType.GuildCategory) {
+    const ids = [channel.id];
+    for (const child of channel.children.cache.values()) {
+      ids.push(child.id);
+    }
+    return ids;
+  }
+  return [channel.id];
+}
+
 function formatIdList(
   ids: string[],
   format: (id: string) => string,
@@ -414,12 +426,13 @@ export class SettingsLoggingCommands {
 
   @Slash({
     name: "ignore-channel-add",
-    description: "Exclude a channel from audit / message logging",
+    description:
+      "Exclude a channel (or entire category) from audit / message logging",
   })
   async ignoreChannelAdd(
     @SlashOption({
       name: "channel",
-      description: "Channel to ignore",
+      description: "Channel or category to ignore",
       type: ApplicationCommandOptionType.Channel,
       channelTypes: [...IGNORE_CHANNEL_TYPES],
       required: true,
@@ -442,20 +455,42 @@ export class SettingsLoggingCommands {
       create: { guildId },
     });
     const ignored = parseStringIdArray(settings.loggingIgnoredChannelIds);
-    if (ignored.includes(channel.id)) {
+    const toAdd = collectIgnoreChannelIds(channel);
+    const fresh = toAdd.filter((id) => !ignored.includes(id));
+
+    if (fresh.length === 0) {
       await interaction.reply({
-        content: `ℹ️ <#${channel.id}> is already ignored for logging.`,
+        content:
+          channel.type === ChannelType.GuildCategory
+            ? `ℹ️ Category **${channel.name}** and its channels are already ignored.`
+            : `ℹ️ <#${channel.id}> is already ignored for logging.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    ignored.push(channel.id);
+    ignored.push(...fresh);
     await prisma.guildSettings.update({
       where: { guildId },
       data: { loggingIgnoredChannelIds: ignored },
     });
     auditLogManager.invalidateSettings(guildId);
+
+    if (channel.type === ChannelType.GuildCategory) {
+      const childCount = toAdd.length - 1;
+      await interaction.reply({
+        content:
+          `✅ Ignored category **${channel.name}**` +
+          (childCount > 0
+            ? ` and **${childCount}** channel${childCount === 1 ? "" : "s"} inside it.`
+            : " (empty).") +
+          (fresh.length < toAdd.length
+            ? ` (${toAdd.length - fresh.length} already ignored.)`
+            : ""),
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     await interaction.reply({
       content: `✅ <#${channel.id}> will be ignored by logging.`,
@@ -465,12 +500,13 @@ export class SettingsLoggingCommands {
 
   @Slash({
     name: "ignore-channel-remove",
-    description: "Stop excluding a channel from audit / message logging",
+    description:
+      "Stop excluding a channel (or entire category) from audit / message logging",
   })
   async ignoreChannelRemove(
     @SlashOption({
       name: "channel",
-      description: "Channel to stop ignoring",
+      description: "Channel or category to stop ignoring",
       type: ApplicationCommandOptionType.Channel,
       channelTypes: [...IGNORE_CHANNEL_TYPES],
       required: true,
@@ -489,15 +525,21 @@ export class SettingsLoggingCommands {
     const guildId = interaction.guildId;
     const settings = await prisma.guildSettings.findUnique({ where: { guildId } });
     const ignored = parseStringIdArray(settings?.loggingIgnoredChannelIds);
-    if (!ignored.includes(channel.id)) {
+    const toRemove = new Set(collectIgnoreChannelIds(channel));
+    const updated = ignored.filter((id) => !toRemove.has(id));
+    const removedCount = ignored.length - updated.length;
+
+    if (removedCount === 0) {
       await interaction.reply({
-        content: `ℹ️ <#${channel.id}> is not on the logging ignore list.`,
+        content:
+          channel.type === ChannelType.GuildCategory
+            ? `ℹ️ Category **${channel.name}** is not on the logging ignore list.`
+            : `ℹ️ <#${channel.id}> is not on the logging ignore list.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    const updated = ignored.filter((id) => id !== channel.id);
     await prisma.guildSettings.update({
       where: { guildId },
       data: {
@@ -506,6 +548,14 @@ export class SettingsLoggingCommands {
       },
     });
     auditLogManager.invalidateSettings(guildId);
+
+    if (channel.type === ChannelType.GuildCategory) {
+      await interaction.reply({
+        content: `✅ Removed category **${channel.name}** and **${removedCount}** ignored entr${removedCount === 1 ? "y" : "ies"} from the list.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     await interaction.reply({
       content: `✅ <#${channel.id}> will be logged again.`,

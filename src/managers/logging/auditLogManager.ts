@@ -130,7 +130,26 @@ export class AuditLogManager {
       return true;
     }
     const ignored = parseStringIdArray(settings.loggingIgnoredChannelIds);
-    return ignored.includes(channelId);
+    if (ignored.length === 0) {
+      return false;
+    }
+    if (ignored.includes(channelId)) {
+      return true;
+    }
+
+    // Category ignore: also skip channels whose parent category is ignored.
+    const guild =
+      this.client.guilds.cache.get(guildId) ??
+      (await this.client.guilds.fetch(guildId).catch(() => null));
+    if (!guild) {
+      return false;
+    }
+    const channel =
+      guild.channels.cache.get(channelId) ??
+      (await guild.channels.fetch(channelId).catch(() => null));
+    const parentId =
+      channel && "parentId" in channel ? channel.parentId : null;
+    return typeof parentId === "string" && ignored.includes(parentId);
   }
 
   async shouldIgnoreAuthor(
