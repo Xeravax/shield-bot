@@ -1,14 +1,77 @@
 import {
   ApplicationCommandOptionType,
   CommandInteraction,
+  GuildChannel,
   GuildMember,
   MessageFlags,
+  PermissionFlagsBits,
   User,
 } from "discord.js";
 import { Discord, Guard, Slash, SlashGroup, SlashOption } from "discordx";
 import { PermissionNodeGuard } from "../../utility/guards.js";
 import { modCaseManager } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
+
+const LOCK_OVERWRITE_FLAGS = [
+  "SendMessages",
+  "AddReactions",
+  "CreatePublicThreads",
+  "CreatePrivateThreads",
+  "SendMessagesInThreads",
+] as const;
+
+type LockOverwriteFlag = (typeof LOCK_OVERWRITE_FLAGS)[number];
+type LockOverwriteState = Record<LockOverwriteFlag, boolean | null>;
+
+const LOCK_FLAG_BITS: Record<LockOverwriteFlag, bigint> = {
+  SendMessages: PermissionFlagsBits.SendMessages,
+  AddReactions: PermissionFlagsBits.AddReactions,
+  CreatePublicThreads: PermissionFlagsBits.CreatePublicThreads,
+  CreatePrivateThreads: PermissionFlagsBits.CreatePrivateThreads,
+  SendMessagesInThreads: PermissionFlagsBits.SendMessagesInThreads,
+};
+
+function capturePriorOverwrites(
+  channel: GuildChannel,
+  guildId: string,
+): LockOverwriteState {
+  const overwrite = channel.permissionOverwrites.cache.get(guildId);
+  const state = {} as LockOverwriteState;
+  for (const flag of LOCK_OVERWRITE_FLAGS) {
+    const bit = LOCK_FLAG_BITS[flag];
+    if (!overwrite) {
+      state[flag] = null;
+    } else if (overwrite.allow.has(bit)) {
+      state[flag] = true;
+    } else if (overwrite.deny.has(bit)) {
+      state[flag] = false;
+    } else {
+      state[flag] = null;
+    }
+  }
+  return state;
+}
+
+function parsePriorOverwrites(metadata: unknown): LockOverwriteState | null {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const prior = (metadata as { priorOverwrites?: unknown }).priorOverwrites;
+  if (!prior || typeof prior !== "object") {
+    return null;
+  }
+  const record = prior as Record<string, unknown>;
+  const state = {} as LockOverwriteState;
+  for (const flag of LOCK_OVERWRITE_FLAGS) {
+    const value = record[flag];
+    if (value === true || value === false || value === null) {
+      state[flag] = value;
+    } else {
+      state[flag] = null;
+    }
+  }
+  return state;
+}
 
 /** ECMAScript Date time value limit (±100M days from epoch). */
 const SAFE_DATE_MAX_MS = 8.64e15;
@@ -176,6 +239,15 @@ export class ModCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       await member.kick(reason ?? undefined);
+    } catch (error) {
+      loggers.bot.error("Kick failed", error);
+      await interaction.editReply({
+        content: `❌ Kick failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
+
+    try {
       const modCase = await modCaseManager.createCase({
         guildId: interaction.guildId!,
         type: "KICK",
@@ -188,9 +260,9 @@ export class ModCommands {
         content: `✅ Kicked ${user} — case #${modCase.caseNumber}.`,
       });
     } catch (error) {
-      loggers.bot.error("Kick failed", error);
+      loggers.bot.error("Kick case record failed", error);
       await interaction.editReply({
-        content: `❌ Kick failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: `✅ Kicked ${user} (case log failed to save).`,
       });
     }
   }
@@ -384,7 +456,16 @@ export class ModCommands {
         reason: reason ?? "Softban",
         deleteMessageSeconds: (deleteDays ?? 1) * 24 * 60 * 60,
       });
-      await interaction.guild!.members.unban(user.id, "Softban unban");
+    } catch (error) {
+      loggers.bot.error("Softban ban failed", error);
+      await interaction.editReply({
+        content: `❌ Softban failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
+
+    let caseNumber: number | null = null;
+    try {
       const modCase = await modCaseManager.createCase({
         guildId: interaction.guildId!,
         type: "SOFTBAN",
@@ -393,15 +474,31 @@ export class ModCommands {
         reason: reason ?? null,
         active: false,
       });
-      await interaction.editReply({
-        content: `✅ Softbanned ${user} — case #${modCase.caseNumber}.`,
-      });
+      caseNumber = modCase.caseNumber;
     } catch (error) {
-      loggers.bot.error("Softban failed", error);
-      await interaction.editReply({
-        content: `❌ Softban failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
+      loggers.bot.error("Softban case record failed", error);
     }
+
+    try {
+      await interaction.guild!.members.unban(user.id, "Softban unban");
+    } catch (error) {
+      loggers.bot.error("Softban unban failed", error);
+      const casePart =
+        caseNumber != null
+          ? ` — case #${caseNumber}`
+          : " (case log failed to save)";
+      await interaction.editReply({
+        content: `⚠️ Softban ban applied${casePart}, but unban failed — manual recovery is required.`,
+      });
+      return;
+    }
+
+    await interaction.editReply({
+      content:
+        caseNumber != null
+          ? `✅ Softbanned ${user} — case #${caseNumber}.`
+          : `✅ Softbanned ${user} (case log failed to save).`,
+    });
   }
 
   @Slash({ name: "unban", description: "Unban a user" })
@@ -521,6 +618,15 @@ export class ModCommands {
     const expiresAt = new Date(Date.now() + ms);
     try {
       await member.timeout(ms, reason ?? undefined);
+    } catch (error) {
+      loggers.bot.error("Timeout failed", error);
+      await interaction.editReply({
+        content: `❌ Timeout failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
+
+    try {
       const modCase = await modCaseManager.createCase({
         guildId: interaction.guildId!,
         type: "TIMEOUT",
@@ -533,9 +639,9 @@ export class ModCommands {
         content: `✅ Timed out ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> — case #${modCase.caseNumber}.`,
       });
     } catch (error) {
-      loggers.bot.error("Timeout failed", error);
+      loggers.bot.error("Timeout case record failed", error);
       await interaction.editReply({
-        content: `❌ Timeout failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: `✅ Timed out ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> (case log failed to save).`,
       });
     }
   }
@@ -573,6 +679,15 @@ export class ModCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       await member.timeout(null, reason ?? undefined);
+    } catch (error) {
+      loggers.bot.error("Untimeout failed", error);
+      await interaction.editReply({
+        content: `❌ Untimeout failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
+
+    try {
       const modCase = await modCaseManager.createCase({
         guildId: interaction.guildId!,
         type: "UNTIMEOUT",
@@ -585,9 +700,9 @@ export class ModCommands {
         content: `✅ Removed timeout for ${user} — case #${modCase.caseNumber}.`,
       });
     } catch (error) {
-      loggers.bot.error("Untimeout failed", error);
+      loggers.bot.error("Untimeout case record failed", error);
       await interaction.editReply({
-        content: `❌ Untimeout failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: `✅ Removed timeout for ${user} (case log failed to save).`,
       });
     }
   }
@@ -805,6 +920,11 @@ export class ChannelLockCommands {
       return;
     }
 
+    const priorOverwrites = capturePriorOverwrites(
+      channel as GuildChannel,
+      interaction.guild.id,
+    );
+
     try {
       await channel.permissionOverwrites.edit(interaction.guild.id, {
         SendMessages: false,
@@ -813,7 +933,15 @@ export class ChannelLockCommands {
         CreatePrivateThreads: false,
         SendMessagesInThreads: false,
       });
+    } catch (error) {
+      loggers.bot.error("Channel lock failed", error);
+      await interaction.editReply({
+        content: `❌ Lock failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
 
+    try {
       const modCase = await modCaseManager.createCase({
         guildId: interaction.guildId,
         type: "LOCK",
@@ -821,20 +949,24 @@ export class ChannelLockCommands {
         moderatorId: interaction.user.id,
         reason: reason ?? null,
         active: true,
+        metadata: { priorOverwrites },
       });
 
       await interaction.editReply({
         content: `✅ Channel locked — case #${modCase.caseNumber}.`,
       });
-      await channel.send({
-        content: `🔒 Channel locked by ${interaction.user}.${reason ? ` Reason: ${reason}` : ""}`,
-      }).catch(() => undefined);
     } catch (error) {
-      loggers.bot.error("Channel lock failed", error);
+      loggers.bot.error("Lock case record failed", error);
       await interaction.editReply({
-        content: `❌ Lock failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: "✅ Channel locked (case log failed to save).",
       });
     }
+
+    await channel
+      .send({
+        content: `🔒 Channel locked by ${interaction.user}.${reason ? ` Reason: ${reason}` : ""}`,
+      })
+      .catch(() => undefined);
   }
 
   @Slash({ name: "unlock", description: "Restore @everyone Send Messages in this channel" })
@@ -871,21 +1003,46 @@ export class ChannelLockCommands {
       return;
     }
 
-    try {
-      await channel.permissionOverwrites.edit(interaction.guild.id, {
-        SendMessages: null,
-        AddReactions: null,
-        CreatePublicThreads: null,
-        CreatePrivateThreads: null,
-        SendMessagesInThreads: null,
-      });
+    const activeLock = await modCaseManager.findActiveCase(
+      interaction.guildId,
+      channel.id,
+      "LOCK",
+    );
+    const priorOverwrites = parsePriorOverwrites(activeLock?.metadata);
+    const restoreOverwrites = priorOverwrites ?? {
+      SendMessages: null,
+      AddReactions: null,
+      CreatePublicThreads: null,
+      CreatePrivateThreads: null,
+      SendMessagesInThreads: null,
+    };
 
+    try {
+      await channel.permissionOverwrites.edit(
+        interaction.guild.id,
+        restoreOverwrites,
+      );
+    } catch (error) {
+      loggers.bot.error("Channel unlock failed", error);
+      await interaction.editReply({
+        content: `❌ Unlock failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
+
+    let deactivationNote = "";
+    try {
       await modCaseManager.deactivateActiveCases(
         interaction.guildId,
         channel.id,
         "LOCK",
       );
+    } catch (error) {
+      loggers.bot.error("Unlock deactivate LOCK cases failed", error);
+      deactivationNote = " (failed to clear active lock cases)";
+    }
 
+    try {
       const modCase = await modCaseManager.createCase({
         guildId: interaction.guildId,
         type: "UNLOCK",
@@ -896,16 +1053,19 @@ export class ChannelLockCommands {
       });
 
       await interaction.editReply({
-        content: `✅ Channel unlocked — case #${modCase.caseNumber}.`,
+        content: `✅ Channel unlocked — case #${modCase.caseNumber}.${deactivationNote}`,
       });
-      await channel.send({
-        content: `🔓 Channel unlocked by ${interaction.user}.${reason ? ` Reason: ${reason}` : ""}`,
-      }).catch(() => undefined);
     } catch (error) {
-      loggers.bot.error("Channel unlock failed", error);
+      loggers.bot.error("Unlock case record failed", error);
       await interaction.editReply({
-        content: `❌ Unlock failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: `✅ Channel unlocked (case log failed to save).${deactivationNote}`,
       });
     }
+
+    await channel
+      .send({
+        content: `🔓 Channel unlocked by ${interaction.user}.${reason ? ` Reason: ${reason}` : ""}`,
+      })
+      .catch(() => undefined);
   }
 }

@@ -79,6 +79,7 @@ model GuildSettings {
   loggingIgnoredRoleIds        Json?   // Role IDs whose members are excluded from message logging
   inviteFilterEnabled          Boolean @default(false)
   inviteFilterAction           String? // log | delete | delete_timeout
+  modCaseCounter               Int     @default(0) // Last allocated ModCase.caseNumber for this guild
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 }

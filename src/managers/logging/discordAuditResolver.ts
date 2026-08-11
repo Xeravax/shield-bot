@@ -64,7 +64,7 @@ export class DiscordAuditResolver {
   ): Promise<ResolvedAuditActor> {
     const maxAgeMs = options?.maxAgeMs ?? DEFAULT_AGE_MS;
     const limit = options?.limit ?? 6;
-    const cacheKey = `${guild.id}:${type}:${options?.targetId ?? "*"}:${maxAgeMs}`;
+    const cacheKey = `${guild.id}:${type}:${options?.targetId ?? "*"}:${maxAgeMs}:${limit}`;
     const now = Date.now();
 
     const cached = this.cache.get(cacheKey);

@@ -116,30 +116,6 @@ export class PurgeCommand {
           (await messageArchiveManager.snapshotFromDiscord(msg));
         if (snap) {
           pendingSnapshots.push(snap);
-        } else {
-          pendingSnapshots.push({
-            guildId: interaction.guildId,
-            channelId: channel.id,
-            messageId: msg.id,
-            authorId: msg.author.id,
-            content: msg.content || null,
-            attachments: [...msg.attachments.values()].map((a) => ({
-              id: a.id,
-              name: a.name,
-              url: "",
-              contentType: a.contentType,
-              size: a.size,
-              retained: false,
-            })),
-            embeds: msg.embeds.map((e) => e.toJSON()),
-            stickers: [...msg.stickers.values()].map((s) => ({
-              id: s.id,
-              name: s.name,
-              format: String(s.format),
-            })),
-            createdAt: msg.createdAt,
-            editedAt: msg.editedAt,
-          });
         }
       }
 

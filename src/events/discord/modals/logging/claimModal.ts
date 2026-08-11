@@ -21,20 +21,20 @@ export class LoggingClaimModalHandlers {
         return;
       }
 
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
       const member = await resolveGuildMember(interaction);
       if (!member || !(await hasNode(member, "mod.manage.claim"))) {
-        await interaction.reply({
+        await interaction.editReply({
           content: "❌ You don't have permission to claim cases.",
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
       const match = matchComponentId(interaction.customId, CLAIM_MODAL_PATTERN);
       if (!match) {
-        await interaction.reply({
+        await interaction.editReply({
           content: "❌ Invalid modal data.",
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -42,14 +42,12 @@ export class LoggingClaimModalHandlers {
       const caseId = parseInt(match[1], 10);
       const reason = interaction.fields.getTextInputValue("reason").trim();
       if (!reason) {
-        await interaction.reply({
+        await interaction.editReply({
           content: "❌ A claim reason is required.",
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const result = await modCaseManager.claimCase(
         caseId,
         interaction.user.id,

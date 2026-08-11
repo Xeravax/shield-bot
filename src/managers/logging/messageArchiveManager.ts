@@ -296,7 +296,7 @@ export class MessageArchiveManager {
         break;
       }
       const result = await prisma.cachedMessage.deleteMany({
-        where: { id: { in: batch.map((r) => r.id) } },
+        where: { id: { in: batch.map((r) => r.id) }, expiresAt: { lt: now } },
       });
       messages += result.count;
       if (batch.length < PURGE_BATCH_SIZE) {
@@ -314,7 +314,7 @@ export class MessageArchiveManager {
         break;
       }
       const result = await prisma.messagePurgeArchive.deleteMany({
-        where: { id: { in: batch.map((r) => r.id) } },
+        where: { id: { in: batch.map((r) => r.id) }, expiresAt: { lt: now } },
       });
       archives += result.count;
       if (batch.length < PURGE_BATCH_SIZE) {

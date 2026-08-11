@@ -174,17 +174,18 @@ export class LoggingSetupManager {
     forumChannelId: string,
     existing: Partial<Record<LoggingThreadKey, string>>,
   ): Promise<Record<LoggingThreadKey, string>> {
-    const inFlight = this.ensureThreadsInFlight.get(guild.id);
+    const inFlightKey = `${guild.id}:${forumChannelId}`;
+    const inFlight = this.ensureThreadsInFlight.get(inFlightKey);
     if (inFlight) {
       return inFlight;
     }
 
     const op = this.ensureThreadsUncached(guild, forumChannelId, existing).finally(
       () => {
-        this.ensureThreadsInFlight.delete(guild.id);
+        this.ensureThreadsInFlight.delete(inFlightKey);
       },
     );
-    this.ensureThreadsInFlight.set(guild.id, op);
+    this.ensureThreadsInFlight.set(inFlightKey, op);
     return op;
   }
 

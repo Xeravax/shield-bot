@@ -87,13 +87,45 @@ export class ModCaseManager {
     return typeof until === "number" && until > Date.now();
   }
 
-  private async nextCaseNumber(guildId: string): Promise<number> {
+  private async maxCaseNumber(guildId: string): Promise<number> {
     const last = await prisma.modCase.findFirst({
       where: { guildId },
       orderBy: { caseNumber: "desc" },
       select: { caseNumber: true },
     });
-    return (last?.caseNumber ?? 0) + 1;
+    return last?.caseNumber ?? 0;
+  }
+
+  /** Atomically allocate the next per-guild case number via GuildSettings.modCaseCounter. */
+  private async allocateCaseNumber(guildId: string): Promise<number> {
+    const existing = await prisma.guildSettings.findUnique({
+      where: { guildId },
+      select: { guildId: true },
+    });
+    if (!existing) {
+      const seed = await this.maxCaseNumber(guildId);
+      try {
+        await prisma.guildSettings.create({
+          data: { guildId, modCaseCounter: seed },
+        });
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code: unknown }).code)
+            : null;
+        if (code !== "P2002") {
+          throw error;
+        }
+        // Concurrent create — fall through to increment.
+      }
+    }
+
+    const updated = await prisma.guildSettings.update({
+      where: { guildId },
+      data: { modCaseCounter: { increment: 1 } },
+      select: { modCaseCounter: true },
+    });
+    return updated.modCaseCounter;
   }
 
   buildCaseEmbed(modCase: ModCase, options?: {
@@ -193,39 +225,20 @@ export class ModCaseManager {
   async createCase(input: CreateModCaseInput): Promise<ModCase> {
     const claimable = input.claimable !== false && input.type !== "NOTE";
 
-    let modCase: ModCase | null = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const caseNumber = await this.nextCaseNumber(input.guildId);
-      try {
-        modCase = await prisma.modCase.create({
-          data: {
-            guildId: input.guildId,
-            caseNumber,
-            type: input.type,
-            targetId: input.targetId,
-            moderatorId: input.moderatorId,
-            reason: input.reason ?? null,
-            expiresAt: input.expiresAt ?? null,
-            active: input.active ?? true,
-            metadata: input.metadata ?? undefined,
-          },
-        });
-        break;
-      } catch (error) {
-        const code =
-          error && typeof error === "object" && "code" in error
-            ? String((error as { code: unknown }).code)
-            : null;
-        if (code === "P2002" && attempt < 2) {
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    if (!modCase) {
-      throw new Error("Failed to allocate moderation case number.");
-    }
+    const caseNumber = await this.allocateCaseNumber(input.guildId);
+    let modCase = await prisma.modCase.create({
+      data: {
+        guildId: input.guildId,
+        caseNumber,
+        type: input.type,
+        targetId: input.targetId,
+        moderatorId: input.moderatorId,
+        reason: input.reason ?? null,
+        expiresAt: input.expiresAt ?? null,
+        active: input.active ?? true,
+        metadata: input.metadata ?? undefined,
+      },
+    });
 
     this.suppressGatewayCase(input.guildId, input.targetId, [input.type]);
 
@@ -268,6 +281,17 @@ export class ModCaseManager {
     }
 
     return modCase;
+  }
+
+  async findActiveCase(
+    guildId: string,
+    targetId: string,
+    type: ModCaseType,
+  ): Promise<ModCase | null> {
+    return prisma.modCase.findFirst({
+      where: { guildId, targetId, type, active: true },
+      orderBy: { createdAt: "desc" },
+    });
   }
 
   async deactivateActiveCases(
