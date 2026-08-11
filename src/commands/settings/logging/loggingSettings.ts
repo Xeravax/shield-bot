@@ -5,6 +5,7 @@ import {
   CommandInteraction,
   GuildBasedChannel,
   MessageFlags,
+  Role,
 } from "discord.js";
 import { PermissionNodeGuard } from "../../../utility/guards.js";
 import {
@@ -20,6 +21,7 @@ import {
   LOGGING_THREAD_KEYS,
   LOGGING_THREAD_NAMES,
   parseLoggingThreadIds,
+  parseStringIdArray,
   type InviteFilterAction,
 } from "../../../managers/logging/index.js";
 
@@ -33,6 +35,25 @@ const INVITE_FILTER_CHOICES = INVITE_FILTER_ACTIONS.map((value) => ({
   name: INVITE_FILTER_ACTION_LABELS[value],
   value,
 }));
+
+const IGNORE_CHANNEL_TYPES = [
+  ChannelType.GuildText,
+  ChannelType.GuildAnnouncement,
+  ChannelType.GuildVoice,
+  ChannelType.GuildStageVoice,
+  ChannelType.GuildForum,
+  ChannelType.GuildCategory,
+] as const;
+
+function formatIdList(
+  ids: string[],
+  format: (id: string) => string,
+): string {
+  if (ids.length === 0) {
+    return "_none_";
+  }
+  return ids.map((id) => `• ${format(id)}`).join("\n");
+}
 
 @Discord()
 @SlashGroup({
@@ -392,6 +413,261 @@ export class SettingsLoggingCommands {
   }
 
   @Slash({
+    name: "ignore-channel-add",
+    description: "Exclude a channel from audit / message logging",
+  })
+  async ignoreChannelAdd(
+    @SlashOption({
+      name: "channel",
+      description: "Channel to ignore",
+      type: ApplicationCommandOptionType.Channel,
+      channelTypes: [...IGNORE_CHANNEL_TYPES],
+      required: true,
+    })
+    channel: GuildBasedChannel,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const guildId = interaction.guildId;
+    const settings = await prisma.guildSettings.upsert({
+      where: { guildId },
+      update: {},
+      create: { guildId },
+    });
+    const ignored = parseStringIdArray(settings.loggingIgnoredChannelIds);
+    if (ignored.includes(channel.id)) {
+      await interaction.reply({
+        content: `ℹ️ <#${channel.id}> is already ignored for logging.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    ignored.push(channel.id);
+    await prisma.guildSettings.update({
+      where: { guildId },
+      data: { loggingIgnoredChannelIds: ignored },
+    });
+    auditLogManager.invalidateSettings(guildId);
+
+    await interaction.reply({
+      content: `✅ <#${channel.id}> will be ignored by logging.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
+    name: "ignore-channel-remove",
+    description: "Stop excluding a channel from audit / message logging",
+  })
+  async ignoreChannelRemove(
+    @SlashOption({
+      name: "channel",
+      description: "Channel to stop ignoring",
+      type: ApplicationCommandOptionType.Channel,
+      channelTypes: [...IGNORE_CHANNEL_TYPES],
+      required: true,
+    })
+    channel: GuildBasedChannel,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const guildId = interaction.guildId;
+    const settings = await prisma.guildSettings.findUnique({ where: { guildId } });
+    const ignored = parseStringIdArray(settings?.loggingIgnoredChannelIds);
+    if (!ignored.includes(channel.id)) {
+      await interaction.reply({
+        content: `ℹ️ <#${channel.id}> is not on the logging ignore list.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const updated = ignored.filter((id) => id !== channel.id);
+    await prisma.guildSettings.update({
+      where: { guildId },
+      data: {
+        loggingIgnoredChannelIds:
+          updated.length > 0 ? updated : Prisma.DbNull,
+      },
+    });
+    auditLogManager.invalidateSettings(guildId);
+
+    await interaction.reply({
+      content: `✅ <#${channel.id}> will be logged again.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
+    name: "ignore-channel-list",
+    description: "List channels excluded from audit / message logging",
+  })
+  async ignoreChannelList(interaction: CommandInteraction): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const settings = await prisma.guildSettings.findUnique({
+      where: { guildId: interaction.guildId },
+      select: { loggingIgnoredChannelIds: true },
+    });
+    const ignored = parseStringIdArray(settings?.loggingIgnoredChannelIds);
+
+    await interaction.reply({
+      content:
+        ignored.length === 0
+          ? "ℹ️ No channels are ignored for logging."
+          : `**Ignored logging channels**\n${formatIdList(ignored, (id) => `<#${id}>`)}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
+    name: "ignore-role-add",
+    description: "Exclude members with a role from message logging",
+  })
+  async ignoreRoleAdd(
+    @SlashOption({
+      name: "role",
+      description: "Role whose members should be ignored",
+      type: ApplicationCommandOptionType.Role,
+      required: true,
+    })
+    role: Role,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const guildId = interaction.guildId;
+    const settings = await prisma.guildSettings.upsert({
+      where: { guildId },
+      update: {},
+      create: { guildId },
+    });
+    const ignored = parseStringIdArray(settings.loggingIgnoredRoleIds);
+    if (ignored.includes(role.id)) {
+      await interaction.reply({
+        content: `ℹ️ ${role} is already ignored for message logging.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    ignored.push(role.id);
+    await prisma.guildSettings.update({
+      where: { guildId },
+      data: { loggingIgnoredRoleIds: ignored },
+    });
+    auditLogManager.invalidateSettings(guildId);
+
+    await interaction.reply({
+      content: `✅ Members with ${role} will be ignored by message logging.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
+    name: "ignore-role-remove",
+    description: "Stop excluding a role from message logging",
+  })
+  async ignoreRoleRemove(
+    @SlashOption({
+      name: "role",
+      description: "Role to stop ignoring",
+      type: ApplicationCommandOptionType.Role,
+      required: true,
+    })
+    role: Role,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const guildId = interaction.guildId;
+    const settings = await prisma.guildSettings.findUnique({ where: { guildId } });
+    const ignored = parseStringIdArray(settings?.loggingIgnoredRoleIds);
+    if (!ignored.includes(role.id)) {
+      await interaction.reply({
+        content: `ℹ️ ${role} is not on the logging ignore list.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const updated = ignored.filter((id) => id !== role.id);
+    await prisma.guildSettings.update({
+      where: { guildId },
+      data: {
+        loggingIgnoredRoleIds: updated.length > 0 ? updated : Prisma.DbNull,
+      },
+    });
+    auditLogManager.invalidateSettings(guildId);
+
+    await interaction.reply({
+      content: `✅ Members with ${role} will be logged again.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
+    name: "ignore-role-list",
+    description: "List roles excluded from message logging",
+  })
+  async ignoreRoleList(interaction: CommandInteraction): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This command can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const settings = await prisma.guildSettings.findUnique({
+      where: { guildId: interaction.guildId },
+      select: { loggingIgnoredRoleIds: true },
+    });
+    const ignored = parseStringIdArray(settings?.loggingIgnoredRoleIds);
+
+    await interaction.reply({
+      content:
+        ignored.length === 0
+          ? "ℹ️ No roles are ignored for message logging."
+          : `**Ignored logging roles**\n${formatIdList(ignored, (id) => `<@&${id}>`)}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  @Slash({
     name: "status",
     description: "Show logging configuration status",
   })
@@ -409,6 +685,8 @@ export class SettingsLoggingCommands {
     });
     const fmt = (id: string | null | undefined) => (id ? `<#${id}>` : "_not set_");
     const threads = parseLoggingThreadIds(settings?.loggingThreadIds);
+    const ignoredChannels = parseStringIdArray(settings?.loggingIgnoredChannelIds);
+    const ignoredRoles = parseStringIdArray(settings?.loggingIgnoredRoleIds);
 
     await interaction.reply({
       content:
@@ -417,6 +695,7 @@ export class SettingsLoggingCommands {
         `Welcome: ${fmt(settings?.welcomeChannelId)}\n` +
         `Retention: **${settings?.messageArchiveRetentionDays ?? 30}** days\n` +
         `Invite filter: **${settings?.inviteFilterEnabled ? "on" : "off"}** / **${settings?.inviteFilterAction ?? "log"}**\n` +
+        `Ignored channels: **${ignoredChannels.length}** · Ignored roles: **${ignoredRoles.length}**\n` +
         LOGGING_THREAD_KEYS.map(
           (k) => `${LOGGING_THREAD_NAMES[k]}: ${threads[k] ? `<#${threads[k]}>` : "_missing_"}`,
         ).join("\n"),
