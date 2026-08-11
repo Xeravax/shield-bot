@@ -99,7 +99,7 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "mod.command.cases", description: "/mod cases|/mod modlogs — look up moderation cases" },
     { node: "mod.command.reason", description: "/mod reason — edit a case reason" },
     { node: "mod.command.purge", description: "/mod purge — bulk delete and archive messages" },
-    { node: "mod.command.lock", description: "/channel lock|unlock — toggle send permissions" },
+    { node: "mod.command.lock", description: "/mod lock|unlock — toggle send permissions" },
     { node: "mod.manage.claim", description: "Claim moderation cases (buttons)" },
   ],
   whitelist: [

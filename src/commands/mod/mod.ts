@@ -880,12 +880,7 @@ export class ModCommands {
       content: `✅ Updated reason for case #${caseNumber}.`,
     });
   }
-}
 
-@Discord()
-@SlashGroup({ name: "channel", description: "Channel moderation" })
-@SlashGroup("channel")
-export class ChannelLockCommands {
   @Slash({ name: "lock", description: "Deny @everyone Send Messages in this channel" })
   @Guard(PermissionNodeGuard("mod.command.lock"))
   async lock(
