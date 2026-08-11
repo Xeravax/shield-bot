@@ -17,3 +17,18 @@ enum LeaveOfAbsenceType {
   ATTENDABLE
   BLOCKING
 }
+
+enum ModCaseType {
+  WARN
+  KICK
+  BAN
+  UNBAN
+  TIMEOUT
+  UNTIMEOUT
+  SOFTBAN
+  PURGE
+  FILTER
+  LOCK
+  UNLOCK
+  NOTE
+}
