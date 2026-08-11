@@ -30,7 +30,7 @@ function isForumChannel(channel: GuildBasedChannel | null): channel is ForumChan
 }
 
 function normalizeChannelName(name: string): string {
-  return name.trim().toLowerCase();
+  return name.trim().toLowerCase().replace(/[\s_]+/g, "-");
 }
 
 /**

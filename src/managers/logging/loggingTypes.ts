@@ -13,6 +13,7 @@ export const LOGGING_THREAD_KEYS = [
   "events",
   "automod",
   "integrations",
+  "bot",
 ] as const;
 
 export type LoggingThreadKey = (typeof LOGGING_THREAD_KEYS)[number];
@@ -29,6 +30,7 @@ export const LOGGING_THREAD_NAMES: Record<LoggingThreadKey, string> = {
   events: "Events",
   automod: "AutoMod",
   integrations: "Integrations",
+  bot: "Bot Log",
 };
 
 export type LoggingSeverity = "info" | "warn" | "danger" | "success" | "mod";
