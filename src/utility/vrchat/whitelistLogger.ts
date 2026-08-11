@@ -43,7 +43,7 @@ export async function sendWhitelistLog(
       flags: MessageFlags.IsComponentsV2,
     } as MessageCreateOptions;
 
-    await auditLogManager.fanOutBotLog(guildId, payload, [
+    await auditLogManager.fanOutWhitelistLog(guildId, payload, [
       guildSettings?.whitelistLogChannelId,
     ]);
 

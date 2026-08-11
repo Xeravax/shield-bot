@@ -446,7 +446,7 @@ export class GroupRoleSyncManager {
         .setTimestamp()
         .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
 
-      await auditLogManager.fanOutBotLog(
+      await auditLogManager.fanOutWhitelistLog(
         guildId,
         { embeds: [embed] },
         [settings?.botPromotionLogsChannelId],
@@ -528,7 +528,7 @@ export class GroupRoleSyncManager {
         .setTimestamp()
         .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
 
-      await auditLogManager.fanOutBotLog(
+      await auditLogManager.fanOutWhitelistLog(
         guildId,
         { embeds: [embed] },
         [settings?.botPromotionLogsChannelId],

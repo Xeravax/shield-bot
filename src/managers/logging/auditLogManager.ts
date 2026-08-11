@@ -336,23 +336,23 @@ export class AuditLogManager {
   }
 
   /**
-   * Fan out a bot-action log to the Bot Log forum thread, plus any legacy
-   * staff log channel IDs (whitelist / patrol / promotion channels, etc.).
+   * Fan out a message to a logging category thread, plus any legacy channel IDs.
    */
-  async fanOutBotLog(
+  async fanOutCategoryLog(
     guildId: string,
+    category: LoggingThreadKey,
     options: MessageCreateOptions,
     extraChannelIds: Array<string | null | undefined> = [],
   ): Promise<void> {
     const seen = new Set<string>();
 
     try {
-      const posted = await this.postRawToCategory(guildId, "bot", options);
+      const posted = await this.postRawToCategory(guildId, category, options);
       if (posted?.channelId) {
         seen.add(posted.channelId);
       }
     } catch (error) {
-      loggers.bot.warn("Failed to post Bot Log forum entry", error);
+      loggers.bot.warn(`Failed to post ${category} forum entry`, error);
     }
 
     for (const channelId of extraChannelIds) {
@@ -370,11 +370,34 @@ export class AuditLogManager {
         await channel.send(options);
       } catch (error) {
         loggers.bot.warn(
-          `Failed to post Bot Log fan-out to channel ${channelId}`,
+          `Failed to post ${category} fan-out to channel ${channelId}`,
           error,
         );
       }
     }
+  }
+
+  /**
+   * Fan out a bot-action log to the Bot Log forum thread, plus any legacy
+   * staff log channel IDs.
+   */
+  async fanOutBotLog(
+    guildId: string,
+    options: MessageCreateOptions,
+    extraChannelIds: Array<string | null | undefined> = [],
+  ): Promise<void> {
+    await this.fanOutCategoryLog(guildId, "bot", options, extraChannelIds);
+  }
+
+  /**
+   * Fan out whitelist / verification / VRChat group sync logs.
+   */
+  async fanOutWhitelistLog(
+    guildId: string,
+    options: MessageCreateOptions,
+    extraChannelIds: Array<string | null | undefined> = [],
+  ): Promise<void> {
+    await this.fanOutCategoryLog(guildId, "whitelist", options, extraChannelIds);
   }
 
   formatUser(userId: string, tag?: string | null): string {

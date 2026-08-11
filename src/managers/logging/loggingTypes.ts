@@ -15,6 +15,7 @@ export const LOGGING_THREAD_KEYS = [
   "integrations",
   "bot",
   "patrol",
+  "whitelist",
 ] as const;
 
 export type LoggingThreadKey = (typeof LOGGING_THREAD_KEYS)[number];
@@ -33,6 +34,7 @@ export const LOGGING_THREAD_NAMES: Record<LoggingThreadKey, string> = {
   integrations: "Integrations",
   bot: "Bot Log",
   patrol: "Patrol Hours",
+  whitelist: "Whitelist",
 };
 
 export type LoggingSeverity = "info" | "warn" | "danger" | "success" | "mod";

@@ -164,7 +164,7 @@ export async function handleGroupMemberUpdated(content: unknown) {
         .setTimestamp()
         .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
 
-      await auditLogManager.fanOutBotLog(
+      await auditLogManager.fanOutWhitelistLog(
         settings.guildId,
         { embeds: [embed] },
         [settings.botPromotionLogsChannelId],
