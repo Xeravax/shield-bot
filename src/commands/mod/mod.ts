@@ -1,6 +1,7 @@
 import {
   ApplicationCommandOptionType,
   CommandInteraction,
+  GuildMember,
   MessageFlags,
   User,
 } from "discord.js";
@@ -8,6 +9,9 @@ import { Discord, Guard, Slash, SlashGroup, SlashOption } from "discordx";
 import { PermissionNodeGuard } from "../../utility/guards.js";
 import { modCaseManager } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
+
+/** ECMAScript Date time value limit (±100M days from epoch). */
+const SAFE_DATE_MAX_MS = 8.64e15;
 
 /** Supports m/h/d/w for moderation durations (timeout + temp ban). */
 export function parseModDurationMs(input: string): number | null {
@@ -26,7 +30,11 @@ export function parseModDurationMs(input: string): number | null {
       if (value <= 0) {
         return null;
       }
-      return value * pattern.multiplier;
+      const ms = value * pattern.multiplier;
+      if (!Number.isFinite(ms) || Date.now() + ms > SAFE_DATE_MAX_MS) {
+        return null;
+      }
+      return ms;
     }
   }
   return null;
@@ -41,6 +49,36 @@ async function requireGuild(interaction: CommandInteraction): Promise<boolean> {
     return false;
   }
   return true;
+}
+
+async function resolveInvoker(interaction: CommandInteraction): Promise<GuildMember | null> {
+  if (!interaction.guild) {
+    return null;
+  }
+  if (interaction.member instanceof GuildMember) {
+    return interaction.member;
+  }
+  return interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+}
+
+/** Rejects self, guild owner, or targets with equal/higher top role than the invoker. */
+function hierarchyBlockReason(
+  invoker: GuildMember,
+  target: GuildMember,
+): string | null {
+  if (target.id === invoker.id) {
+    return "❌ You cannot moderate yourself.";
+  }
+  if (target.id === target.guild.ownerId) {
+    return "❌ You cannot moderate the server owner.";
+  }
+  if (
+    invoker.id !== invoker.guild.ownerId &&
+    target.roles.highest.position >= invoker.roles.highest.position
+  ) {
+    return "❌ You cannot moderate a member with equal or higher roles.";
+  }
+  return null;
 }
 
 @Discord()
@@ -112,6 +150,22 @@ export class ModCommands {
       });
       return;
     }
+    const invoker = await resolveInvoker(interaction);
+    if (!invoker) {
+      await interaction.reply({
+        content: "❌ Could not resolve your member.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const hierarchyError = hierarchyBlockReason(invoker, member);
+    if (hierarchyError) {
+      await interaction.reply({
+        content: hierarchyError,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     if (!member.kickable) {
       await interaction.reply({
         content: "❌ I cannot kick that member.",
@@ -120,18 +174,25 @@ export class ModCommands {
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    await member.kick(reason ?? undefined);
-    const modCase = await modCaseManager.createCase({
-      guildId: interaction.guildId!,
-      type: "KICK",
-      targetId: user.id,
-      moderatorId: interaction.user.id,
-      reason: reason ?? null,
-      active: false,
-    });
-    await interaction.editReply({
-      content: `✅ Kicked ${user} — case #${modCase.caseNumber}.`,
-    });
+    try {
+      await member.kick(reason ?? undefined);
+      const modCase = await modCaseManager.createCase({
+        guildId: interaction.guildId!,
+        type: "KICK",
+        targetId: user.id,
+        moderatorId: interaction.user.id,
+        reason: reason ?? null,
+        active: false,
+      });
+      await interaction.editReply({
+        content: `✅ Kicked ${user} — case #${modCase.caseNumber}.`,
+      });
+    } catch (error) {
+      loggers.bot.error("Kick failed", error);
+      await interaction.editReply({
+        content: `❌ Kick failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
   }
 
   @Slash({ name: "ban", description: "Ban a member" })
@@ -186,12 +247,49 @@ export class ModCommands {
       expiresAt = new Date(Date.now() + ms);
     }
 
+    const member = await interaction.guild!.members.fetch(user.id).catch(() => null);
+    if (member) {
+      const invoker = await resolveInvoker(interaction);
+      if (!invoker) {
+        await interaction.reply({
+          content: "❌ Could not resolve your member.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const hierarchyError = hierarchyBlockReason(invoker, member);
+      if (hierarchyError) {
+        await interaction.reply({
+          content: hierarchyError,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!member.bannable) {
+        await interaction.reply({
+          content: "❌ I cannot ban that member.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    modCaseManager.suppressGatewayCase(interaction.guildId!, user.id, ["BAN"]);
     try {
       await interaction.guild!.members.ban(user.id, {
         reason: reason ?? undefined,
         deleteMessageSeconds: (deleteDays ?? 0) * 24 * 60 * 60,
       });
+    } catch (error) {
+      loggers.bot.error("Ban failed", error);
+      await interaction.editReply({
+        content: `❌ Ban failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+      return;
+    }
+
+    try {
       const modCase = await modCaseManager.createCase({
         guildId: interaction.guildId!,
         type: "BAN",
@@ -207,9 +305,11 @@ export class ModCommands {
           : `✅ Banned ${user} — case #${modCase.caseNumber}.`,
       });
     } catch (error) {
-      loggers.bot.error("Ban failed", error);
+      loggers.bot.error("Ban case record failed", error);
       await interaction.editReply({
-        content: `❌ Ban failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        content: expiresAt
+          ? `✅ Temp-banned ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> (case log failed to save).`
+          : `✅ Banned ${user} (case log failed to save).`,
       });
     }
   }
@@ -245,7 +345,40 @@ export class ModCommands {
     if (!(await requireGuild(interaction))) {
       return;
     }
+
+    const member = await interaction.guild!.members.fetch(user.id).catch(() => null);
+    if (member) {
+      const invoker = await resolveInvoker(interaction);
+      if (!invoker) {
+        await interaction.reply({
+          content: "❌ Could not resolve your member.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const hierarchyError = hierarchyBlockReason(invoker, member);
+      if (hierarchyError) {
+        await interaction.reply({
+          content: hierarchyError,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      if (!member.bannable) {
+        await interaction.reply({
+          content: "❌ I cannot softban that member.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    modCaseManager.suppressGatewayCase(interaction.guildId!, user.id, [
+      "BAN",
+      "UNBAN",
+      "SOFTBAN",
+    ]);
     try {
       await interaction.guild!.members.ban(user.id, {
         reason: reason ?? "Softban",
@@ -294,6 +427,7 @@ export class ModCommands {
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    modCaseManager.suppressGatewayCase(interaction.guildId!, user.id, ["UNBAN"]);
     try {
       await interaction.guild!.members.unban(user.id, reason ?? undefined);
       const modCase = await modCaseManager.createCase({
@@ -308,6 +442,7 @@ export class ModCommands {
         content: `✅ Unbanned ${user} — case #${modCase.caseNumber}.`,
       });
     } catch (error) {
+      loggers.bot.error("Unban failed", error);
       await interaction.editReply({
         content: `❌ Unban failed: ${error instanceof Error ? error.message : "Unknown error"}`,
       });
@@ -352,7 +487,30 @@ export class ModCommands {
       return;
     }
     const member = await interaction.guild!.members.fetch(user.id).catch(() => null);
-    if (!member?.moderatable) {
+    if (!member) {
+      await interaction.reply({
+        content: "❌ Member not found.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const invoker = await resolveInvoker(interaction);
+    if (!invoker) {
+      await interaction.reply({
+        content: "❌ Could not resolve your member.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const hierarchyError = hierarchyBlockReason(invoker, member);
+    if (hierarchyError) {
+      await interaction.reply({
+        content: hierarchyError,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (!member.moderatable) {
       await interaction.reply({
         content: "❌ I cannot timeout that member.",
         flags: MessageFlags.Ephemeral,
@@ -361,18 +519,25 @@ export class ModCommands {
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const expiresAt = new Date(Date.now() + ms);
-    await member.timeout(ms, reason ?? undefined);
-    const modCase = await modCaseManager.createCase({
-      guildId: interaction.guildId!,
-      type: "TIMEOUT",
-      targetId: user.id,
-      moderatorId: interaction.user.id,
-      reason: reason ?? null,
-      expiresAt,
-    });
-    await interaction.editReply({
-      content: `✅ Timed out ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> — case #${modCase.caseNumber}.`,
-    });
+    try {
+      await member.timeout(ms, reason ?? undefined);
+      const modCase = await modCaseManager.createCase({
+        guildId: interaction.guildId!,
+        type: "TIMEOUT",
+        targetId: user.id,
+        moderatorId: interaction.user.id,
+        reason: reason ?? null,
+        expiresAt,
+      });
+      await interaction.editReply({
+        content: `✅ Timed out ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> — case #${modCase.caseNumber}.`,
+      });
+    } catch (error) {
+      loggers.bot.error("Timeout failed", error);
+      await interaction.editReply({
+        content: `❌ Timeout failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
   }
 
   @Slash({ name: "untimeout", description: "Remove a member timeout" })
@@ -406,18 +571,25 @@ export class ModCommands {
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    await member.timeout(null, reason ?? undefined);
-    const modCase = await modCaseManager.createCase({
-      guildId: interaction.guildId!,
-      type: "UNTIMEOUT",
-      targetId: user.id,
-      moderatorId: interaction.user.id,
-      reason: reason ?? null,
-      active: false,
-    });
-    await interaction.editReply({
-      content: `✅ Removed timeout for ${user} — case #${modCase.caseNumber}.`,
-    });
+    try {
+      await member.timeout(null, reason ?? undefined);
+      const modCase = await modCaseManager.createCase({
+        guildId: interaction.guildId!,
+        type: "UNTIMEOUT",
+        targetId: user.id,
+        moderatorId: interaction.user.id,
+        reason: reason ?? null,
+        active: false,
+      });
+      await interaction.editReply({
+        content: `✅ Removed timeout for ${user} — case #${modCase.caseNumber}.`,
+      });
+    } catch (error) {
+      loggers.bot.error("Untimeout failed", error);
+      await interaction.editReply({
+        content: `❌ Untimeout failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
   }
 
   @Slash({ name: "note", description: "Add a private staff note on a user" })
@@ -443,13 +615,20 @@ export class ModCommands {
       return;
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    await modCaseManager.addNote(
-      interaction.guildId!,
-      user.id,
-      interaction.user.id,
-      content,
-    );
-    await interaction.editReply({ content: `✅ Note added for ${user}.` });
+    try {
+      await modCaseManager.addNote(
+        interaction.guildId!,
+        user.id,
+        interaction.user.id,
+        content,
+      );
+      await interaction.editReply({ content: `✅ Note added for ${user}.` });
+    } catch (error) {
+      loggers.bot.error("Note creation failed", error);
+      await interaction.editReply({
+        content: `❌ Note failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
   }
 
   @Slash({ name: "cases", description: "Look up moderation cases for a user" })
@@ -494,9 +673,11 @@ export class ModCommands {
         await interaction.editReply({ content: "❌ Case not found." });
         return;
       }
-      await interaction.editReply({
-        embeds: [modCaseManager.buildCaseEmbed(modCase)],
-      });
+      const embed = modCaseManager.buildCaseEmbed(modCase);
+      if (embed.data.description && embed.data.description.length > 4096) {
+        embed.setDescription(`${embed.data.description.slice(0, 4095)}…`);
+      }
+      await interaction.editReply({ embeds: [embed] });
       return;
     }
 
@@ -509,12 +690,18 @@ export class ModCommands {
       await interaction.editReply({ content: `ℹ️ No cases for ${user}.` });
       return;
     }
+    const header = `**Cases for ${user}**\n`;
     const lines = cases.map(
       (c) =>
         `#${c.caseNumber} · **${c.type}** · <@${c.moderatorId}> · ${c.reason?.slice(0, 80) || "*no reason*"}`,
     );
+    let body = lines.join("\n");
+    const maxLen = 2000;
+    if (header.length + body.length > maxLen) {
+      body = `${body.slice(0, maxLen - header.length - 1)}…`;
+    }
     await interaction.editReply({
-      content: `**Cases for ${user}**\n${lines.join("\n")}`,
+      content: `${header}${body}`,
     });
   }
 
@@ -618,29 +805,36 @@ export class ChannelLockCommands {
       return;
     }
 
-    await channel.permissionOverwrites.edit(interaction.guild.id, {
-      SendMessages: false,
-      AddReactions: false,
-      CreatePublicThreads: false,
-      CreatePrivateThreads: false,
-      SendMessagesInThreads: false,
-    });
+    try {
+      await channel.permissionOverwrites.edit(interaction.guild.id, {
+        SendMessages: false,
+        AddReactions: false,
+        CreatePublicThreads: false,
+        CreatePrivateThreads: false,
+        SendMessagesInThreads: false,
+      });
 
-    const modCase = await modCaseManager.createCase({
-      guildId: interaction.guildId,
-      type: "LOCK",
-      targetId: channel.id,
-      moderatorId: interaction.user.id,
-      reason: reason ?? null,
-      active: true,
-    });
+      const modCase = await modCaseManager.createCase({
+        guildId: interaction.guildId,
+        type: "LOCK",
+        targetId: channel.id,
+        moderatorId: interaction.user.id,
+        reason: reason ?? null,
+        active: true,
+      });
 
-    await interaction.editReply({
-      content: `✅ Channel locked — case #${modCase.caseNumber}.`,
-    });
-    await channel.send({
-      content: `🔒 Channel locked by ${interaction.user}.${reason ? ` Reason: ${reason}` : ""}`,
-    }).catch(() => undefined);
+      await interaction.editReply({
+        content: `✅ Channel locked — case #${modCase.caseNumber}.`,
+      });
+      await channel.send({
+        content: `🔒 Channel locked by ${interaction.user}.${reason ? ` Reason: ${reason}` : ""}`,
+      }).catch(() => undefined);
+    } catch (error) {
+      loggers.bot.error("Channel lock failed", error);
+      await interaction.editReply({
+        content: `❌ Lock failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
   }
 
   @Slash({ name: "unlock", description: "Restore @everyone Send Messages in this channel" })
@@ -677,28 +871,41 @@ export class ChannelLockCommands {
       return;
     }
 
-    await channel.permissionOverwrites.edit(interaction.guild.id, {
-      SendMessages: null,
-      AddReactions: null,
-      CreatePublicThreads: null,
-      CreatePrivateThreads: null,
-      SendMessagesInThreads: null,
-    });
+    try {
+      await channel.permissionOverwrites.edit(interaction.guild.id, {
+        SendMessages: null,
+        AddReactions: null,
+        CreatePublicThreads: null,
+        CreatePrivateThreads: null,
+        SendMessagesInThreads: null,
+      });
 
-    const modCase = await modCaseManager.createCase({
-      guildId: interaction.guildId,
-      type: "UNLOCK",
-      targetId: channel.id,
-      moderatorId: interaction.user.id,
-      reason: reason ?? null,
-      active: false,
-    });
+      await modCaseManager.deactivateActiveCases(
+        interaction.guildId,
+        channel.id,
+        "LOCK",
+      );
 
-    await interaction.editReply({
-      content: `✅ Channel unlocked — case #${modCase.caseNumber}.`,
-    });
-    await channel.send({
-      content: `🔓 Channel unlocked by ${interaction.user}.${reason ? ` Reason: ${reason}` : ""}`,
-    }).catch(() => undefined);
+      const modCase = await modCaseManager.createCase({
+        guildId: interaction.guildId,
+        type: "UNLOCK",
+        targetId: channel.id,
+        moderatorId: interaction.user.id,
+        reason: reason ?? null,
+        active: false,
+      });
+
+      await interaction.editReply({
+        content: `✅ Channel unlocked — case #${modCase.caseNumber}.`,
+      });
+      await channel.send({
+        content: `🔓 Channel unlocked by ${interaction.user}.${reason ? ` Reason: ${reason}` : ""}`,
+      }).catch(() => undefined);
+    } catch (error) {
+      loggers.bot.error("Channel unlock failed", error);
+      await interaction.editReply({
+        content: `❌ Unlock failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
   }
 }

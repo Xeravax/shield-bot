@@ -39,11 +39,53 @@ const CASE_COLORS: Partial<Record<ModCaseType, number>> = {
   NOTE: 0x5865f2,
 };
 
+const MAX_EMBED_FIELDS = 25;
+const GATEWAY_SUPPRESS_TTL_MS = 15_000;
+const UNKNOWN_BAN_CODE = 10026;
+
 export class ModCaseManager {
+  private readonly gatewaySuppress = new Map<string, number>();
+
   constructor(
     private readonly client: Client,
     private readonly auditLog: AuditLogManager,
   ) {}
+
+  private suppressKey(guildId: string, type: ModCaseType, targetId: string): string {
+    return `${guildId}:${type}:${targetId}`;
+  }
+
+  private pruneGatewaySuppress(): void {
+    const now = Date.now();
+    for (const [key, expiresAt] of this.gatewaySuppress) {
+      if (expiresAt <= now) {
+        this.gatewaySuppress.delete(key);
+      }
+    }
+  }
+
+  /** Short-lived dedup so guildBanAdd/Remove gateways skip command-initiated cases. */
+  suppressGatewayCase(
+    guildId: string,
+    targetId: string,
+    types: ModCaseType[],
+  ): void {
+    this.pruneGatewaySuppress();
+    const until = Date.now() + GATEWAY_SUPPRESS_TTL_MS;
+    for (const type of types) {
+      this.gatewaySuppress.set(this.suppressKey(guildId, type, targetId), until);
+    }
+  }
+
+  shouldSuppressGatewayCase(
+    guildId: string,
+    type: ModCaseType,
+    targetId: string,
+  ): boolean {
+    this.pruneGatewaySuppress();
+    const until = this.gatewaySuppress.get(this.suppressKey(guildId, type, targetId));
+    return typeof until === "number" && until > Date.now();
+  }
 
   private async nextCaseNumber(guildId: string): Promise<number> {
     const last = await prisma.modCase.findFirst({
@@ -57,30 +99,25 @@ export class ModCaseManager {
   buildCaseEmbed(modCase: ModCase, options?: {
     claimedByTag?: string | null;
   }): EmbedBuilder {
-    const embed = new EmbedBuilder()
-      .setColor(CASE_COLORS[modCase.type] ?? 0xeb459e)
-      .setTitle(`${modCase.type} · Case #${modCase.caseNumber}`)
-      .setTimestamp(modCase.createdAt)
-      .addFields(
-        {
-          name: "Target",
-          value: `<@${modCase.targetId}> (\`${modCase.targetId}\`)`,
-          inline: true,
-        },
-        {
-          name: "Moderator",
-          value: `<@${modCase.moderatorId}> (\`${modCase.moderatorId}\`)`,
-          inline: true,
-        },
-        {
-          name: "Reason",
-          value: modCase.reason?.slice(0, 1024) || "*No reason provided*",
-        },
-      )
-      .setFooter({ text: `Case ID ${modCase.id}` });
+    const fields: { name: string; value: string; inline?: boolean }[] = [
+      {
+        name: "Target",
+        value: `<@${modCase.targetId}> (\`${modCase.targetId}\`)`,
+        inline: true,
+      },
+      {
+        name: "Moderator",
+        value: `<@${modCase.moderatorId}> (\`${modCase.moderatorId}\`)`,
+        inline: true,
+      },
+      {
+        name: "Reason",
+        value: modCase.reason?.slice(0, 1024) || "*No reason provided*",
+      },
+    ];
 
     if (modCase.expiresAt) {
-      embed.addFields({
+      fields.push({
         name: "Expires",
         value: `<t:${Math.floor(modCase.expiresAt.getTime() / 1000)}:F>`,
         inline: true,
@@ -88,7 +125,7 @@ export class ModCaseManager {
     }
 
     if (modCase.claimedBy) {
-      embed.addFields({
+      fields.push({
         name: "Claimed by",
         value: options?.claimedByTag
           ? `${options.claimedByTag} (\`${modCase.claimedBy}\`)`
@@ -96,13 +133,13 @@ export class ModCaseManager {
         inline: true,
       });
       if (modCase.claimedReason) {
-        embed.addFields({
+        fields.push({
           name: "Claim reason",
           value: modCase.claimedReason.slice(0, 1024),
         });
       }
       if (modCase.claimedAt) {
-        embed.addFields({
+        fields.push({
           name: "Claimed at",
           value: `<t:${Math.floor(modCase.claimedAt.getTime() / 1000)}:F>`,
           inline: true,
@@ -110,7 +147,12 @@ export class ModCaseManager {
       }
     }
 
-    return embed;
+    return new EmbedBuilder()
+      .setColor(CASE_COLORS[modCase.type] ?? 0xeb459e)
+      .setTitle(`${modCase.type} · Case #${modCase.caseNumber}`)
+      .setTimestamp(modCase.createdAt)
+      .addFields(fields.slice(0, MAX_EMBED_FIELDS))
+      .setFooter({ text: `Case ID ${modCase.id}` });
   }
 
   private claimRow(caseId: number) {
@@ -122,28 +164,85 @@ export class ModCaseManager {
     );
   }
 
+  private async syncCaseLogMessage(
+    modCase: ModCase,
+    options?: { clearComponents?: boolean },
+  ): Promise<void> {
+    if (!modCase.logMessageId || !modCase.logThreadId) {
+      return;
+    }
+    try {
+      const guild = await this.client.guilds.fetch(modCase.guildId);
+      const channel = await guild.channels.fetch(modCase.logThreadId);
+      if (channel?.isTextBased()) {
+        const msg = await channel.messages.fetch(modCase.logMessageId);
+        const claimable =
+          !options?.clearComponents &&
+          !modCase.claimedBy &&
+          modCase.type !== "NOTE";
+        await msg.edit({
+          embeds: [this.buildCaseEmbed(modCase)],
+          components: claimable ? [this.claimRow(modCase.id)] : [],
+        });
+      }
+    } catch (error) {
+      loggers.bot.warn("Failed to update case log message", error);
+    }
+  }
+
   async createCase(input: CreateModCaseInput): Promise<ModCase> {
-    const caseNumber = await this.nextCaseNumber(input.guildId);
     const claimable = input.claimable !== false && input.type !== "NOTE";
 
-    let modCase = await prisma.modCase.create({
-      data: {
-        guildId: input.guildId,
-        caseNumber,
-        type: input.type,
-        targetId: input.targetId,
-        moderatorId: input.moderatorId,
-        reason: input.reason ?? null,
-        expiresAt: input.expiresAt ?? null,
-        active: input.active ?? true,
-        metadata: input.metadata ?? undefined,
-      },
-    });
+    let modCase: ModCase | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const caseNumber = await this.nextCaseNumber(input.guildId);
+      try {
+        modCase = await prisma.modCase.create({
+          data: {
+            guildId: input.guildId,
+            caseNumber,
+            type: input.type,
+            targetId: input.targetId,
+            moderatorId: input.moderatorId,
+            reason: input.reason ?? null,
+            expiresAt: input.expiresAt ?? null,
+            active: input.active ?? true,
+            metadata: input.metadata ?? undefined,
+          },
+        });
+        break;
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code: unknown }).code)
+            : null;
+        if (code === "P2002" && attempt < 2) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!modCase) {
+      throw new Error("Failed to allocate moderation case number.");
+    }
+
+    this.suppressGatewayCase(input.guildId, input.targetId, [input.type]);
 
     try {
       const embed = this.buildCaseEmbed(modCase);
+      const usedFields = embed.data.fields?.length ?? 0;
       if (input.extraFields?.length) {
-        embed.addFields(input.extraFields);
+        const room = Math.max(0, MAX_EMBED_FIELDS - usedFields);
+        if (room > 0) {
+          embed.addFields(
+            input.extraFields.slice(0, room).map((f) => ({
+              name: f.name.slice(0, 256),
+              value: f.value.slice(0, 1024) || "—",
+              inline: f.inline,
+            })),
+          );
+        }
       }
 
       const guild = await this.client.guilds.fetch(input.guildId).catch(() => null);
@@ -171,6 +270,18 @@ export class ModCaseManager {
     return modCase;
   }
 
+  async deactivateActiveCases(
+    guildId: string,
+    targetId: string,
+    type: ModCaseType,
+  ): Promise<number> {
+    const result = await prisma.modCase.updateMany({
+      where: { guildId, targetId, type, active: true },
+      data: { active: false },
+    });
+    return result.count;
+  }
+
   async claimCase(
     caseId: number,
     claimedBy: string,
@@ -184,8 +295,8 @@ export class ModCaseManager {
       return { success: false, error: "This case is already claimed." };
     }
 
-    const modCase = await prisma.modCase.update({
-      where: { id: caseId },
+    const updated = await prisma.modCase.updateMany({
+      where: { id: caseId, claimedBy: null },
       data: {
         claimedBy,
         claimedReason,
@@ -196,21 +307,12 @@ export class ModCaseManager {
       },
     });
 
-    if (modCase.logMessageId && modCase.logThreadId) {
-      try {
-        const guild = await this.client.guilds.fetch(modCase.guildId);
-        const channel = await guild.channels.fetch(modCase.logThreadId);
-        if (channel?.isTextBased()) {
-          const msg = await channel.messages.fetch(modCase.logMessageId);
-          await msg.edit({
-            embeds: [this.buildCaseEmbed(modCase)],
-            components: [],
-          });
-        }
-      } catch (error) {
-        loggers.bot.warn("Failed to update claimed case message", error);
-      }
+    if (updated.count === 0) {
+      return { success: false, error: "This case is already claimed." };
     }
+
+    const modCase = await prisma.modCase.findUniqueOrThrow({ where: { id: caseId } });
+    await this.syncCaseLogMessage(modCase, { clearComponents: true });
 
     return { success: true, modCase };
   }
@@ -232,22 +334,7 @@ export class ModCaseManager {
       data: { reason },
     });
 
-    if (modCase.logMessageId && modCase.logThreadId) {
-      try {
-        const guild = await this.client.guilds.fetch(modCase.guildId);
-        const channel = await guild.channels.fetch(modCase.logThreadId);
-        if (channel?.isTextBased()) {
-          const msg = await channel.messages.fetch(modCase.logMessageId);
-          const claimable = !modCase.claimedBy && modCase.type !== "NOTE";
-          await msg.edit({
-            embeds: [this.buildCaseEmbed(modCase)],
-            components: claimable ? [this.claimRow(modCase.id)] : [],
-          });
-        }
-      } catch (error) {
-        loggers.bot.warn("Failed to update case reason message", error);
-      }
-    }
+    await this.syncCaseLogMessage(modCase);
 
     return { success: true, modCase };
   }
@@ -308,16 +395,40 @@ export class ModCaseManager {
         if (!guild) {
           continue;
         }
-        await guild.members.unban(
-          modCase.targetId,
-          `Temp ban expired (case #${modCase.caseNumber})`,
-        ).catch(() => undefined);
+
+        let unbanOk = false;
+        try {
+          await guild.members.unban(
+            modCase.targetId,
+            `Temp ban expired (case #${modCase.caseNumber})`,
+          );
+          unbanOk = true;
+        } catch (error) {
+          const code =
+            error && typeof error === "object" && "code" in error
+              ? Number((error as { code: unknown }).code)
+              : null;
+          if (code === UNKNOWN_BAN_CODE) {
+            unbanOk = true;
+          } else {
+            loggers.bot.warn(
+              `Failed to unban for temp ban case ${modCase.id}`,
+              error,
+            );
+            continue;
+          }
+        }
+
+        if (!unbanOk) {
+          continue;
+        }
 
         await prisma.modCase.update({
           where: { id: modCase.id },
           data: { active: false },
         });
 
+        this.suppressGatewayCase(modCase.guildId, modCase.targetId, ["UNBAN"]);
         await this.createCase({
           guildId: modCase.guildId,
           type: "UNBAN",

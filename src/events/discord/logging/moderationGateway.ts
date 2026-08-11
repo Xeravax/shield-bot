@@ -1,11 +1,11 @@
 import { ArgsOf, Discord, On } from "discordx";
-import { AuditLogEvent } from "discord.js";
 import {
   bot,
   discordAuditResolver,
   modCaseManager,
 } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
+import { AuditLogEvent } from "discord.js";
 
 /**
  * Gateway ban/unban attribution when not originated by our slash commands
@@ -16,6 +16,10 @@ export class LoggingModerationGatewayEvents {
   @On({ event: "guildBanAdd" })
   async onBan([ban]: ArgsOf<"guildBanAdd">): Promise<void> {
     try {
+      if (modCaseManager.shouldSuppressGatewayCase(ban.guild.id, "BAN", ban.user.id)) {
+        return;
+      }
+
       const audit = await discordAuditResolver.resolve(
         ban.guild,
         AuditLogEvent.MemberBanAdd,
@@ -44,6 +48,12 @@ export class LoggingModerationGatewayEvents {
   @On({ event: "guildBanRemove" })
   async onUnban([ban]: ArgsOf<"guildBanRemove">): Promise<void> {
     try {
+      if (
+        modCaseManager.shouldSuppressGatewayCase(ban.guild.id, "UNBAN", ban.user.id)
+      ) {
+        return;
+      }
+
       const audit = await discordAuditResolver.resolve(
         ban.guild,
         AuditLogEvent.MemberBanRemove,

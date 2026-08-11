@@ -3,14 +3,27 @@ import * as cron from "node-cron";
 import { loggers } from "../../utility/logger.js";
 import { modCaseManager } from "../../main.js";
 
+let tempBanInFlight: Promise<void> | null = null;
+
 export async function runTempBanExpiry(_client: Client): Promise<void> {
-  try {
-    loggers.schedules.info("Starting temp ban expiry check...");
-    const processed = await modCaseManager.expireTempBans();
-    loggers.schedules.info(`Temp ban expiry complete: ${processed} unban(s)`);
-  } catch (error) {
-    loggers.schedules.error("Temp ban expiry failed", error);
+  if (tempBanInFlight) {
+    loggers.schedules.info("Skipping overlapping temp ban expiry run");
+    return;
   }
+
+  tempBanInFlight = (async () => {
+    try {
+      loggers.schedules.info("Starting temp ban expiry check...");
+      const processed = await modCaseManager.expireTempBans();
+      loggers.schedules.info(`Temp ban expiry complete: ${processed} unban(s)`);
+    } catch (error) {
+      loggers.schedules.error("Temp ban expiry failed", error);
+    }
+  })().finally(() => {
+    tempBanInFlight = null;
+  });
+
+  await tempBanInFlight;
 }
 
 export function initializeTempBanExpirySchedule(

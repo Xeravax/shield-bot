@@ -34,3 +34,5 @@ export type { CreateModCaseInput } from "./modCaseManager.js";
 
 export { LoggingSetupManager } from "./loggingSetup.js";
 export type { LoggingSetupResult } from "./loggingSetup.js";
+
+export { auditExecutorFields } from "./auditExecutorFields.js";

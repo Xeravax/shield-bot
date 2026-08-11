@@ -1,12 +1,12 @@
-import { Discord, Guard, Slash, SlashOption } from "discordx";
+import { Discord, Guard, Slash, SlashGroup, SlashOption } from "discordx";
 import {
   ApplicationCommandOptionType,
   AttachmentBuilder,
   ChannelType,
   CommandInteraction,
+  GuildTextBasedChannel,
   MessageFlags,
   PermissionFlagsBits,
-  TextChannel,
   User,
 } from "discord.js";
 import { PermissionNodeGuard } from "../../utility/guards.js";
@@ -20,6 +20,7 @@ import { loggers } from "../../utility/logger.js";
 import type { CachedMessageSnapshot } from "../../managers/logging/index.js";
 
 @Discord()
+@SlashGroup("mod")
 @Guard(PermissionNodeGuard("mod.command.purge"))
 export class PurgeCommand {
   @Slash({
@@ -72,7 +73,7 @@ export class PurgeCommand {
       return;
     }
 
-    const channel = interaction.channel as TextChannel;
+    const channel = interaction.channel as GuildTextBasedChannel;
     const me = interaction.guild.members.me;
     if (!me?.permissionsIn(channel).has(PermissionFlagsBits.ManageMessages)) {
       await interaction.reply({
@@ -96,15 +97,27 @@ export class PurgeCommand {
         return true;
       });
 
-      const snapshots: CachedMessageSnapshot[] = [];
+      if (toDelete.size === 0) {
+        await interaction.editReply({
+          content: "ℹ️ No messages matched the filter.",
+        });
+        return;
+      }
+
+      const archived = await messageArchiveManager.getByMessageIds([
+        ...toDelete.keys(),
+      ]);
+      const byId = new Map(archived.map((s) => [s.messageId, s]));
+
+      const pendingSnapshots: CachedMessageSnapshot[] = [];
       for (const msg of toDelete.values()) {
         const snap =
-          (await messageArchiveManager.getByMessageId(msg.id)) ??
+          byId.get(msg.id) ??
           (await messageArchiveManager.snapshotFromDiscord(msg));
         if (snap) {
-          snapshots.push(snap);
+          pendingSnapshots.push(snap);
         } else {
-          snapshots.push({
+          pendingSnapshots.push({
             guildId: interaction.guildId,
             channelId: channel.id,
             messageId: msg.id,
@@ -113,10 +126,10 @@ export class PurgeCommand {
             attachments: [...msg.attachments.values()].map((a) => ({
               id: a.id,
               name: a.name,
-              url: a.url,
-              proxyURL: a.proxyURL,
+              url: "",
               contentType: a.contentType,
               size: a.size,
+              retained: false,
             })),
             embeds: msg.embeds.map((e) => e.toJSON()),
             stickers: [...msg.stickers.values()].map((s) => ({
@@ -131,6 +144,7 @@ export class PurgeCommand {
       }
 
       const deleted = await channel.bulkDelete(toDelete, true);
+      const snapshots = pendingSnapshots.filter((s) => deleted.has(s.messageId));
       const txt = messageArchiveManager.buildPurgeTxt(channel.id, snapshots);
       const file = new AttachmentBuilder(Buffer.from(txt, "utf8"), {
         name: `purge-${channel.id}-${Date.now()}.txt`,
@@ -212,8 +226,8 @@ export class PurgeCommand {
           user?.id,
           channel.id,
         );
-      } catch {
-        /* ignore */
+      } catch (logError) {
+        loggers.bot.warn("Failed to log purge command usage", logError);
       }
 
       await interaction.editReply({

@@ -30,6 +30,11 @@ function isForumChannel(channel: GuildBasedChannel | null): channel is ForumChan
  * Creates or binds the staff logging forum and ensures persistent category threads.
  */
 export class LoggingSetupManager {
+  private readonly ensureThreadsInFlight = new Map<
+    string,
+    Promise<Record<LoggingThreadKey, string>>
+  >();
+
   constructor(private readonly client: Client) {}
 
   async createSetup(guild: Guild): Promise<LoggingSetupResult> {
@@ -62,6 +67,12 @@ export class LoggingSetupManager {
             ]
           : []),
       ],
+    });
+
+    await prisma.guildSettings.upsert({
+      where: { guildId: guild.id },
+      update: { loggingForumChannelId: forum.id },
+      create: { guildId: guild.id, loggingForumChannelId: forum.id },
     });
 
     const threadIds = await this.ensureThreads(guild, forum.id, {});
@@ -159,6 +170,25 @@ export class LoggingSetupManager {
   }
 
   async ensureThreads(
+    guild: Guild,
+    forumChannelId: string,
+    existing: Partial<Record<LoggingThreadKey, string>>,
+  ): Promise<Record<LoggingThreadKey, string>> {
+    const inFlight = this.ensureThreadsInFlight.get(guild.id);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const op = this.ensureThreadsUncached(guild, forumChannelId, existing).finally(
+      () => {
+        this.ensureThreadsInFlight.delete(guild.id);
+      },
+    );
+    this.ensureThreadsInFlight.set(guild.id, op);
+    return op;
+  }
+
+  private async ensureThreadsUncached(
     guild: Guild,
     forumChannelId: string,
     existing: Partial<Record<LoggingThreadKey, string>>,

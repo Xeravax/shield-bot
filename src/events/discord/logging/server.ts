@@ -2,9 +2,9 @@ import { ArgsOf, Discord, On } from "discordx";
 import { AuditLogEvent } from "discord.js";
 import {
   auditLogManager,
-  discordAuditResolver,
 } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
+import { auditExecutorFields } from "../../../managers/logging/index.js";
 
 const webhookDebounce = new Map<string, NodeJS.Timeout>();
 
@@ -40,10 +40,7 @@ export class LoggingServerEvents {
         return;
       }
 
-      const audit = await discordAuditResolver.resolve(
-        newGuild,
-        AuditLogEvent.GuildUpdate,
-      );
+      const extra = await auditExecutorFields(newGuild, AuditLogEvent.GuildUpdate);
       await auditLogManager.postLog({
         guildId: newGuild.id,
         category: "server",
@@ -51,17 +48,7 @@ export class LoggingServerEvents {
         severity: "info",
         fields: [
           { name: "Changes", value: changes.join("\n").slice(0, 1024) },
-          ...(audit.executor
-            ? [
-                {
-                  name: "Executor",
-                  value: auditLogManager.formatUser(
-                    audit.executor.id,
-                    audit.executor.tag,
-                  ),
-                },
-              ]
-            : []),
+          ...extra,
         ],
       });
     } catch (error) {
@@ -286,30 +273,29 @@ export class LoggingServerEvents {
       if (!channel.guild) {
         return;
       }
-      const key = channel.guild.id;
+      const key = `${channel.guild.id}:${channel.id}`;
       const existing = webhookDebounce.get(key);
       if (existing) {
         clearTimeout(existing);
       }
-      webhookDebounce.set(
-        key,
-        setTimeout(() => {
-          webhookDebounce.delete(key);
-          void auditLogManager.postLog({
-            guildId: channel.guild.id,
-            category: "server",
-            title: "Webhooks Updated",
-            severity: "info",
-            fields: [
-              {
-                name: "Channel",
-                value: auditLogManager.formatChannel(channel.id),
-              },
-            ],
-            sourceChannelId: channel.id,
-          });
-        }, 5_000),
-      );
+      const timer = setTimeout(() => {
+        webhookDebounce.delete(key);
+        void auditLogManager.postLog({
+          guildId: channel.guild.id,
+          category: "server",
+          title: "Webhooks Updated",
+          severity: "info",
+          fields: [
+            {
+              name: "Channel",
+              value: auditLogManager.formatChannel(channel.id),
+            },
+          ],
+          sourceChannelId: channel.id,
+        });
+      }, 5_000);
+      timer.unref();
+      webhookDebounce.set(key, timer);
     } catch (error) {
       loggers.bot.debug("webhooksUpdate log failed", {
         error: error instanceof Error ? error.message : String(error),

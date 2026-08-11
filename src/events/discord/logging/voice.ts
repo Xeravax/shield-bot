@@ -1,10 +1,8 @@
 import { ArgsOf, Discord, On } from "discordx";
 import { AuditLogEvent } from "discord.js";
-import {
-  auditLogManager,
-  discordAuditResolver,
-} from "../../../main.js";
+import { auditLogManager } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
+import { resolveAuditExecutor } from "../../../managers/logging/auditExecutorFields.js";
 
 @Discord()
 export class LoggingVoiceEvents {
@@ -38,13 +36,14 @@ export class LoggingVoiceEvents {
               value: auditLogManager.formatChannel(newState.channelId),
             },
           ],
+          sourceChannelId: newState.channelId,
         });
         return;
       }
 
       // Leave
       if (oldState.channelId && !newState.channelId) {
-        const audit = await discordAuditResolver.resolve(
+        const { audit, fields: extra } = await resolveAuditExecutor(
           guild,
           AuditLogEvent.MemberDisconnect,
           { targetId: member.id, maxAgeMs: 8_000 },
@@ -60,18 +59,9 @@ export class LoggingVoiceEvents {
               name: "Channel",
               value: auditLogManager.formatChannel(oldState.channelId),
             },
-            ...(audit.executor
-              ? [
-                  {
-                    name: "Executor",
-                    value: auditLogManager.formatUser(
-                      audit.executor.id,
-                      audit.executor.tag,
-                    ),
-                  },
-                ]
-              : []),
+            ...extra,
           ],
+          sourceChannelId: oldState.channelId,
         });
         return;
       }
@@ -82,7 +72,7 @@ export class LoggingVoiceEvents {
         newState.channelId &&
         oldState.channelId !== newState.channelId
       ) {
-        const audit = await discordAuditResolver.resolve(
+        const { fields: extra } = await resolveAuditExecutor(
           guild,
           AuditLogEvent.MemberMove,
           { targetId: member.id, maxAgeMs: 8_000 },
@@ -102,18 +92,9 @@ export class LoggingVoiceEvents {
               name: "To",
               value: auditLogManager.formatChannel(newState.channelId),
             },
-            ...(audit.executor
-              ? [
-                  {
-                    name: "Executor",
-                    value: auditLogManager.formatUser(
-                      audit.executor.id,
-                      audit.executor.tag,
-                    ),
-                  },
-                ]
-              : []),
+            ...extra,
           ],
+          sourceChannelId: newState.channelId,
         });
       }
 
@@ -125,6 +106,7 @@ export class LoggingVoiceEvents {
           title: newState.serverMute ? "Server Mute" : "Server Unmute",
           severity: "warn",
           fields: fieldsBase,
+          sourceChannelId: newState.channelId ?? oldState.channelId,
         });
       }
       if (oldState.serverDeaf !== newState.serverDeaf) {
@@ -134,6 +116,7 @@ export class LoggingVoiceEvents {
           title: newState.serverDeaf ? "Server Deafen" : "Server Undeafen",
           severity: "warn",
           fields: fieldsBase,
+          sourceChannelId: newState.channelId ?? oldState.channelId,
         });
       }
     } catch (error) {

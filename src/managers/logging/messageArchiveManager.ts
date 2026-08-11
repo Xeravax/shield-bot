@@ -1,16 +1,19 @@
 import { Message, PartialMessage } from "discord.js";
 import type { Prisma } from "../../generated/prisma/client.js";
-import { prisma } from "../../main.js";
+import { auditLogManager, prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
 import { DEFAULT_MESSAGE_RETENTION_DAYS } from "./loggingTypes.js";
 
 export type CachedAttachmentMeta = {
   id: string;
   name: string;
+  /** Durable URL when retained; empty when Discord CDN link was not persisted. */
   url: string;
   proxyURL?: string;
   contentType?: string | null;
   size: number;
+  /** False when attachment bytes were not copied to durable storage. */
+  retained?: boolean;
 };
 
 export type CachedMessageSnapshot = {
@@ -26,6 +29,11 @@ export type CachedMessageSnapshot = {
   editedAt: Date | null;
 };
 
+const PURGE_BATCH_SIZE = 5000;
+
+/**
+ * Persist attachment metadata only — Discord CDN URLs expire and are not durable.
+ */
 function serializeAttachments(message: Message | PartialMessage): CachedAttachmentMeta[] {
   if (!message.attachments) {
     return [];
@@ -33,10 +41,10 @@ function serializeAttachments(message: Message | PartialMessage): CachedAttachme
   return [...message.attachments.values()].map((a) => ({
     id: a.id,
     name: a.name,
-    url: a.url,
-    proxyURL: a.proxyURL,
+    url: "",
     contentType: a.contentType,
     size: a.size,
+    retained: false,
   }));
 }
 
@@ -51,12 +59,36 @@ function serializeStickers(message: Message | PartialMessage) {
   }));
 }
 
+function rowToSnapshot(row: {
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  authorId: string;
+  content: string | null;
+  attachments: unknown;
+  embeds: unknown;
+  stickers: unknown;
+  createdAt: Date;
+  editedAt: Date | null;
+}): CachedMessageSnapshot {
+  return {
+    guildId: row.guildId,
+    channelId: row.channelId,
+    messageId: row.messageId,
+    authorId: row.authorId,
+    content: row.content,
+    attachments: (row.attachments as CachedAttachmentMeta[] | null) ?? [],
+    embeds: (row.embeds as unknown[]) ?? [],
+    stickers:
+      (row.stickers as CachedMessageSnapshot["stickers"] | null) ?? [],
+    createdAt: row.createdAt,
+    editedAt: row.editedAt,
+  };
+}
+
 export class MessageArchiveManager {
   async getRetentionDays(guildId: string): Promise<number> {
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId },
-      select: { messageArchiveRetentionDays: true },
-    });
+    const settings = await auditLogManager.getSettings(guildId);
     const days = settings?.messageArchiveRetentionDays;
     if (typeof days === "number" && days > 0) {
       return days;
@@ -70,6 +102,17 @@ export class MessageArchiveManager {
 
   async upsertFromMessage(message: Message): Promise<void> {
     if (!message.guildId || message.author.bot) {
+      return;
+    }
+
+    const roleIds = message.member?.roles.cache.keys();
+    if (
+      await auditLogManager.shouldIgnoreAuthor(
+        message.guildId,
+        message.author.id,
+        roleIds,
+      )
+    ) {
       return;
     }
 
@@ -117,19 +160,17 @@ export class MessageArchiveManager {
     if (!row) {
       return null;
     }
-    return {
-      guildId: row.guildId,
-      channelId: row.channelId,
-      messageId: row.messageId,
-      authorId: row.authorId,
-      content: row.content,
-      attachments: (row.attachments as CachedAttachmentMeta[] | null) ?? [],
-      embeds: (row.embeds as unknown[]) ?? [],
-      stickers:
-        (row.stickers as CachedMessageSnapshot["stickers"] | null) ?? [],
-      createdAt: row.createdAt,
-      editedAt: row.editedAt,
-    };
+    return rowToSnapshot(row);
+  }
+
+  async getByMessageIds(messageIds: string[]): Promise<CachedMessageSnapshot[]> {
+    if (messageIds.length === 0) {
+      return [];
+    }
+    const rows = await prisma.cachedMessage.findMany({
+      where: { messageId: { in: messageIds } },
+    });
+    return rows.map(rowToSnapshot);
   }
 
   async snapshotFromDiscord(
@@ -191,7 +232,13 @@ export class MessageArchiveManager {
       lines.push(snap.content || "(no content)");
       if (snap.attachments.length) {
         lines.push(
-          `Attachments: ${snap.attachments.map((a) => `${a.name} <${a.url}>`).join(", ")}`,
+          `Attachments: ${snap.attachments
+            .map((a) =>
+              a.retained && a.url
+                ? `${a.name} <${a.url}>`
+                : `${a.name} (content not retained)`,
+            )
+            .join(", ")}`,
         );
       }
       if (snap.stickers.length) {
@@ -236,12 +283,45 @@ export class MessageArchiveManager {
 
   async purgeExpired(): Promise<{ messages: number; archives: number }> {
     const now = new Date();
-    const [messages, archives] = await Promise.all([
-      prisma.cachedMessage.deleteMany({ where: { expiresAt: { lt: now } } }),
-      prisma.messagePurgeArchive.deleteMany({
+    let messages = 0;
+    let archives = 0;
+
+    for (;;) {
+      const batch = await prisma.cachedMessage.findMany({
         where: { expiresAt: { lt: now } },
-      }),
-    ]);
-    return { messages: messages.count, archives: archives.count };
+        select: { id: true },
+        take: PURGE_BATCH_SIZE,
+      });
+      if (batch.length === 0) {
+        break;
+      }
+      const result = await prisma.cachedMessage.deleteMany({
+        where: { id: { in: batch.map((r) => r.id) } },
+      });
+      messages += result.count;
+      if (batch.length < PURGE_BATCH_SIZE) {
+        break;
+      }
+    }
+
+    for (;;) {
+      const batch = await prisma.messagePurgeArchive.findMany({
+        where: { expiresAt: { lt: now } },
+        select: { id: true },
+        take: PURGE_BATCH_SIZE,
+      });
+      if (batch.length === 0) {
+        break;
+      }
+      const result = await prisma.messagePurgeArchive.deleteMany({
+        where: { id: { in: batch.map((r) => r.id) } },
+      });
+      archives += result.count;
+      if (batch.length < PURGE_BATCH_SIZE) {
+        break;
+      }
+    }
+
+    return { messages, archives };
   }
 }

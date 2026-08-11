@@ -82,12 +82,14 @@ export class LoggingMessageEvents {
       if (!message.guildId || message.author.bot) {
         return;
       }
+
+      await handleInviteFilter(message);
+
       if (await auditLogManager.shouldIgnoreChannel(message.guildId, message.channelId)) {
         return;
       }
 
       await messageArchiveManager.upsertFromMessage(message);
-      await handleInviteFilter(message);
     } catch (error) {
       loggers.bot.debug("messageCreate logging failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -290,10 +292,14 @@ export class LoggingMessageEvents {
         return;
       }
 
+      const archived = await messageArchiveManager.getByMessageIds([
+        ...messages.keys(),
+      ]);
+      const byId = new Map(archived.map((s) => [s.messageId, s]));
       const snapshots = [];
       for (const msg of messages.values()) {
         const snap =
-          (await messageArchiveManager.getByMessageId(msg.id)) ??
+          byId.get(msg.id) ??
           (await messageArchiveManager.snapshotFromDiscord(msg));
         if (snap) {
           snapshots.push(snap);

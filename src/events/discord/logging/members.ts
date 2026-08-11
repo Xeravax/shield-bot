@@ -139,9 +139,11 @@ export class LoggingMemberEvents {
   @On({ event: "guildMemberUpdate" })
   async onUpdate([oldMember, newMember]: ArgsOf<"guildMemberUpdate">): Promise<void> {
     try {
-      await this.logRoleDiff(oldMember, newMember);
-      await this.logProfileDiff(oldMember, newMember);
-      await this.logBoostDiff(oldMember, newMember);
+      if (!oldMember.partial) {
+        await this.logRoleDiff(oldMember, newMember);
+        await this.logProfileDiff(oldMember, newMember);
+        await this.logBoostDiff(oldMember, newMember);
+      }
       await this.logTimeoutDiff(oldMember, newMember);
     } catch (error) {
       loggers.bot.debug("guildMemberUpdate logging failed", {
@@ -163,7 +165,7 @@ export class LoggingMemberEvents {
       }
 
       for (const guild of newUser.client.guilds.cache.values()) {
-        const member = await guild.members.fetch(newUser.id).catch(() => null);
+        const member = guild.members.cache.get(newUser.id);
         if (!member) {
           continue;
         }

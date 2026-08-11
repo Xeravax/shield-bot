@@ -8,11 +8,13 @@ import {
 } from "discord.js";
 import { PermissionNodeGuard } from "../../../utility/guards.js";
 import {
+  auditLogManager,
   loggingSetupManager,
   patrolTimer,
   prisma,
 } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 import {
   INVITE_FILTER_ACTIONS,
   LOGGING_THREAD_KEYS,
@@ -20,6 +22,17 @@ import {
   parseLoggingThreadIds,
   type InviteFilterAction,
 } from "../../../managers/logging/index.js";
+
+const INVITE_FILTER_ACTION_LABELS: Record<InviteFilterAction, string> = {
+  log: "Log only",
+  delete: "Delete",
+  delete_timeout: "Delete + timeout",
+};
+
+const INVITE_FILTER_CHOICES = INVITE_FILTER_ACTIONS.map((value) => ({
+  name: INVITE_FILTER_ACTION_LABELS[value],
+  value,
+}));
 
 @Discord()
 @SlashGroup({
@@ -73,15 +86,17 @@ export class SettingsLoggingCommands {
         loggers.bot.warn("Failed to log logging setup", logError);
       }
 
-      const threadLines = LOGGING_THREAD_KEYS.map(
-        (key) => `• ${LOGGING_THREAD_NAMES[key]}: <#${result.threadIds[key]}>`,
-      ).join("\n");
+      const threadLines = LOGGING_THREAD_KEYS.map((key) => {
+        const id = result.threadIds[key];
+        return `• ${LOGGING_THREAD_NAMES[key]}: ${id ? `<#${id}>` : "_missing_"}`;
+      }).join("\n");
 
       await interaction.editReply({
         content:
           `✅ Logging ${result.createdForum ? "created" : "bound"}.\n` +
           `Forum: <#${result.forumChannelId}>\n\n${threadLines}`,
       });
+      auditLogManager.invalidateSettings(interaction.guildId);
     } catch (error) {
       loggers.bot.error("Failed to set up logging", error);
       await interaction.editReply({
@@ -159,9 +174,10 @@ export class SettingsLoggingCommands {
       if (shouldClear) {
         await prisma.guildSettings.upsert({
           where: { guildId: interaction.guildId },
-          update: { loggingForumChannelId: null, loggingThreadIds: undefined },
+          update: { loggingForumChannelId: null, loggingThreadIds: Prisma.DbNull },
           create: { guildId: interaction.guildId, loggingForumChannelId: null },
         });
+        auditLogManager.invalidateSettings(interaction.guildId);
         await interaction.editReply({ content: "✅ Cleared logging forum binding." });
         return;
       }
@@ -170,6 +186,7 @@ export class SettingsLoggingCommands {
         interaction.guild,
         channel!.id,
       );
+      auditLogManager.invalidateSettings(interaction.guildId);
       await interaction.editReply({
         content: `✅ Logging forum set to <#${result.forumChannelId}> and category threads ensured.`,
       });
@@ -240,6 +257,7 @@ export class SettingsLoggingCommands {
       update: { welcomeChannelId: channelId },
       create: { guildId: interaction.guildId, welcomeChannelId: channelId },
     });
+    auditLogManager.invalidateSettings(interaction.guildId);
 
     await interaction.reply({
       content: shouldClear
@@ -293,6 +311,7 @@ export class SettingsLoggingCommands {
         messageArchiveRetentionDays: days,
       },
     });
+    auditLogManager.invalidateSettings(interaction.guildId);
 
     await interaction.reply({
       content: `✅ Message archive retention set to **${days}** days (applies to new rows).`,
@@ -312,11 +331,7 @@ export class SettingsLoggingCommands {
       required: false,
     })
     enabled: boolean | null,
-    @SlashChoice(
-      { name: "Log only", value: "log" },
-      { name: "Delete", value: "delete" },
-      { name: "Delete + timeout", value: "delete_timeout" },
-    )
+    @SlashChoice(...INVITE_FILTER_CHOICES)
     @SlashOption({
       name: "action",
       description: "Action when an invite is detected",
@@ -368,6 +383,7 @@ export class SettingsLoggingCommands {
         inviteFilterAction: action ?? "log",
       },
     });
+    auditLogManager.invalidateSettings(interaction.guildId);
 
     await interaction.reply({
       content: "✅ Invite filter settings updated.",

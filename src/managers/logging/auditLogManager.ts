@@ -34,30 +34,85 @@ export type PostLogOptions = {
   sourceChannelId?: string | null;
 };
 
+const SETTINGS_SELECT = {
+  loggingForumChannelId: true,
+  welcomeChannelId: true,
+  loggingThreadIds: true,
+  messageArchiveRetentionDays: true,
+  loggingIgnoredChannelIds: true,
+  loggingIgnoredRoleIds: true,
+  inviteFilterEnabled: true,
+  inviteFilterAction: true,
+} as const;
+
+type LoggingGuildSettings = {
+  loggingForumChannelId: string | null;
+  welcomeChannelId: string | null;
+  loggingThreadIds: unknown;
+  messageArchiveRetentionDays: number | null;
+  loggingIgnoredChannelIds: unknown;
+  loggingIgnoredRoleIds: unknown;
+  inviteFilterEnabled: boolean;
+  inviteFilterAction: string | null;
+} | null;
+
+type SettingsCacheEntry = {
+  expiresAt: number;
+  value: LoggingGuildSettings;
+};
+
+const SETTINGS_TTL_MS = 30_000;
+const MAX_EMBED_FIELDS = 25;
+
 export class AuditLogManager {
+  private readonly settingsCache = new Map<string, SettingsCacheEntry>();
+
   constructor(
     private readonly client: Client,
     private readonly setup: LoggingSetupManager,
   ) {}
 
-  async getSettings(guildId: string) {
+  private async fetchSettings(guildId: string): Promise<LoggingGuildSettings> {
     return prisma.guildSettings.findUnique({
       where: { guildId },
-      select: {
-        loggingForumChannelId: true,
-        welcomeChannelId: true,
-        loggingThreadIds: true,
-        messageArchiveRetentionDays: true,
-        loggingIgnoredChannelIds: true,
-        loggingIgnoredRoleIds: true,
-        inviteFilterEnabled: true,
-        inviteFilterAction: true,
-      },
+      select: SETTINGS_SELECT,
     });
   }
 
-  isLoggingChannel(channelId: string, forumId: string | null | undefined): boolean {
-    return !!forumId && channelId === forumId;
+  async getSettings(guildId: string): Promise<LoggingGuildSettings> {
+    const cached = this.settingsCache.get(guildId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+    const value = await this.fetchSettings(guildId);
+    this.settingsCache.set(guildId, {
+      expiresAt: Date.now() + SETTINGS_TTL_MS,
+      value,
+    });
+    return value;
+  }
+
+  invalidateSettings(guildId?: string): void {
+    if (!guildId) {
+      this.settingsCache.clear();
+      return;
+    }
+    this.settingsCache.delete(guildId);
+  }
+
+  isLoggingChannel(
+    channelId: string,
+    forumId: string | null | undefined,
+    threadIds?: unknown,
+  ): boolean {
+    if (!forumId) {
+      return false;
+    }
+    if (channelId === forumId) {
+      return true;
+    }
+    const threads = parseLoggingThreadIds(threadIds);
+    return Object.values(threads).some((id) => id === channelId);
   }
 
   async shouldIgnoreChannel(guildId: string, channelId: string): Promise<boolean> {
@@ -65,7 +120,13 @@ export class AuditLogManager {
     if (!settings) {
       return true;
     }
-    if (this.isLoggingChannel(channelId, settings.loggingForumChannelId)) {
+    if (
+      this.isLoggingChannel(
+        channelId,
+        settings.loggingForumChannelId,
+        settings.loggingThreadIds,
+      )
+    ) {
       return true;
     }
     const ignored = parseStringIdArray(settings.loggingIgnoredChannelIds);
@@ -115,6 +176,7 @@ export class AuditLogManager {
         if (!ensured) {
           return null;
         }
+        this.invalidateSettings(guild.id);
         threadIds = ensured;
         threadId = ensured[category];
       } catch (error) {
@@ -131,6 +193,7 @@ export class AuditLogManager {
     if (!thread || !thread.isThread()) {
       try {
         const ensured = await this.setup.ensureThreadsForGuild(guild.id);
+        this.invalidateSettings(guild.id);
         threadId = ensured?.[category];
         if (!threadId) {
           return null;
@@ -172,7 +235,7 @@ export class AuditLogManager {
     }
     if (options.fields?.length) {
       embed.addFields(
-        options.fields.map((f) => ({
+        options.fields.slice(0, MAX_EMBED_FIELDS).map((f) => ({
           name: f.name.slice(0, 256),
           value: f.value.slice(0, 1024) || "—",
           inline: f.inline,

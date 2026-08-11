@@ -1,20 +1,18 @@
 import { ArgsOf, Discord, On } from "discordx";
 import { AuditLogEvent } from "discord.js";
-import {
-  auditLogManager,
-  discordAuditResolver,
-} from "../../../main.js";
+import { auditLogManager } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
+import { auditExecutorFields } from "../../../managers/logging/index.js";
 
 @Discord()
 export class LoggingRoleEvents {
   @On({ event: "roleCreate" })
   async onCreate([role]: ArgsOf<"roleCreate">): Promise<void> {
     try {
-      const audit = await discordAuditResolver.resolve(
+      const extra = await auditExecutorFields(
         role.guild,
         AuditLogEvent.RoleCreate,
-        { targetId: role.id },
+        role.id,
       );
       await auditLogManager.postLog({
         guildId: role.guild.id,
@@ -26,18 +24,7 @@ export class LoggingRoleEvents {
             name: "Role",
             value: `${role.name} (\`${role.id}\`)`,
           },
-          ...(audit.executor
-            ? [
-                {
-                  name: "Executor",
-                  value: auditLogManager.formatUser(
-                    audit.executor.id,
-                    audit.executor.tag,
-                  ),
-                  inline: true,
-                },
-              ]
-            : []),
+          ...extra,
         ],
       });
     } catch (error) {
@@ -50,10 +37,10 @@ export class LoggingRoleEvents {
   @On({ event: "roleDelete" })
   async onDelete([role]: ArgsOf<"roleDelete">): Promise<void> {
     try {
-      const audit = await discordAuditResolver.resolve(
+      const extra = await auditExecutorFields(
         role.guild,
         AuditLogEvent.RoleDelete,
-        { targetId: role.id },
+        role.id,
       );
       await auditLogManager.postLog({
         guildId: role.guild.id,
@@ -65,18 +52,7 @@ export class LoggingRoleEvents {
             name: "Role",
             value: `${role.name} (\`${role.id}\`)`,
           },
-          ...(audit.executor
-            ? [
-                {
-                  name: "Executor",
-                  value: auditLogManager.formatUser(
-                    audit.executor.id,
-                    audit.executor.tag,
-                  ),
-                  inline: true,
-                },
-              ]
-            : []),
+          ...extra,
         ],
       });
     } catch (error) {
@@ -120,10 +96,10 @@ export class LoggingRoleEvents {
         return;
       }
 
-      const audit = await discordAuditResolver.resolve(
+      const extra = await auditExecutorFields(
         newRole.guild,
         AuditLogEvent.RoleUpdate,
-        { targetId: newRole.id },
+        newRole.id,
       );
       await auditLogManager.postLog({
         guildId: newRole.guild.id,
@@ -136,18 +112,7 @@ export class LoggingRoleEvents {
             value: `${newRole.name} (\`${newRole.id}\`)`,
           },
           { name: "Changes", value: changes.join("\n").slice(0, 1024) },
-          ...(audit.executor
-            ? [
-                {
-                  name: "Executor",
-                  value: auditLogManager.formatUser(
-                    audit.executor.id,
-                    audit.executor.tag,
-                  ),
-                  inline: true,
-                },
-              ]
-            : []),
+          ...extra,
         ],
       });
     } catch (error) {

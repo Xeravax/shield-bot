@@ -5,33 +5,13 @@ import {
   GuildChannel,
   ThreadChannel,
 } from "discord.js";
-import {
-  auditLogManager,
-  discordAuditResolver,
-} from "../../../main.js";
+import { auditLogManager } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
+import { auditExecutorFields } from "../../../managers/logging/index.js";
 
 function channelLabel(channel: { id: string; name?: string; type: ChannelType }): string {
   const name = "name" in channel && channel.name ? `#${channel.name}` : channel.id;
   return `${name} (\`${channel.id}\`) · type ${ChannelType[channel.type] ?? channel.type}`;
-}
-
-async function executorField(guild: GuildChannel["guild"], type: AuditLogEvent, targetId?: string) {
-  const audit = await discordAuditResolver.resolve(guild, type, { targetId });
-  if (!audit.executor) {
-    return [];
-  }
-  const fields = [
-    {
-      name: "Executor",
-      value: auditLogManager.formatUser(audit.executor.id, audit.executor.tag),
-      inline: true,
-    },
-  ];
-  if (audit.reason) {
-    fields.push({ name: "Reason", value: audit.reason.slice(0, 1024), inline: false });
-  }
-  return fields;
 }
 
 @Discord()
@@ -45,7 +25,7 @@ export class LoggingChannelEvents {
       if (await auditLogManager.shouldIgnoreChannel(channel.guild.id, channel.id)) {
         return;
       }
-      const extra = await executorField(
+      const extra = await auditExecutorFields(
         channel.guild,
         AuditLogEvent.ChannelCreate,
         channel.id,
@@ -73,11 +53,10 @@ export class LoggingChannelEvents {
       if (!("guild" in channel) || !channel.guild) {
         return;
       }
-      const settings = await auditLogManager.getSettings(channel.guild.id);
-      if (settings?.loggingForumChannelId === channel.id) {
+      if (await auditLogManager.shouldIgnoreChannel(channel.guild.id, channel.id)) {
         return;
       }
-      const extra = await executorField(
+      const extra = await auditExecutorFields(
         channel.guild,
         AuditLogEvent.ChannelDelete,
         channel.id,
@@ -166,7 +145,7 @@ export class LoggingChannelEvents {
         return;
       }
 
-      const extra = await executorField(
+      const extra = await auditExecutorFields(
         newChannel.guild,
         AuditLogEvent.ChannelUpdate,
         newChannel.id,
