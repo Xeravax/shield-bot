@@ -283,29 +283,6 @@ export class ModCaseManager {
     return modCase;
   }
 
-  async findActiveCase(
-    guildId: string,
-    targetId: string,
-    type: ModCaseType,
-  ): Promise<ModCase | null> {
-    return prisma.modCase.findFirst({
-      where: { guildId, targetId, type, active: true },
-      orderBy: { createdAt: "desc" },
-    });
-  }
-
-  async deactivateActiveCases(
-    guildId: string,
-    targetId: string,
-    type: ModCaseType,
-  ): Promise<number> {
-    const result = await prisma.modCase.updateMany({
-      where: { guildId, targetId, type, active: true },
-      data: { active: false },
-    });
-    return result.count;
-  }
-
   async claimCase(
     caseId: number,
     claimedBy: string,
