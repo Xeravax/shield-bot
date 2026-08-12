@@ -68,5 +68,6 @@ export {
   ROLE_CHANGE_COALESCE_MS,
   queueMemberRoleChange,
   diffRolesFromBaseline,
+  formatRoleDiffLines,
   formatRoleList,
 } from "./roleChangeCoalesce.js";

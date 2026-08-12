@@ -328,12 +328,8 @@ export class LoggingMemberEvents {
           value: auditLogManager.formatUser(member.id, member.user.tag),
         },
         {
-          name: "Changed from",
-          value: diff.fromText,
-        },
-        {
-          name: "Changed to",
-          value: diff.toText,
+          name: "Changes",
+          value: diff.changesText,
         },
       ];
 

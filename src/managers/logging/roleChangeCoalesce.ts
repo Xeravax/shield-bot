@@ -1,6 +1,6 @@
 import type { GuildMember, PartialGuildMember, Role } from "discord.js";
 
-export const ROLE_CHANGE_COALESCE_MS = 5_000;
+export const ROLE_CHANGE_COALESCE_MS = 3_000;
 
 type FlushHandler = (
   guildId: string,
@@ -25,6 +25,14 @@ function roleIdSet(
   member: GuildMember | PartialGuildMember,
 ): Set<string> {
   return new Set(member.roles.cache.keys());
+}
+
+function sortRoles(roles: Role[]): Role[] {
+  return [...roles].sort((a, b) => b.position - a.position);
+}
+
+function formatRoleLabel(role: Role): string {
+  return `${role.name} (\`${role.id}\`)`;
 }
 
 /**
@@ -64,30 +72,40 @@ export function queueMemberRoleChange(
   pending.set(key, entry);
 }
 
+/** Name + id only — never <@&id>, which would ping roles in V2 TextDisplay. */
 export function formatRoleList(
   roles: Iterable<Role>,
   guildId: string,
 ): string {
-  const list = [...roles]
-    .filter((r) => r.id !== guildId)
-    .sort((a, b) => b.position - a.position);
+  const list = sortRoles([...roles].filter((r) => r.id !== guildId));
   if (list.length === 0) {
     return "*None*";
   }
-  // Name + id only — Role.toString() is <@&id> and would ping whole staff roles
-  // when this text lives in Components V2 TextDisplay.
-  return list
-    .map((r) => `${r.name} (\`${r.id}\`)`)
-    .join(", ")
-    .slice(0, 1024);
+  return list.map(formatRoleLabel).join(", ").slice(0, 1024);
+}
+
+/** Added/removed roles only, one line each with ➕ / ➖. */
+export function formatRoleDiffLines(
+  added: Role[],
+  removed: Role[],
+  unknownRemovedIds: string[] = [],
+): string {
+  const lines: string[] = [
+    ...sortRoles(added).map((r) => `➕ ${formatRoleLabel(r)}`),
+    ...sortRoles(removed).map((r) => `➖ ${formatRoleLabel(r)}`),
+    ...unknownRemovedIds.map((id) => `➖ Unknown role (\`${id}\`)`),
+  ];
+  if (lines.length === 0) {
+    return "*No role changes*";
+  }
+  return lines.join("\n").slice(0, 1024);
 }
 
 export function diffRolesFromBaseline(
   member: GuildMember,
   baselineRoleIds: Set<string>,
 ): {
-  fromText: string;
-  toText: string;
+  changesText: string;
   added: Role[];
   removed: Role[];
   changed: boolean;
@@ -102,6 +120,7 @@ export function diffRolesFromBaseline(
 
   const added: Role[] = [];
   const removed: Role[] = [];
+  const unknownRemovedIds: string[] = [];
 
   for (const id of currentIds) {
     if (!baseline.has(id)) {
@@ -119,23 +138,18 @@ export function diffRolesFromBaseline(
       if (role) {
         removed.push(role);
       } else {
-        // Role may have been deleted; still note the id
+        unknownRemovedIds.push(id);
       }
     }
   }
 
-  const fromRoles = [...baseline]
-    .map((id) => member.guild.roles.cache.get(id))
-    .filter((r): r is Role => !!r);
-  const toRoles = [...currentIds]
-    .map((id) => member.roles.cache.get(id))
-    .filter((r): r is Role => !!r);
-
   return {
-    fromText: formatRoleList(fromRoles, guildId),
-    toText: formatRoleList(toRoles, guildId),
+    changesText: formatRoleDiffLines(added, removed, unknownRemovedIds),
     added,
     removed,
-    changed: added.length > 0 || removed.length > 0,
+    changed:
+      added.length > 0 ||
+      removed.length > 0 ||
+      unknownRemovedIds.length > 0,
   };
 }
