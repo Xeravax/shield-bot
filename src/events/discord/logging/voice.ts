@@ -20,7 +20,7 @@ export class LoggingVoiceEvents {
       const fieldsBase = [
         {
           name: "Member",
-          value: auditLogManager.formatUser(member.id, member.user.tag),
+          value: await auditLogManager.formatUser(member.id, member.user.username),
         },
       ];
 
@@ -245,9 +245,9 @@ export class LoggingVoiceEvents {
           ? [
               {
                 name: "Executor",
-                value: auditLogManager.formatUser(
+                value: await auditLogManager.formatUser(
                   audit.executor.id,
-                  audit.executor.tag,
+                  audit.executor.username,
                 ),
               },
             ]

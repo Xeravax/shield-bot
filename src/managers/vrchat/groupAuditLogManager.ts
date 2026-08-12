@@ -10,6 +10,9 @@ import { VRChatError } from "../../utility/errors.js";
 import { loggers } from "../../utility/logger.js";
 import { parseLoggingThreadIds } from "../logging/loggingTypes.js";
 import { buildStaffActionV2OrNull } from "../logging/reasonPrompt.js";
+import {
+  formatVrchatProfileLine,
+} from "../logging/userDisplay.js";
 
 const PAGE_SIZE = 50;
 const MAX_RECENT_IDS = 100;
@@ -40,8 +43,7 @@ function vrcUserLink(userId: string | null | undefined, displayName?: string | n
   if (!userId) {
     return "_Unknown_";
   }
-  const label = displayName?.trim() || userId;
-  return `[${label}](https://vrchat.com/home/user/${userId})`;
+  return formatVrchatProfileLine(userId, displayName);
 }
 
 function eventTitle(eventType: string): string {
@@ -370,13 +372,6 @@ export class GroupAuditLogManager {
     return account?.user?.discordId ?? null;
   }
 
-  private async resolveDiscordMention(
-    vrcUserId: string | null | undefined,
-  ): Promise<string | null> {
-    const discordId = await this.resolveDiscordUserId(vrcUserId);
-    return discordId ? `<@${discordId}>` : null;
-  }
-
   private shouldPromptActorReason(eventType: string): boolean {
     switch (eventType) {
       case GroupAuditLogEventType.Group_Member_Join:
@@ -397,23 +392,17 @@ export class GroupAuditLogManager {
 
   private async postEntry(guildId: string, entry: AuditResult): Promise<void> {
     const actorDiscordId = await this.resolveDiscordUserId(entry.actorId);
-    const actorDiscord = actorDiscordId ? `<@${actorDiscordId}>` : null;
-    const targetDiscord = await this.resolveDiscordMention(entry.targetId);
+    const targetDiscordId = await this.resolveDiscordUserId(entry.targetId);
 
-    const actorValue = [
-      vrcUserLink(entry.actorId, entry.actorDisplayName),
-      actorDiscord,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const actorValue = actorDiscordId
+      ? await auditLogManager.formatUser(actorDiscordId)
+      : vrcUserLink(entry.actorId, entry.actorDisplayName);
 
-    const targetValue =
-      [
-        entry.targetId ? vrcUserLink(entry.targetId) : null,
-        targetDiscord,
-      ]
-        .filter(Boolean)
-        .join("\n") || "_None_";
+    const targetValue = targetDiscordId
+      ? await auditLogManager.formatUser(targetDiscordId)
+      : entry.targetId
+        ? vrcUserLink(entry.targetId)
+        : "_None_";
 
     const fields = [
       { name: "Actor", value: actorValue || "_Unknown_", inline: true },

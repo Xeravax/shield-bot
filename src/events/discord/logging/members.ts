@@ -44,7 +44,7 @@ export class LoggingMemberEvents {
             .addFields(
               {
                 name: "User",
-                value: auditLogManager.formatUser(member.id, member.user.tag),
+                value: await auditLogManager.formatUser(member.id, member.user.username),
               },
               {
                 name: "Account created",
@@ -72,7 +72,7 @@ export class LoggingMemberEvents {
           fields: [
             {
               name: "Bot",
-              value: auditLogManager.formatUser(member.id, member.user.tag),
+              value: await auditLogManager.formatUser(member.id, member.user.username),
             },
             {
               name: "Account created",
@@ -96,7 +96,7 @@ export class LoggingMemberEvents {
           fields: [
             {
               name: "User",
-              value: auditLogManager.formatUser(member.id, member.user.tag),
+              value: await auditLogManager.formatUser(member.id, member.user.username),
             },
             {
               name: "Account created",
@@ -133,9 +133,9 @@ export class LoggingMemberEvents {
       const fields = [
         {
           name: "User",
-          value: auditLogManager.formatUser(
+          value: await auditLogManager.formatUser(
             member.id,
-            member.user?.tag ?? null,
+            member.user?.username ?? null,
           ),
         },
         {
@@ -149,9 +149,9 @@ export class LoggingMemberEvents {
       if (audit.executor) {
         fields.push({
           name: "Kicked by",
-          value: auditLogManager.formatUser(
+          value: await auditLogManager.formatUser(
             audit.executor.id,
-            audit.executor.tag,
+            audit.executor.username,
           ),
           inline: true,
         });
@@ -273,7 +273,7 @@ export class LoggingMemberEvents {
           fields: [
             {
               name: "User",
-              value: auditLogManager.formatUser(newUser.id, newUser.tag),
+              value: await auditLogManager.formatUser(newUser.id, newUser.username),
             },
             { name: "Changes", value: changes.join("\n") },
           ],
@@ -325,7 +325,7 @@ export class LoggingMemberEvents {
       const fields = [
         {
           name: "Member",
-          value: auditLogManager.formatUser(member.id, member.user.tag),
+          value: await auditLogManager.formatUser(member.id, member.user.username),
         },
         {
           name: "Changes",
@@ -336,7 +336,7 @@ export class LoggingMemberEvents {
       if (audit.executor) {
         fields.push({
           name: "Executor",
-          value: auditLogManager.formatUser(audit.executor.id, audit.executor.tag),
+          value: await auditLogManager.formatUser(audit.executor.id, audit.executor.username),
         });
       } else {
         fields.push(unknownExecutorField());
@@ -392,16 +392,16 @@ export class LoggingMemberEvents {
       fields: [
         {
           name: "Member",
-          value: auditLogManager.formatUser(newMember.id, newMember.user.tag),
+          value: await auditLogManager.formatUser(newMember.id, newMember.user.username),
         },
         { name: "Changes", value: changes.join("\n") },
         ...(audit.executor
           ? [
               {
                 name: "Executor",
-                value: auditLogManager.formatUser(
+                value: await auditLogManager.formatUser(
                   audit.executor.id,
-                  audit.executor.tag,
+                  audit.executor.username,
                 ),
               },
             ]
@@ -430,7 +430,7 @@ export class LoggingMemberEvents {
       fields: [
         {
           name: "Member",
-          value: auditLogManager.formatUser(newMember.id, newMember.user.tag),
+          value: await auditLogManager.formatUser(newMember.id, newMember.user.username),
         },
       ],
       thumbnailUrl: newMember.displayAvatarURL(),
@@ -476,18 +476,18 @@ export class LoggingMemberEvents {
         fields: [
           {
             name: "Member",
-            value: auditLogManager.formatUser(
+            value: await auditLogManager.formatUser(
               newMember.id,
-              newMember.user.tag,
+              newMember.user.username,
             ),
           },
           ...(audit.executor
             ? [
                 {
                   name: "Executor",
-                  value: auditLogManager.formatUser(
+                  value: await auditLogManager.formatUser(
                     audit.executor.id,
-                    audit.executor.tag,
+                    audit.executor.username,
                   ),
                 },
               ]
@@ -520,18 +520,18 @@ export class LoggingMemberEvents {
         fields: [
           {
             name: "Member",
-            value: auditLogManager.formatUser(
+            value: await auditLogManager.formatUser(
               newMember.id,
-              newMember.user.tag,
+              newMember.user.username,
             ),
           },
           ...(audit.executor
             ? [
                 {
                   name: "Executor",
-                  value: auditLogManager.formatUser(
+                  value: await auditLogManager.formatUser(
                     audit.executor.id,
-                    audit.executor.tag,
+                    audit.executor.username,
                   ),
                 },
               ]

@@ -165,7 +165,7 @@ export class LoggingAutoModEvents {
       const fields: { name: string; value: string; inline?: boolean }[] = [
         {
           name: "User",
-          value: auditLogManager.formatUser(execution.userId),
+          value: await auditLogManager.formatUser(execution.userId),
           inline: true,
         },
         {

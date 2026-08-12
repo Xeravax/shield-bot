@@ -43,15 +43,15 @@ export class LoggingModerationGatewayEvents {
         fields: [
           {
             name: "User",
-            value: auditLogManager.formatUser(ban.user.id, ban.user.tag),
+            value: await auditLogManager.formatUser(ban.user.id, ban.user.username),
           },
           ...(audit.executor
             ? [
                 {
                   name: "Executor",
-                  value: auditLogManager.formatUser(
+                  value: await auditLogManager.formatUser(
                     audit.executor.id,
-                    audit.executor.tag,
+                    audit.executor.username,
                   ),
                 },
               ]
@@ -107,15 +107,15 @@ export class LoggingModerationGatewayEvents {
         fields: [
           {
             name: "User",
-            value: auditLogManager.formatUser(ban.user.id, ban.user.tag),
+            value: await auditLogManager.formatUser(ban.user.id, ban.user.username),
           },
           ...(audit.executor
             ? [
                 {
                   name: "Executor",
-                  value: auditLogManager.formatUser(
+                  value: await auditLogManager.formatUser(
                     audit.executor.id,
-                    audit.executor.tag,
+                    audit.executor.username,
                   ),
                 },
               ]

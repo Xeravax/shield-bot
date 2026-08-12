@@ -17,6 +17,7 @@ import {
   type LoggingSeverity,
   type LoggingThreadKey,
 } from "./loggingTypes.js";
+import { formatLoggedUser } from "./userDisplay.js";
 
 export type PostLogOptions = {
   guildId: string;
@@ -416,8 +417,13 @@ export class AuditLogManager {
     await this.fanOutCategoryLog(guildId, "vrchatGroup", options, []);
   }
 
-  formatUser(userId: string, tag?: string | null): string {
-    return tag ? `${tag} (\`${userId}\`)` : `<@${userId}> (\`${userId}\`)`;
+  async formatUser(userId: string, tag?: string | null): Promise<string> {
+    let username = tag;
+    if (!username?.trim()) {
+      const user = await this.client.users.fetch(userId).catch(() => null);
+      username = user?.username ?? null;
+    }
+    return formatLoggedUser(userId, username);
   }
 
   formatChannel(channelId: string): string {

@@ -19,7 +19,7 @@ function formatOptionValue(option: CommandInteractionOption): string {
       return String(option.value ?? "");
     case ApplicationCommandOptionType.User:
       return option.user
-        ? `${option.user.tag} (\`${option.user.id}\`)`
+        ? `${option.user.username} (\`${option.user.id}\`)`
         : String(option.value ?? "");
     case ApplicationCommandOptionType.Channel:
       return option.channel
@@ -31,7 +31,7 @@ function formatOptionValue(option: CommandInteractionOption): string {
         : String(option.value ?? "");
     case ApplicationCommandOptionType.Mentionable:
       if (option.user) {
-        return `${option.user.tag} (\`${option.user.id}\`)`;
+        return `${option.user.username} (\`${option.user.id}\`)`;
       }
       if (option.role) {
         return `${option.role.name} (\`${option.role.id}\`)`;
@@ -125,9 +125,9 @@ export class LoggingBotUsageEvents {
       const fields: { name: string; value: string; inline?: boolean }[] = [
         {
           name: "User",
-          value: auditLogManager.formatUser(
+          value: await auditLogManager.formatUser(
             interaction.user.id,
-            interaction.user.tag,
+            interaction.user.username,
           ),
           inline: true,
         },
@@ -160,9 +160,9 @@ export class LoggingBotUsageEvents {
         });
         fields.push({
           name: "Target",
-          value: auditLogManager.formatUser(
+          value: await auditLogManager.formatUser(
             interaction.targetUser.id,
-            interaction.targetUser.tag,
+            interaction.targetUser.username,
           ),
         });
       } else if (interaction.isMessageContextMenuCommand()) {

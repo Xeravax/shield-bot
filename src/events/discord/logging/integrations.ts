@@ -91,9 +91,9 @@ export class LoggingIntegrationEvents {
       if (audit?.executor) {
         fields.push({
           name: "Executor",
-          value: auditLogManager.formatUser(
+          value: await auditLogManager.formatUser(
             audit.executor.id,
-            audit.executor.tag,
+            audit.executor.username,
           ),
           inline: true,
         });
@@ -148,9 +148,9 @@ export class LoggingIntegrationEvents {
           executorFields = [
             {
               name: "Executor",
-              value: auditLogManager.formatUser(
+              value: await auditLogManager.formatUser(
                 audit.executor.id,
-                audit.executor.tag,
+                audit.executor.username,
               ),
               inline: true,
             },

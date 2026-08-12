@@ -85,9 +85,9 @@ export class LoggingUnresolvedClaimModalHandlers {
         return;
       }
 
-      const claimedValue = auditLogManager.formatUser(
+      const claimedValue = await auditLogManager.formatUser(
         interaction.user.id,
-        interaction.user.tag,
+        interaction.user.username,
       );
       const executorIdx = fields.findIndex((f) => f.name === "Executor");
       if (executorIdx >= 0) {

@@ -39,11 +39,11 @@ function unresolvedClaimRow(): ActionRowBuilder<MessageActionRowComponentBuilder
   ];
 }
 
-function executorFields(
-  executor: { id: string; tag: string } | null,
+async function executorFields(
+  executor: { id: string; username?: string | null; tag?: string | null } | null,
   reason: string | null,
   claimIfUnresolved: boolean,
-): AuditExecutorResult {
+): Promise<AuditExecutorResult> {
   if (!executor) {
     if (!claimIfUnresolved) {
       return { fields: [] };
@@ -63,7 +63,10 @@ function executorFields(
   const fields: AuditExecutorResult["fields"] = [
     {
       name: "Executor",
-      value: auditLogManager.formatUser(executor.id, executor.tag),
+      value: await auditLogManager.formatUser(
+        executor.id,
+        executor.username ?? executor.tag,
+      ),
       inline: true,
     },
   ];
@@ -90,7 +93,11 @@ export async function auditExecutorFields(
   });
   return executorFields(
     audit.executor
-      ? { id: audit.executor.id, tag: audit.executor.tag }
+      ? {
+          id: audit.executor.id,
+          username: audit.executor.username,
+          tag: audit.executor.tag,
+        }
       : null,
     audit.reason,
     true,
@@ -108,9 +115,13 @@ export async function resolveAuditExecutor(
   }
 > {
   const audit = await discordAuditResolver.resolve(guild, type, options);
-  const result = executorFields(
+  const result = await executorFields(
     audit.executor
-      ? { id: audit.executor.id, tag: audit.executor.tag }
+      ? {
+          id: audit.executor.id,
+          username: audit.executor.username,
+          tag: audit.executor.tag,
+        }
       : null,
     audit.reason,
     options?.claimIfUnresolved === true,

@@ -729,7 +729,7 @@ export class ModCommands {
         await interaction.editReply({ content: "❌ Case not found." });
         return;
       }
-      const embed = modCaseManager.buildCaseEmbed(modCase);
+      const embed = await modCaseManager.buildCaseEmbed(modCase);
       if (embed.data.description && embed.data.description.length > 4096) {
         embed.setDescription(`${embed.data.description.slice(0, 4095)}…`);
       }

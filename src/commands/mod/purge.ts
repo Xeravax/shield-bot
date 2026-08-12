@@ -161,9 +161,9 @@ export class PurgeCommand {
           fields: [
             {
               name: "Moderator",
-              value: auditLogManager.formatUser(
+              value: await auditLogManager.formatUser(
                 interaction.user.id,
-                interaction.user.tag,
+                interaction.user.username,
               ),
               inline: true,
             },

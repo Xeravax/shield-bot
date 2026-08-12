@@ -225,7 +225,7 @@ export class LoggingServerEvents {
           {
             name: "Inviter",
             value: invite.inviter
-              ? auditLogManager.formatUser(invite.inviter.id, invite.inviter.tag)
+              ? await auditLogManager.formatUser(invite.inviter.id, invite.inviter.username)
               : "*unknown*",
           },
           {

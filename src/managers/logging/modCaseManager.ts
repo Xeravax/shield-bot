@@ -128,22 +128,34 @@ export class ModCaseManager {
     return updated.modCaseCounter;
   }
 
-  buildCaseEmbed(modCase: ModCase, options?: {
-    claimedByTag?: string | null;
-  }): EmbedBuilder {
+  async buildCaseEmbed(modCase: ModCase, options?: {
+    claimedByUsername?: string | null;
+  }): Promise<EmbedBuilder> {
     const isChannelTarget =
       modCase.type === "LOCK" || modCase.type === "UNLOCK";
+
+    const [targetValue, moderatorValue, claimedByValue] = await Promise.all([
+      isChannelTarget
+        ? Promise.resolve(`<#${modCase.targetId}> (\`${modCase.targetId}\`)`)
+        : this.auditLog.formatUser(modCase.targetId),
+      this.auditLog.formatUser(modCase.moderatorId),
+      modCase.claimedBy
+        ? this.auditLog.formatUser(
+            modCase.claimedBy,
+            options?.claimedByUsername ?? null,
+          )
+        : Promise.resolve(null),
+    ]);
+
     const fields: { name: string; value: string; inline?: boolean }[] = [
       {
         name: isChannelTarget ? "Channel" : "Target",
-        value: isChannelTarget
-          ? `<#${modCase.targetId}> (\`${modCase.targetId}\`)`
-          : `<@${modCase.targetId}> (\`${modCase.targetId}\`)`,
+        value: targetValue,
         inline: true,
       },
       {
         name: "Moderator",
-        value: `<@${modCase.moderatorId}> (\`${modCase.moderatorId}\`)`,
+        value: moderatorValue,
         inline: true,
       },
       {
@@ -160,12 +172,10 @@ export class ModCaseManager {
       });
     }
 
-    if (modCase.claimedBy) {
+    if (modCase.claimedBy && claimedByValue) {
       fields.push({
         name: "Claimed by",
-        value: options?.claimedByTag
-          ? `${options.claimedByTag} (\`${modCase.claimedBy}\`)`
-          : `<@${modCase.claimedBy}> (\`${modCase.claimedBy}\`)`,
+        value: claimedByValue,
         inline: true,
       });
       if (modCase.claimedReason) {
@@ -217,7 +227,7 @@ export class ModCaseManager {
           !modCase.claimedBy &&
           modCase.type !== "NOTE";
         await msg.edit({
-          embeds: [this.buildCaseEmbed(modCase)],
+          embeds: [await this.buildCaseEmbed(modCase)],
           components: claimable ? [this.claimRow(modCase.id)] : [],
         });
       }
@@ -244,7 +254,7 @@ export class ModCaseManager {
       const claimable =
         claimableDefault && !modCase.claimedBy && modCase.type !== "NOTE";
 
-      const embed = this.buildCaseEmbed(modCase);
+      const embed = await this.buildCaseEmbed(modCase);
       const usedFields = embed.data.fields?.length ?? 0;
       if (extraFields?.length) {
         const room = Math.max(0, MAX_EMBED_FIELDS - usedFields);

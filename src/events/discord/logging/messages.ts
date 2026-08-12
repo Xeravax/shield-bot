@@ -158,9 +158,9 @@ export class LoggingMessageEvents {
       const fields = [
         {
           name: "Author",
-          value: auditLogManager.formatUser(
+          value: await auditLogManager.formatUser(
             newMessage.author.id,
-            newMessage.author.tag,
+            newMessage.author.username,
           ),
           inline: true,
         },
@@ -253,9 +253,9 @@ export class LoggingMessageEvents {
         );
         if (audit.executor) {
           hasExecutor = true;
-          executorField = auditLogManager.formatUser(
+          executorField = await auditLogManager.formatUser(
             audit.executor.id,
-            audit.executor.tag,
+            audit.executor.username,
           );
         }
       }
@@ -264,7 +264,7 @@ export class LoggingMessageEvents {
         {
           name: "Author",
           value: cached
-            ? auditLogManager.formatUser(cached.authorId)
+            ? await auditLogManager.formatUser(cached.authorId)
             : "*unknown*",
           inline: true,
         },
@@ -357,9 +357,9 @@ export class LoggingMessageEvents {
         if (audit.executor) {
           extraFields.push({
             name: "Executor",
-            value: auditLogManager.formatUser(
+            value: await auditLogManager.formatUser(
               audit.executor.id,
-              audit.executor.tag,
+              audit.executor.username,
             ),
             inline: true,
           });

@@ -71,3 +71,11 @@ export {
   formatRoleDiffLines,
   formatRoleList,
 } from "./roleChangeCoalesce.js";
+
+export {
+  formatLoggedUser,
+  formatDiscordUserLine,
+  formatVrchatProfileLine,
+  getLinkedVrchatAccounts,
+} from "./userDisplay.js";
+export type { VrchatAccountDisplay } from "./userDisplay.js";

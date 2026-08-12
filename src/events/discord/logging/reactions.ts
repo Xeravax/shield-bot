@@ -41,7 +41,7 @@ export class LoggingReactionEvents {
         fields: [
           {
             name: "User",
-            value: auditLogManager.formatUser(user.id, user.tag),
+            value: await auditLogManager.formatUser(user.id, user.username),
             inline: true,
           },
           {
@@ -96,7 +96,7 @@ export class LoggingReactionEvents {
         fields: [
           {
             name: "User",
-            value: auditLogManager.formatUser(user.id, user.tag),
+            value: await auditLogManager.formatUser(user.id, user.username),
             inline: true,
           },
           {
