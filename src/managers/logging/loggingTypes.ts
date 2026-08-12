@@ -64,6 +64,9 @@ export const CLAIM_MODAL_PREFIX = "logging:claim-modal:";
 /** Claim an audit log embed when Discord did not resolve an executor. */
 export const UNRESOLVED_CLAIM_BUTTON_ID = "logging:claim-unresolved";
 export const UNRESOLVED_CLAIM_MODAL_PREFIX = "logging:claim-unresolved-modal:";
+/** Provide a missing reason for a non-case audit embed (roles, voice mute, gateway kick/ban, VRChat, etc.). */
+export const PROVIDE_REASON_MSG_BUTTON_ID = "logging:provide-reason-msg";
+export const PROVIDE_REASON_MSG_MODAL_PREFIX = "logging:provide-reason-msg-modal:";
 
 export function claimButtonCustomId(caseId: number): string {
   return `${CLAIM_BUTTON_PREFIX}${caseId}`;
@@ -82,6 +85,17 @@ export function unresolvedClaimModalCustomId(
   messageId: string,
 ): string {
   return `${UNRESOLVED_CLAIM_MODAL_PREFIX}${channelId}:${messageId}`;
+}
+
+export function provideReasonMsgButtonCustomId(): string {
+  return PROVIDE_REASON_MSG_BUTTON_ID;
+}
+
+export function provideReasonMsgModalCustomId(
+  channelId: string,
+  messageId: string,
+): string {
+  return `${PROVIDE_REASON_MSG_MODAL_PREFIX}${channelId}:${messageId}`;
 }
 
 export function parseLoggingThreadIds(

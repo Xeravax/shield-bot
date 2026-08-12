@@ -1,8 +1,10 @@
 import { ArgsOf, Discord, On } from "discordx";
-import { AuditLogEvent } from "discord.js";
+import { AuditLogEvent, type Guild } from "discord.js";
 import { auditLogManager } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import { resolveAuditExecutor } from "../../../managers/logging/auditExecutorFields.js";
+import { postStaffActionLog } from "../../../managers/logging/reasonPrompt.js";
+import { unknownExecutorField } from "../../../managers/logging/auditExecutorFields.js";
 
 @Discord()
 export class LoggingVoiceEvents {
@@ -102,44 +104,22 @@ export class LoggingVoiceEvents {
 
       // Server mute / deaf (moderator-attributed)
       if (oldState.serverMute !== newState.serverMute) {
-        const { fields: extra, components } = await resolveAuditExecutor(
+        await this.logStaffVoiceAction(
           guild,
-          AuditLogEvent.MemberUpdate,
-          {
-            targetId: member.id,
-            maxAgeMs: 8_000,
-            claimIfUnresolved: true,
-          },
+          member.id,
+          newState.serverMute ? "Server Mute" : "Server Unmute",
+          fieldsBase,
+          newState.channelId ?? oldState.channelId,
         );
-        await auditLogManager.postLog({
-          guildId: guild.id,
-          category: "voice",
-          title: newState.serverMute ? "Server Mute" : "Server Unmute",
-          severity: "warn",
-          fields: [...fieldsBase, ...extra],
-          components,
-          sourceChannelId: newState.channelId ?? oldState.channelId,
-        });
       }
       if (oldState.serverDeaf !== newState.serverDeaf) {
-        const { fields: extra, components } = await resolveAuditExecutor(
+        await this.logStaffVoiceAction(
           guild,
-          AuditLogEvent.MemberUpdate,
-          {
-            targetId: member.id,
-            maxAgeMs: 8_000,
-            claimIfUnresolved: true,
-          },
+          member.id,
+          newState.serverDeaf ? "Server Deafen" : "Server Undeafen",
+          fieldsBase,
+          newState.channelId ?? oldState.channelId,
         );
-        await auditLogManager.postLog({
-          guildId: guild.id,
-          category: "voice",
-          title: newState.serverDeaf ? "Server Deafen" : "Server Undeafen",
-          severity: "warn",
-          fields: [...fieldsBase, ...extra],
-          components,
-          sourceChannelId: newState.channelId ?? oldState.channelId,
-        });
       }
 
       // Self mute / deaf
@@ -232,5 +212,55 @@ export class LoggingVoiceEvents {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  private async logStaffVoiceAction(
+    guild: Guild,
+    targetId: string,
+    title: string,
+    fieldsBase: { name: string; value: string }[],
+    sourceChannelId: string | null,
+  ): Promise<void> {
+    const { audit, fields: extra } = await resolveAuditExecutor(
+      guild,
+      AuditLogEvent.MemberUpdate,
+      {
+        targetId,
+        maxAgeMs: 8_000,
+        claimIfUnresolved: true,
+      },
+    );
+
+    const botId = guild.client.user?.id;
+    const executorId = audit.executor?.id;
+    const isBotExecutor = !!executorId && !!botId && executorId === botId;
+
+    await postStaffActionLog(auditLogManager, {
+      guildId: guild.id,
+      category: "voice",
+      title,
+      severity: "warn",
+      fields: [
+        ...fieldsBase,
+        ...(audit.executor
+          ? [
+              {
+                name: "Executor",
+                value: auditLogManager.formatUser(
+                  audit.executor.id,
+                  audit.executor.tag,
+                ),
+              },
+            ]
+          : [unknownExecutorField()]),
+        // Drop duplicate executor from resolveAuditExecutor extra if present
+        ...extra.filter((f) => f.name !== "Executor" && f.name !== "Reason"),
+      ],
+      executorId: isBotExecutor ? null : executorId,
+      reason: audit.reason,
+      skipReasonPrompt: isBotExecutor || !executorId,
+      claimIfUnresolved: !audit.executor,
+      sourceChannelId,
+    });
   }
 }

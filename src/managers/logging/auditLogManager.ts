@@ -30,6 +30,9 @@ export type PostLogOptions = {
   imageUrl?: string | null;
   files?: AttachmentBuilder[];
   components?: MessageCreateOptions["components"];
+  /** Optional message content (e.g. staff ping for missing reason). */
+  content?: string | null;
+  allowedMentions?: MessageCreateOptions["allowedMentions"];
   /** Skip posting when channel is the logging forum or an ignored channel. */
   sourceChannelId?: string | null;
 };
@@ -300,6 +303,8 @@ export class AuditLogManager {
 
       const embed = this.buildEmbed(options);
       return await thread.send({
+        content: options.content ?? undefined,
+        allowedMentions: options.allowedMentions,
         embeds: [embed],
         files: options.files,
         components: options.components,

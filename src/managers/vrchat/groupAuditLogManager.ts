@@ -9,6 +9,7 @@ import { getGroupAuditLogs } from "../../utility/vrchat/groups.js";
 import { VRChatError } from "../../utility/errors.js";
 import { loggers } from "../../utility/logger.js";
 import { parseLoggingThreadIds } from "../logging/loggingTypes.js";
+import { buildStaffActionV2OrNull } from "../logging/reasonPrompt.js";
 
 const PAGE_SIZE = 50;
 const MAX_RECENT_IDS = 100;
@@ -353,7 +354,7 @@ export class GroupAuditLogManager {
     });
   }
 
-  private async resolveDiscordMention(
+  private async resolveDiscordUserId(
     vrcUserId: string | null | undefined,
   ): Promise<string | null> {
     if (!vrcUserId) {
@@ -366,14 +367,37 @@ export class GroupAuditLogManager {
       },
       include: { user: true },
     });
-    if (!account?.user?.discordId) {
-      return null;
+    return account?.user?.discordId ?? null;
+  }
+
+  private async resolveDiscordMention(
+    vrcUserId: string | null | undefined,
+  ): Promise<string | null> {
+    const discordId = await this.resolveDiscordUserId(vrcUserId);
+    return discordId ? `<@${discordId}>` : null;
+  }
+
+  private shouldPromptActorReason(eventType: string): boolean {
+    switch (eventType) {
+      case GroupAuditLogEventType.Group_Member_Join:
+      case GroupAuditLogEventType.Group_Member_Leave:
+      case GroupAuditLogEventType.Group_Instance_Create:
+      case GroupAuditLogEventType.Group_Gallery_Create:
+      case GroupAuditLogEventType.Group_Gallery_Update:
+      case GroupAuditLogEventType.Group_Gallery_Delete:
+      case GroupAuditLogEventType.Group_Announcement_Create:
+      case GroupAuditLogEventType.Group_Announcement_Delete:
+      case GroupAuditLogEventType.Group_Invite_Create:
+      case GroupAuditLogEventType.Group_Request_Create:
+        return false;
+      default:
+        return true;
     }
-    return `<@${account.user.discordId}>`;
   }
 
   private async postEntry(guildId: string, entry: AuditResult): Promise<void> {
-    const actorDiscord = await this.resolveDiscordMention(entry.actorId);
+    const actorDiscordId = await this.resolveDiscordUserId(entry.actorId);
+    const actorDiscord = actorDiscordId ? `<@${actorDiscordId}>` : null;
     const targetDiscord = await this.resolveDiscordMention(entry.targetId);
 
     const actorValue = [
@@ -408,6 +432,28 @@ export class GroupAuditLogManager {
         value: entry.description.slice(0, 1024),
         inline: false,
       });
+    }
+
+    const needsReason =
+      !!actorDiscordId && this.shouldPromptActorReason(entry.eventType);
+
+    const v2 = needsReason
+      ? buildStaffActionV2OrNull({
+          title: eventTitle(entry.eventType),
+          severity:
+            entry.eventType === GroupAuditLogEventType.Group_Member_Ban ||
+            entry.eventType === GroupAuditLogEventType.Group_Member_Kick
+              ? "danger"
+              : "warn",
+          fields,
+          executorId: actorDiscordId,
+          reason: null,
+        })
+      : null;
+
+    if (v2) {
+      await auditLogManager.fanOutVrchatGroupLog(guildId, v2);
+      return;
     }
 
     const embed = new EmbedBuilder()

@@ -8,10 +8,14 @@ export {
   CLAIM_MODAL_PREFIX,
   UNRESOLVED_CLAIM_BUTTON_ID,
   UNRESOLVED_CLAIM_MODAL_PREFIX,
+  PROVIDE_REASON_MSG_BUTTON_ID,
+  PROVIDE_REASON_MSG_MODAL_PREFIX,
   claimButtonCustomId,
   claimModalCustomId,
   unresolvedClaimButtonCustomId,
   unresolvedClaimModalCustomId,
+  provideReasonMsgButtonCustomId,
+  provideReasonMsgModalCustomId,
   parseLoggingThreadIds,
   parseStringIdArray,
 } from "./loggingTypes.js";
@@ -46,3 +50,23 @@ export {
   unknownExecutorField,
 } from "./auditExecutorFields.js";
 export type { AuditExecutorResult } from "./auditExecutorFields.js";
+
+export {
+  isMissingModReason,
+  missingReasonContent,
+  provideReasonMsgRow,
+  upsertReasonField,
+  reasonPromptPostOptions,
+  buildMissingReasonModLogV2,
+  buildResolvedReasonModLogV2Edit,
+  buildStaffActionV2OrNull,
+  postStaffActionLog,
+} from "./reasonPrompt.js";
+export type { StaffActionLogOptions } from "./reasonPrompt.js";
+
+export {
+  ROLE_CHANGE_COALESCE_MS,
+  queueMemberRoleChange,
+  diffRolesFromBaseline,
+  formatRoleList,
+} from "./roleChangeCoalesce.js";

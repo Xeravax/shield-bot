@@ -16,6 +16,11 @@ import {
   claimComponentsIfUnresolved,
   unknownExecutorField,
 } from "../../../managers/logging/auditExecutorFields.js";
+import {
+  diffRolesFromBaseline,
+  queueMemberRoleChange,
+} from "../../../managers/logging/roleChangeCoalesce.js";
+import { postStaffActionLog } from "../../../managers/logging/reasonPrompt.js";
 
 @Discord()
 export class LoggingMemberEvents {
@@ -150,29 +155,41 @@ export class LoggingMemberEvents {
           ),
           inline: true,
         });
-        if (audit.reason) {
-          fields.push({ name: "Reason", value: audit.reason.slice(0, 1024) });
-        }
       }
 
-      await auditLogManager.postLog({
-        guildId: member.guild.id,
-        category: "members",
-        title: member.user?.bot
-          ? "Bot Removed"
-          : audit.executor
-            ? "Member Kicked"
-            : "Member Left",
-        severity: audit.executor ? "danger" : "warn",
-        fields,
-        thumbnailUrl: member.user?.displayAvatarURL(),
-      });
+      const isStaffKick =
+        !!audit.executor &&
+        !member.user?.bot &&
+        audit.executor.id !== member.client.user?.id;
+
+      if (isStaffKick) {
+        await postStaffActionLog(auditLogManager, {
+          guildId: member.guild.id,
+          category: "members",
+          title: "Member Kicked",
+          severity: "danger",
+          fields,
+          executorId: audit.executor!.id,
+          reason: audit.reason,
+        });
+      } else {
+        await auditLogManager.postLog({
+          guildId: member.guild.id,
+          category: "members",
+          title: member.user?.bot
+            ? "Bot Removed"
+            : audit.executor
+              ? "Member Kicked"
+              : "Member Left",
+          severity: audit.executor ? "danger" : "warn",
+          fields,
+          thumbnailUrl: member.user?.displayAvatarURL(),
+        });
+      }
 
       // UI / external kicks → moderation case (slash kick suppresses + bot executor).
       if (
-        audit.executor &&
-        !member.user?.bot &&
-        audit.executor.id !== member.client.user?.id &&
+        isStaffKick &&
         !modCaseManager.shouldSuppressGatewayCase(
           member.guild.id,
           "KICK",
@@ -183,7 +200,7 @@ export class LoggingMemberEvents {
           guildId: member.guild.id,
           type: "KICK",
           targetId: member.id,
-          moderatorId: audit.executor.id,
+          moderatorId: audit.executor!.id,
           reason: audit.reason ?? "Kick (gateway)",
           active: false,
         });
@@ -278,47 +295,72 @@ export class LoggingMemberEvents {
       return;
     }
 
-    const audit = await discordAuditResolver.resolve(
-      newMember.guild,
-      AuditLogEvent.MemberRoleUpdate,
-      { targetId: newMember.id },
+    queueMemberRoleChange(oldMember, newMember, (guildId, member, baseline) =>
+      this.flushRoleDiff(guildId, member, baseline),
     );
+  }
 
-    const fields = [
-      {
-        name: "Member",
-        value: auditLogManager.formatUser(newMember.id, newMember.user.tag),
-      },
-    ];
-    if (added.size) {
-      fields.push({
-        name: "Added",
-        value: [...added.values()].map((r) => `${r}`).join(", ").slice(0, 1024),
-      });
-    }
-    if (removed.size) {
-      fields.push({
-        name: "Removed",
-        value: [...removed.values()].map((r) => `${r.name} (\`${r.id}\`)`).join(", ").slice(0, 1024),
-      });
-    }
-    if (audit.executor) {
-      fields.push({
-        name: "Executor",
-        value: auditLogManager.formatUser(audit.executor.id, audit.executor.tag),
-      });
-    } else {
-      fields.push(unknownExecutorField());
-    }
+  private async flushRoleDiff(
+    guildId: string,
+    member: GuildMember,
+    baselineRoleIds: Set<string>,
+  ): Promise<void> {
+    try {
+      const diff = diffRolesFromBaseline(member, baselineRoleIds);
+      if (!diff.changed) {
+        return;
+      }
 
-    await auditLogManager.postLog({
-      guildId: newMember.guild.id,
-      category: "roles",
-      title: "Member Roles Updated",
-      severity: "info",
-      fields,
-      components: claimComponentsIfUnresolved(!!audit.executor),
-    });
+      const audit = await discordAuditResolver.resolve(
+        member.guild,
+        AuditLogEvent.MemberRoleUpdate,
+        { targetId: member.id, maxAgeMs: 15_000 },
+      );
+
+      const botId = member.client.user?.id;
+      const executorId = audit.executor?.id;
+      const isBotExecutor = !!executorId && !!botId && executorId === botId;
+
+      const fields = [
+        {
+          name: "Member",
+          value: auditLogManager.formatUser(member.id, member.user.tag),
+        },
+        {
+          name: "Changed from",
+          value: diff.fromText,
+        },
+        {
+          name: "Changed to",
+          value: diff.toText,
+        },
+      ];
+
+      if (audit.executor) {
+        fields.push({
+          name: "Executor",
+          value: auditLogManager.formatUser(audit.executor.id, audit.executor.tag),
+        });
+      } else {
+        fields.push(unknownExecutorField());
+      }
+
+      await postStaffActionLog(auditLogManager, {
+        guildId,
+        category: "roles",
+        title: "Member Roles Updated",
+        severity: "info",
+        fields,
+        executorId: isBotExecutor ? null : executorId,
+        reason: audit.reason,
+        skipReasonPrompt: isBotExecutor || !executorId,
+        claimIfUnresolved: !audit.executor,
+      });
+    } catch (error) {
+      loggers.bot.debug("flushRoleDiff logging failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async logProfileDiff(
@@ -428,6 +470,40 @@ export class LoggingMemberEvents {
     }
 
     if (applied && newTimeout) {
+      await postStaffActionLog(auditLogManager, {
+        guildId: newMember.guild.id,
+        category: "moderation",
+        title: "Member Timed Out",
+        severity: "warn",
+        fields: [
+          {
+            name: "Member",
+            value: auditLogManager.formatUser(
+              newMember.id,
+              newMember.user.tag,
+            ),
+          },
+          ...(audit.executor
+            ? [
+                {
+                  name: "Executor",
+                  value: auditLogManager.formatUser(
+                    audit.executor.id,
+                    audit.executor.tag,
+                  ),
+                },
+              ]
+            : [unknownExecutorField()]),
+          {
+            name: "Expires",
+            value: `<t:${Math.floor(newTimeout / 1000)}:F>`,
+          },
+        ],
+        executorId: audit.executor?.id,
+        reason: audit.reason,
+        claimIfUnresolved: !audit.executor,
+      });
+
       await modCaseManager.createCase({
         guildId: newMember.guild.id,
         type: "TIMEOUT",
@@ -437,6 +513,36 @@ export class LoggingMemberEvents {
         expiresAt: new Date(newTimeout),
       });
     } else if (removed) {
+      await postStaffActionLog(auditLogManager, {
+        guildId: newMember.guild.id,
+        category: "moderation",
+        title: "Timeout Removed",
+        severity: "success",
+        fields: [
+          {
+            name: "Member",
+            value: auditLogManager.formatUser(
+              newMember.id,
+              newMember.user.tag,
+            ),
+          },
+          ...(audit.executor
+            ? [
+                {
+                  name: "Executor",
+                  value: auditLogManager.formatUser(
+                    audit.executor.id,
+                    audit.executor.tag,
+                  ),
+                },
+              ]
+            : [unknownExecutorField()]),
+        ],
+        executorId: audit.executor?.id,
+        reason: audit.reason,
+        claimIfUnresolved: !audit.executor,
+      });
+
       await modCaseManager.createCase({
         guildId: newMember.guild.id,
         type: "UNTIMEOUT",

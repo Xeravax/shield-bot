@@ -3,9 +3,12 @@ import {
   bot,
   discordAuditResolver,
   modCaseManager,
+  auditLogManager,
 } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import { AuditLogEvent } from "discord.js";
+import { postStaffActionLog } from "../../../managers/logging/reasonPrompt.js";
+import { unknownExecutorField } from "../../../managers/logging/auditExecutorFields.js";
 
 /**
  * Gateway ban/unban attribution when not originated by our slash commands
@@ -30,12 +33,41 @@ export class LoggingModerationGatewayEvents {
         return;
       }
 
+      const reason = audit.reason ?? ban.reason ?? null;
+
+      await postStaffActionLog(auditLogManager, {
+        guildId: ban.guild.id,
+        category: "moderation",
+        title: "Member Banned",
+        severity: "danger",
+        fields: [
+          {
+            name: "User",
+            value: auditLogManager.formatUser(ban.user.id, ban.user.tag),
+          },
+          ...(audit.executor
+            ? [
+                {
+                  name: "Executor",
+                  value: auditLogManager.formatUser(
+                    audit.executor.id,
+                    audit.executor.tag,
+                  ),
+                },
+              ]
+            : [unknownExecutorField()]),
+        ],
+        executorId: audit.executor?.id,
+        reason,
+        claimIfUnresolved: !audit.executor,
+      });
+
       await modCaseManager.createCase({
         guildId: ban.guild.id,
         type: "BAN",
         targetId: ban.user.id,
         moderatorId: audit.executor?.id ?? bot.user?.id ?? ban.user.id,
-        reason: audit.reason ?? ban.reason ?? "Ban (gateway)",
+        reason: reason ?? "Ban (gateway)",
         active: true,
       });
     } catch (error) {
@@ -64,12 +96,41 @@ export class LoggingModerationGatewayEvents {
         return;
       }
 
+      const reason = audit.reason ?? null;
+
+      await postStaffActionLog(auditLogManager, {
+        guildId: ban.guild.id,
+        category: "moderation",
+        title: "Member Unbanned",
+        severity: "success",
+        fields: [
+          {
+            name: "User",
+            value: auditLogManager.formatUser(ban.user.id, ban.user.tag),
+          },
+          ...(audit.executor
+            ? [
+                {
+                  name: "Executor",
+                  value: auditLogManager.formatUser(
+                    audit.executor.id,
+                    audit.executor.tag,
+                  ),
+                },
+              ]
+            : [unknownExecutorField()]),
+        ],
+        executorId: audit.executor?.id,
+        reason,
+        claimIfUnresolved: !audit.executor,
+      });
+
       await modCaseManager.createCase({
         guildId: ban.guild.id,
         type: "UNBAN",
         targetId: ban.user.id,
         moderatorId: audit.executor?.id ?? bot.user?.id ?? ban.user.id,
-        reason: audit.reason ?? "Unban (gateway)",
+        reason: reason ?? "Unban (gateway)",
         active: false,
       });
     } catch (error) {
