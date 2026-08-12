@@ -5,6 +5,8 @@ model UserPreferences {
   patrolDmDisabled                 Boolean @default(false)
   patrolNoShieldMemberDmDisabled   Boolean @default(false)
   eventStatusDmDisabled            Boolean @default(false)
+  /** When true, staff is not pinged for missing mod reasons (default: get pinged). */
+  modReasonPingDisabled            Boolean @default(false)
   timezone                         String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

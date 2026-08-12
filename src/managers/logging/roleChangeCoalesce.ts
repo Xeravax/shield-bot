@@ -1,6 +1,6 @@
 import type { GuildMember, PartialGuildMember, Role } from "discord.js";
 
-export const ROLE_CHANGE_COALESCE_MS = 3_000;
+export const ROLE_CHANGE_COALESCE_MS = 5_000;
 
 type FlushHandler = (
   guildId: string,

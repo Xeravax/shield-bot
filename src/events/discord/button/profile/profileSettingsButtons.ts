@@ -10,10 +10,12 @@ import { ButtonComponent, Discord } from "discordx";
 import {
   assertProfileSettingsOwner,
   editProfileSettingsMessage,
+  MOD_REASON_PING_DISABLE_WARNING,
 } from "../../../../managers/profile/profileSettingsPanel.js";
 import {
   clearUserTimezone,
   getResolvedUserPreferences,
+  modReasonPingEnabled,
   updateUserPreferences,
 } from "../../../../utility/userPreferences.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
@@ -23,6 +25,8 @@ const PROFILE_TOGGLE_PATROL_DM_PATTERN = /^profile-settings:toggle-patrol-dm:(\d
 const PROFILE_TOGGLE_NO_SHIELD_DM_PATTERN = /^profile-settings:toggle-no-shield-dm:(\d+)$/;
 const PROFILE_TOGGLE_EVENT_STATUS_DM_PATTERN =
   /^profile-settings:toggle-event-status-dm:(\d+)$/;
+const PROFILE_TOGGLE_MOD_REASON_PING_PATTERN =
+  /^profile-settings:toggle-mod-reason-ping:(\d+)$/;
 const PROFILE_TIMEZONE_PATTERN = /^profile-settings:timezone:(\d+)$/;
 const PROFILE_RESET_TIMEZONE_PATTERN = /^profile-settings:reset-timezone:(\d+)$/;
 
@@ -113,6 +117,40 @@ export class ProfileSettingsButtonHandlers {
       await editProfileSettingsMessage(interaction);
     } catch (error) {
       loggers.bot.error("Error toggling event status DM preference", error);
+      await replyProfileSettingsError(interaction, "❌ Failed to update preference.");
+    }
+  }
+
+  @ButtonComponent({ id: PROFILE_TOGGLE_MOD_REASON_PING_PATTERN })
+  async toggleModReasonPing(interaction: ButtonInteraction): Promise<void> {
+    const match = matchComponentId(
+      interaction.customId,
+      PROFILE_TOGGLE_MOD_REASON_PING_PATTERN,
+    );
+    if (!match) return;
+
+    const discordId = match[1];
+    if (!(await assertProfileSettingsOwner(interaction, discordId))) {
+      return;
+    }
+
+    try {
+      await interaction.deferUpdate();
+      const prefs = await getResolvedUserPreferences(discordId);
+      const enabling = !modReasonPingEnabled(prefs);
+      await updateUserPreferences(discordId, {
+        modReasonPingDisabled: enabling ? false : true,
+      });
+      await editProfileSettingsMessage(interaction);
+
+      if (!enabling) {
+        await interaction.followUp({
+          content: MOD_REASON_PING_DISABLE_WARNING,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    } catch (error) {
+      loggers.bot.error("Error toggling mod reason ping preference", error);
       await replyProfileSettingsError(interaction, "❌ Failed to update preference.");
     }
   }

@@ -22,6 +22,8 @@ export interface ResolvedUserPreferences {
   patrolDmDisabled: boolean;
   patrolNoShieldMemberDmDisabled: boolean;
   eventStatusDmDisabled: boolean;
+  /** When true, staff is not pinged for missing mod-log reasons. */
+  modReasonPingDisabled: boolean;
   /** Effective timezone used for parsing (falls back to EST). */
   timezone: string;
   /** Raw stored value, null when using the default. */
@@ -34,6 +36,7 @@ export type UserPreferenceUpdate = Partial<
     | "patrolDmDisabled"
     | "patrolNoShieldMemberDmDisabled"
     | "eventStatusDmDisabled"
+    | "modReasonPingDisabled"
     | "timezone"
   >
 >;
@@ -310,6 +313,7 @@ function resolvePreferences(
     patrolNoShieldMemberDmDisabled:
       prefs?.patrolNoShieldMemberDmDisabled ?? false,
     eventStatusDmDisabled: prefs?.eventStatusDmDisabled ?? false,
+    modReasonPingDisabled: prefs?.modReasonPingDisabled ?? false,
     timezone,
     timezoneStored: stored,
   };
@@ -393,4 +397,20 @@ export function noShieldMemberDmEnabled(prefs: ResolvedUserPreferences): boolean
 
 export function eventStatusDmEnabled(prefs: ResolvedUserPreferences): boolean {
   return !prefs.eventStatusDmDisabled;
+}
+
+/** Default on: staff prefers being pinged when a mod reason is missing. */
+export function modReasonPingEnabled(prefs: ResolvedUserPreferences): boolean {
+  return !prefs.modReasonPingDisabled;
+}
+
+/** Look up whether a Discord user prefers mod-reason pings (default true). */
+export async function prefersModReasonPing(
+  discordId: string | null | undefined,
+): Promise<boolean> {
+  if (!discordId) {
+    return true;
+  }
+  const prefs = await getResolvedUserPreferences(discordId);
+  return modReasonPingEnabled(prefs);
 }

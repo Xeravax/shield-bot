@@ -19,6 +19,7 @@ import {
   provideReasonMsgButtonCustomId,
   unresolvedClaimButtonCustomId,
 } from "./loggingTypes.js";
+import { prefersModReasonPing } from "../../utility/userPreferences.js";
 
 const GATEWAY_REASON_RE = /\(gateway\)\s*$/i;
 const PING_LINE_RE =
@@ -210,7 +211,7 @@ export type StaffActionLogOptions = {
 
 /**
  * Posts a staff action log.
- * - Missing reason + known human executor → Components V2 with in-log ping
+ * - Missing reason + known human executor who prefers pings → Components V2 with in-log ping
  * - Otherwise → classic embed (no ping)
  */
 export async function postStaffActionLog(
@@ -219,13 +220,15 @@ export async function postStaffActionLog(
 ): Promise<Message | null> {
   const severity = options.severity ?? "info";
   const hasExecutor = !!options.executorId;
-  const needsReason =
+  const reasonMissing = isMissingModReason(options.reason);
+  const wantsPing =
+    hasExecutor &&
     !options.skipReasonPrompt &&
     !options.executorIsBot &&
-    hasExecutor &&
-    isMissingModReason(options.reason);
+    reasonMissing &&
+    (await prefersModReasonPing(options.executorId));
 
-  if (needsReason && options.executorId) {
+  if (wantsPing && options.executorId) {
     if (options.sourceChannelId) {
       const ignored = await auditLog.shouldIgnoreChannel(
         options.guildId,
@@ -253,11 +256,24 @@ export async function postStaffActionLog(
   }
 
   const fields = [...options.fields];
-  if (options.reason && !isMissingModReason(options.reason)) {
+  if (options.reason && !reasonMissing) {
     if (!fields.some((f) => f.name === "Reason")) {
       fields.push({
         name: "Reason",
         value: options.reason.slice(0, 1024),
+      });
+    }
+  } else if (
+    reasonMissing &&
+    hasExecutor &&
+    !options.executorIsBot &&
+    !options.skipReasonPrompt
+  ) {
+    // Opted out of ping (or equivalent) — still record that no reason was given.
+    if (!fields.some((f) => f.name === "Reason")) {
+      fields.push({
+        name: "Reason",
+        value: "*No reason provided*",
       });
     }
   }
@@ -284,7 +300,7 @@ export async function postStaffActionLog(
 }
 
 /** Build a V2 payload for fan-out helpers (e.g. VRChat Group thread). */
-export function buildStaffActionV2OrNull(options: {
+export async function buildStaffActionV2OrNull(options: {
   title: string;
   severity?: LoggingSeverity;
   fields: { name: string; value: string }[];
@@ -292,12 +308,13 @@ export function buildStaffActionV2OrNull(options: {
   reason?: string | null;
   executorIsBot?: boolean;
   skipReasonPrompt?: boolean;
-}): MessageCreateOptions | null {
+}): Promise<MessageCreateOptions | null> {
   if (
     options.skipReasonPrompt ||
     options.executorIsBot ||
     !options.executorId ||
-    !isMissingModReason(options.reason)
+    !isMissingModReason(options.reason) ||
+    !(await prefersModReasonPing(options.executorId))
   ) {
     return null;
   }

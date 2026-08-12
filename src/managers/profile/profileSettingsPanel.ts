@@ -16,11 +16,15 @@ import {
   noShieldMemberDmEnabled,
   patrolDmEnabled,
   eventStatusDmEnabled,
+  modReasonPingEnabled,
   type ResolvedUserPreferences,
 } from "../../utility/userPreferences.js";
 import { EVENT_TIMEZONE } from "../../utility/estTime.js";
 
 type ProfileSettingsInteraction = ButtonInteraction | ModalSubmitInteraction;
+
+export const MOD_REASON_PING_DISABLE_WARNING =
+  "⚠️ By disabling mod reason pings, **you become responsible** for providing reasons for your own moderating actions. Failure to do so may result in punishment by higher staff.";
 
 export function buildProfileSettingsEmbed(
   prefs: ResolvedUserPreferences,
@@ -62,6 +66,13 @@ export function buildProfileSettingsEmbed(
           : "❌ **Disabled** — no event status DMs.",
         inline: false,
       },
+      {
+        name: "Moderation reason pings",
+        value: modReasonPingEnabled(prefs)
+          ? "✅ **Enabled** — you get pinged in mod logs when a reason is missing."
+          : "❌ **Disabled** — you will not be pinged; you are responsible for providing reasons yourself.",
+        inline: false,
+      },
     )
     .setFooter({ text: "Event scheduling rules (Monday ban, weekly limits) always use EST." });
 }
@@ -77,6 +88,9 @@ export function buildProfileSettingsComponents(
   const eventStatusLabel = eventStatusDmEnabled(prefs)
     ? "Event status: On"
     : "Event status: Off";
+  const modReasonPingLabel = modReasonPingEnabled(prefs)
+    ? "Mod reason pings: On"
+    : "Mod reason pings: Off";
 
   return [
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
@@ -99,6 +113,14 @@ export function buildProfileSettingsComponents(
         .setLabel(eventStatusLabel)
         .setStyle(
           eventStatusDmEnabled(prefs)
+            ? ButtonStyle.Success
+            : ButtonStyle.Secondary,
+        ),
+      new ButtonBuilder()
+        .setCustomId(`profile-settings:toggle-mod-reason-ping:${discordId}`)
+        .setLabel(modReasonPingLabel)
+        .setStyle(
+          modReasonPingEnabled(prefs)
             ? ButtonStyle.Success
             : ButtonStyle.Secondary,
         ),

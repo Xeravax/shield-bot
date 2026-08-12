@@ -427,7 +427,7 @@ export class GroupAuditLogManager {
       !!actorDiscordId && this.shouldPromptActorReason(entry.eventType);
 
     const v2 = needsReason
-      ? buildStaffActionV2OrNull({
+      ? await buildStaffActionV2OrNull({
           title: eventTitle(entry.eventType),
           severity:
             entry.eventType === GroupAuditLogEventType.Group_Member_Ban ||
