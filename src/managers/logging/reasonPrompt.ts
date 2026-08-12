@@ -199,7 +199,9 @@ export type StaffActionLogOptions = {
   /** Staff who performed the action — pinged only when reason is missing. */
   executorId?: string | null;
   reason?: string | null;
-  /** When true, never ping (e.g. bot executor). */
+  /** When true, never ping for a reason (any bot / automated executor). */
+  executorIsBot?: boolean;
+  /** When true, never ping (e.g. unresolved / forced skip). */
   skipReasonPrompt?: boolean;
   /** Show Claim when executor is unknown. */
   claimIfUnresolved?: boolean;
@@ -208,7 +210,7 @@ export type StaffActionLogOptions = {
 
 /**
  * Posts a staff action log.
- * - Missing reason + known executor → Components V2 with in-log ping
+ * - Missing reason + known human executor → Components V2 with in-log ping
  * - Otherwise → classic embed (no ping)
  */
 export async function postStaffActionLog(
@@ -219,6 +221,7 @@ export async function postStaffActionLog(
   const hasExecutor = !!options.executorId;
   const needsReason =
     !options.skipReasonPrompt &&
+    !options.executorIsBot &&
     hasExecutor &&
     isMissingModReason(options.reason);
 
@@ -287,10 +290,12 @@ export function buildStaffActionV2OrNull(options: {
   fields: { name: string; value: string }[];
   executorId?: string | null;
   reason?: string | null;
+  executorIsBot?: boolean;
   skipReasonPrompt?: boolean;
 }): MessageCreateOptions | null {
   if (
     options.skipReasonPrompt ||
+    options.executorIsBot ||
     !options.executorId ||
     !isMissingModReason(options.reason)
   ) {

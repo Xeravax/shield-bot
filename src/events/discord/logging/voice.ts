@@ -231,9 +231,8 @@ export class LoggingVoiceEvents {
       },
     );
 
-    const botId = guild.client.user?.id;
     const executorId = audit.executor?.id;
-    const isBotExecutor = !!executorId && !!botId && executorId === botId;
+    const executorIsBot = !!audit.executor?.bot;
 
     await postStaffActionLog(auditLogManager, {
       guildId: guild.id,
@@ -256,9 +255,10 @@ export class LoggingVoiceEvents {
         // Drop duplicate executor from resolveAuditExecutor extra if present
         ...extra.filter((f) => f.name !== "Executor" && f.name !== "Reason"),
       ],
-      executorId: isBotExecutor ? null : executorId,
+      executorId,
       reason: audit.reason,
-      skipReasonPrompt: isBotExecutor || !executorId,
+      executorIsBot,
+      skipReasonPrompt: executorIsBot || !executorId,
       claimIfUnresolved: !audit.executor,
       sourceChannelId,
     });

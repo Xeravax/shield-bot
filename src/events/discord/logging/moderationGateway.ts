@@ -59,6 +59,7 @@ export class LoggingModerationGatewayEvents {
         ],
         executorId: audit.executor?.id,
         reason,
+        executorIsBot: !!audit.executor?.bot,
         claimIfUnresolved: !audit.executor,
       });
 
@@ -122,6 +123,7 @@ export class LoggingModerationGatewayEvents {
         ],
         executorId: audit.executor?.id,
         reason,
+        executorIsBot: !!audit.executor?.bot,
         claimIfUnresolved: !audit.executor,
       });
 

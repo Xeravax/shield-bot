@@ -159,6 +159,7 @@ export class LoggingMemberEvents {
 
       const isStaffKick =
         !!audit.executor &&
+        !audit.executor.bot &&
         !member.user?.bot &&
         audit.executor.id !== member.client.user?.id;
 
@@ -171,6 +172,7 @@ export class LoggingMemberEvents {
           fields,
           executorId: audit.executor!.id,
           reason: audit.reason,
+          executorIsBot: false,
         });
       } else {
         await auditLogManager.postLog({
@@ -317,9 +319,8 @@ export class LoggingMemberEvents {
         { targetId: member.id, maxAgeMs: 15_000 },
       );
 
-      const botId = member.client.user?.id;
       const executorId = audit.executor?.id;
-      const isBotExecutor = !!executorId && !!botId && executorId === botId;
+      const executorIsBot = !!audit.executor?.bot;
 
       const fields = [
         {
@@ -351,9 +352,10 @@ export class LoggingMemberEvents {
         title: "Member Roles Updated",
         severity: "info",
         fields,
-        executorId: isBotExecutor ? null : executorId,
+        executorId,
         reason: audit.reason,
-        skipReasonPrompt: isBotExecutor || !executorId,
+        executorIsBot,
+        skipReasonPrompt: executorIsBot || !executorId,
         claimIfUnresolved: !audit.executor,
       });
     } catch (error) {
@@ -501,6 +503,7 @@ export class LoggingMemberEvents {
         ],
         executorId: audit.executor?.id,
         reason: audit.reason,
+        executorIsBot: !!audit.executor?.bot,
         claimIfUnresolved: !audit.executor,
       });
 
@@ -540,6 +543,7 @@ export class LoggingMemberEvents {
         ],
         executorId: audit.executor?.id,
         reason: audit.reason,
+        executorIsBot: !!audit.executor?.bot,
         claimIfUnresolved: !audit.executor,
       });
 
