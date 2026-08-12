@@ -9,15 +9,11 @@ import {
   CommandInteraction,
   ApplicationCommandOptionType,
   MessageFlags,
-  EmbedBuilder,
-  Colors,
   Role,
-  User,
   Attachment,
   AutocompleteInteraction,
   BaseInteraction,
 } from "discord.js";
-import { Pagination } from "@discordx/pagination";
 import { patrolTimer, prisma, roleTrackingManager } from "../../../main.js";
 import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { loggers } from "../../../utility/logger.js";
@@ -25,43 +21,9 @@ import type { RoleTrackingConfigMap, CustomMessageData } from "../../../managers
 import { parseDurationToMs, isValidDuration } from "../../../utility/roleTracking/durationParser.js";
 
 @Discord()
-@SlashGroup("settings", "role-tracking")
+@SlashGroup("config", "role-tracking")
 @Guard(PermissionNodeGuard("settings.command.role-tracking"))
 export class SettingsRoleTrackingWarnCommands {
-
-  private async autocompleteTrackedRoles(interaction: AutocompleteInteraction): Promise<void> {
-    if (!interaction.guildId) {
-      await interaction.respond([]);
-      return;
-    }
-    try {
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId: interaction.guildId },
-      });
-      const config = (settings?.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
-      const focused = interaction.options.getFocused(true);
-      const query = focused.value.toLowerCase();
-      const guild = interaction.guild;
-      if (!guild) {
-        await interaction.respond([]);
-        return;
-      }
-      const choices = [];
-      for (const [roleId, roleConfig] of Object.entries(config)) {
-        const role = guild.roles.cache.get(roleId);
-        if (!role) continue;
-        const roleName = role.name.toLowerCase();
-        const configName = roleConfig.roleName.toLowerCase();
-        if (roleName.includes(query) || configName.includes(query) || roleId === query) {
-          choices.push({ name: `${role.name} (${roleConfig.roleName})`, value: roleId });
-        }
-      }
-      await interaction.respond(choices.slice(0, 25));
-    } catch (error) {
-      loggers.bot.error("Error in autocomplete tracked roles", error);
-      await interaction.respond([]);
-    }
-  }
 
   private async autocompleteWarningNumbers(interaction: AutocompleteInteraction): Promise<void> {
     if (!interaction.guildId) {
@@ -265,7 +227,7 @@ export class SettingsRoleTrackingWarnCommands {
 
       if (!currentConfig[role.id]) {
         await cmdInteraction.editReply({
-          content: `❌ Role <@&${role.id}> is not configured for tracking. Use \`/role-tracking settings add-role\` first.`,
+          content: `❌ Role <@&${role.id}> is not configured for tracking. Use \`/role-tracking config add-role\` first.`,
         });
         return;
       }
@@ -426,7 +388,7 @@ export class SettingsRoleTrackingWarnCommands {
 
       if (!currentConfig[role.id]) {
         await interaction.reply({
-          content: `❌ Role <@&${role.id}> is not configured for tracking. Use \`/role-tracking settings add-role\` first.`,
+          content: `❌ Role <@&${role.id}> is not configured for tracking. Use \`/role-tracking config add-role\` first.`,
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -562,205 +524,5 @@ export class SettingsRoleTrackingWarnCommands {
     }
   }
 
-  @Slash({
-    name: "list-warnings",
-    description: "List all configured warnings for a role",
-  })
-  async listWarnings(
-    @SlashOption({
-      name: "role",
-      description: "Tracked role",
-      type: ApplicationCommandOptionType.Role,
-      required: true,
-    })
-    role: Role,
-    interaction: CommandInteraction,
-  ): Promise<void> {
-    if (!interaction.guildId) {
-      await interaction.reply({
-        content: "❌ This command can only be used in a server.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    try {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId: interaction.guildId },
-      });
-
-      const config = (settings?.roleTrackingConfig as unknown as RoleTrackingConfigMap) || {};
-
-      if (!config[role.id]) {
-        await interaction.editReply({
-          content: `❌ Role <@&${role.id}> is not configured for tracking. Use \`/role-tracking settings add-role\` first.`,
-        });
-        return;
-      }
-
-      const roleConfig = config[role.id];
-      const warnings = roleConfig.warnings || [];
-
-      if (warnings.length === 0) {
-        await interaction.editReply({
-          content: `ℹ️ No warnings configured for <@&${role.id}>.`,
-        });
-        return;
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle(`Warnings for ${roleConfig.roleName}`)
-        .setDescription(`Role: <@&${role.id}>`)
-        .setColor(Colors.Blue)
-        .setTimestamp();
-
-      for (const warning of warnings.sort((a, b) => a.index - b.index)) {
-        const messagePreview = warning.message.length > 100 
-          ? warning.message.substring(0, 100) + "..." 
-          : warning.message;
-        
-        embed.addFields({
-          name: `Warning #${warning.index + 1} (${warning.offset})`,
-          value: `**Type:** ${warning.type}\n**Message:** ${messagePreview}${warning.customMessage ? "\n**Custom Message:** ✅ Yes" : ""}`,
-          inline: false,
-        });
-      }
-
-      await interaction.editReply({ embeds: [embed] });
-    } catch (error) {
-      loggers.bot.error("Error listing warnings", error);
-      await interaction.editReply({
-        content: `❌ Failed to list warnings: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    }
-  }
-
-  @Slash({
-    name: "list-warning-history",
-    description: "List warning history for a user and role",
-  })
-  async listWarningHistory(
-    @SlashOption({
-      name: "user",
-      description: "The user to list warning history for",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    })
-    user: User,
-    @SlashOption({
-      name: "role",
-      description: "Role (empty = all roles)",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-      autocomplete: true,
-    })
-    roleId: string | null,
-    interaction: BaseInteraction,
-  ): Promise<void> {
-    if (interaction.isAutocomplete()) {
-      return this.autocompleteTrackedRoles(interaction as AutocompleteInteraction);
-    }
-
-    const cmdInteraction = interaction as CommandInteraction;
-    if (!cmdInteraction.guildId) {
-      await cmdInteraction.reply({
-        content: "❌ This command can only be used in a server.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    try {
-      await cmdInteraction.deferReply({ flags: MessageFlags.Ephemeral });
-
-      const dbUser = await prisma.user.findUnique({
-        where: { discordId: user.id },
-      });
-
-      if (!dbUser) {
-        await cmdInteraction.editReply({
-          content: `ℹ️ User <@${user.id}> has no tracking records.`,
-        });
-        return;
-      }
-
-      const where: {
-        guildId: string;
-        userId: number;
-        roleId?: string;
-      } = {
-        guildId: cmdInteraction.guildId,
-        userId: dbUser.id,
-      };
-
-      if (roleId) {
-        where.roleId = roleId;
-      }
-
-      const warnings = await prisma.roleTrackingWarning.findMany({
-        where,
-        include: {
-          assignmentTracking: true,
-        },
-        orderBy: {
-          sentAt: "desc",
-        },
-      });
-
-      if (warnings.length === 0) {
-        await cmdInteraction.editReply({
-          content: `ℹ️ No warning history found for <@${user.id}>${roleId ? ` for role <@&${roleId}>` : ""}.`,
-        });
-        return;
-      }
-
-      const pageSize = 10;
-      const pages: Array<{ embeds: EmbedBuilder[] }> = [];
-
-      for (let i = 0; i < warnings.length; i += pageSize) {
-        const pageWarnings = warnings.slice(i, i + pageSize);
-        let description = "";
-
-        for (const warning of pageWarnings) {
-          const roleMention = `<@&${warning.roleId}>`;
-          const warningType = warning.warningType === "staff_ping" ? "🚨 Staff Ping" : `⚠️ Warning #${warning.warningIndex + 1}`;
-          
-          description += `${warningType} - ${roleMention}\n`;
-          description += `  • Sent: ${warning.sentAt.toLocaleString()}\n`;
-          description += `  • Role Assigned: ${warning.roleAssignedAt.toLocaleDateString()}\n\n`;
-        }
-
-        const embed = new EmbedBuilder()
-          .setTitle(`Warning History for ${user.displayName || user.username}`)
-          .setDescription(description || "No warnings")
-          .setColor(Colors.Orange)
-          .setFooter({
-            text: `Page ${Math.floor(i / pageSize) + 1} of ${Math.ceil(warnings.length / pageSize)} • Total: ${warnings.length} warning(s)`,
-          })
-          .setTimestamp();
-
-        pages.push({ embeds: [embed] });
-      }
-
-      if (pages.length === 1) {
-        await cmdInteraction.editReply(pages[0]);
-        return;
-      }
-
-      const pagination = new Pagination(cmdInteraction, pages, {
-        ephemeral: true,
-        time: 120_000,
-      });
-
-      await pagination.send();
-    } catch (error) {
-      loggers.bot.error("Error listing warning history", error);
-      await cmdInteraction.editReply({
-        content: `❌ Failed to list warning history: ${error instanceof Error ? error.message : "Unknown error"}`,
-      });
-    }
-  }
 
 }

@@ -18,7 +18,7 @@ import { loggers } from "../../../utility/logger.js";
 @Guard(PermissionNodeGuard("vrchat.command.rolesync"))
 export class GroupRoleSyncCommand {
   @Slash({
-    name: "rolesync",
+    name: "role-sync",
     description: "Manually sync a user's Discord roles to their VRChat group roles",
   })
   async syncRoles(
@@ -50,7 +50,7 @@ export class GroupRoleSyncCommand {
       if (!settings?.vrcGroupId) {
         await interaction.editReply({
           content:
-            "❌ No VRChat group ID configured. Please set it first using `/settings group set-group-id`.",
+            "❌ No VRChat group ID configured. Please set it first using `/group config set-group-id`.",
         });
         return;
       }

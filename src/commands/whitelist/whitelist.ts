@@ -21,7 +21,7 @@ import { loggers } from "../../utility/logger.js";
 })
 @SlashGroup("whitelist")
 export class WhitelistCommands {
-  @Slash({ description: "Manage Discord role mappings to whitelist permissions" })
+  @Slash({ name: "role", description: "Manage Discord role mappings to whitelist permissions" })
   @Guard(PermissionNodeGuard("whitelist.command.role"))
   async role(
     @SlashChoice({ name: "Setup", value: "setup" })
@@ -333,7 +333,7 @@ export class WhitelistCommands {
   }
 
 
-  @Slash({ description: "Manage whitelist user operations" })
+  @Slash({ name: "user", description: "Manage whitelist user operations" })
   @Guard(PermissionNodeGuard("whitelist.command.user"))
   async user(
     @SlashChoice({ name: "Info", value: "info" })
@@ -732,7 +732,7 @@ export class WhitelistCommands {
   }
 
 
-  @Slash({ description: "Get whitelist statistics" })
+  @Slash({ name: "stats", description: "Get whitelist statistics" })
   @Guard(PermissionNodeGuard("whitelist.command.stats"))
   async stats(interaction: CommandInteraction): Promise<void> {
     try {
@@ -781,7 +781,7 @@ export class WhitelistCommands {
     }
   }
 
-  @Slash({ description: "Generate and download the encoded whitelist" })
+  @Slash({ name: "generate", description: "Generate and download the encoded whitelist" })
   @Guard(PermissionNodeGuard("whitelist.command.generate"))
   async generate(interaction: CommandInteraction): Promise<void> {
     try {
@@ -869,6 +869,7 @@ export class WhitelistCommands {
   }
 
   @Slash({
+    name: "validate",
     description: "Validate and cleanup whitelist access for all server members",
   })
   @Guard(PermissionNodeGuard("whitelist.command.validate"))

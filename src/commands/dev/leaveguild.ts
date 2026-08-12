@@ -13,10 +13,10 @@ import { bot, patrolTimer } from "../../main.js";
 @Guard(BotOwnerGuard)
 export class LeaveGuildCommand {
   @Slash({
-    name: "leaveguild",
+    name: "leave-guild",
     description: "Make the bot leave a guild by ID (Bot Owner only)",
   })
-  async leaveguild(
+  async leaveGuild(
     @SlashOption({
       name: "guild_id",
       description: "The guild ID to leave",

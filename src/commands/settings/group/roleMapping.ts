@@ -60,7 +60,7 @@ export class GroupRoleMappingCommand {
       if (!settings?.vrcGroupId) {
         await interaction.reply({
           content:
-            "❌ No VRChat group ID configured. Please set it first using `/settings group set-group-id`.",
+            "❌ No VRChat group ID configured. Please set it first using `/group config set-group-id`.",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -299,7 +299,7 @@ export class GroupRoleMappingCommand {
       if (!settings?.vrcGroupId) {
         await interaction.editReply({
           content:
-            "❌ No VRChat group ID configured. Please set it first using `/settings group set-group-id`.",
+            "❌ No VRChat group ID configured. Please set it first using `/group config set-group-id`.",
         });
         return;
       }

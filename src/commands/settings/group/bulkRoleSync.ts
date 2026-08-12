@@ -17,7 +17,7 @@ import { loggers } from "../../../utility/logger.js";
 @Guard(PermissionNodeGuard("vrchat.command.bulkrolesync"))
 export class GroupBulkRoleSyncCommand {
   @Slash({
-    name: "bulkrolesync",
+    name: "bulk-role-sync",
     description: "Sync Discord roles to VRChat group roles for all verified users",
   })
   async bulkSyncRoles(
@@ -49,7 +49,7 @@ export class GroupBulkRoleSyncCommand {
       if (!settings?.vrcGroupId) {
         await interaction.editReply({
           content:
-            "❌ No VRChat group ID configured. Please set it first using `/settings group set-group-id`.",
+            "❌ No VRChat group ID configured. Please set it first using `/group config set-group-id`.",
         });
         return;
       }
@@ -224,7 +224,7 @@ export class GroupBulkRoleSyncCommand {
       if (dryRun) {
         finalEmbed.addFields({
           name: "ℹ️ Next Steps",
-          value: "Run `/group bulkrolesync dry_run:false` to apply these changes.",
+          value: "Run `/group bulk-role-sync dry_run:false` to apply these changes.",
         });
       }
 

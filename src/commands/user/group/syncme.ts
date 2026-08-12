@@ -14,7 +14,7 @@ import { loggers } from "../../../utility/logger.js";
 @SlashGroup("group")
 export class GroupSelfRoleSyncCommand {
   @Slash({
-    name: "syncme",
+    name: "sync-me",
     description: "Sync your Discord roles to your VRChat group roles",
   })
   async selfRoleSync(interaction: CommandInteraction): Promise<void> {

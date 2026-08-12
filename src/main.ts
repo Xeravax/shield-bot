@@ -33,7 +33,6 @@ import { loggers, logger, LogLevel } from "./utility/logger.js";
 import { ConfigError } from "./utility/errors.js";
 import { ExceptionConstants } from "./config/constants.js";
 import { BOT_INTENTS, BOT_PARTIALS, BOT_CONFIG } from "./config/discord.js";
-import { seedPermissionNodesFromLegacyRoles } from "./utility/permissionNodeSeeder.js";
 import {
   AuditLogManager,
   DiscordAuditResolver,
@@ -166,14 +165,6 @@ bot.once("clientReady", async () => {
     }
   } catch (error) {
     loggers.bot.error("Failed to initialize application commands", error);
-  }
-
-  loggers.bot.info("Seeding permission nodes from legacy role arrays...");
-  try {
-    await seedPermissionNodesFromLegacyRoles();
-    loggers.bot.info("Permission node seeding complete.");
-  } catch (error) {
-    loggers.bot.error("Permission node seeding failed (continuing startup)", error);
   }
 
   loggers.schedules.info("Initializing schedules...");
@@ -348,7 +339,9 @@ process.on("uncaughtException", (error) => {
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-run().catch((error) => {
-  loggers.startup.error("Fatal error during startup", error);
-  process.exit(1);
-});
+if (process.env.SHIELD_COMMAND_PAYLOAD_CHECK !== "1") {
+  run().catch((error) => {
+    loggers.startup.error("Fatal error during startup", error);
+    process.exit(1);
+  });
+}

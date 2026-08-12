@@ -20,10 +20,10 @@ import { prisma } from "../../../main.js";
 
 @Discord()
 @SlashGroup({
-  name: "vrchat",
-  description: "VRChat related commands.",
+  name: "verify",
+  description: "VRChat verification commands.",
 })
-@SlashGroup("vrchat")
+@SlashGroup("verify")
 @Guard(VRChatLoginGuard, PermissionNodeGuard("vrchat.command.avatar-invite"))
 export class VRChatAvatarInviteCommand {
   @Slash({

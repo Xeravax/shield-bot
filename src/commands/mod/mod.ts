@@ -761,29 +761,6 @@ export class ModCommands {
     });
   }
 
-  @Slash({ name: "modlogs", description: "Alias of /mod cases" })
-  @Guard(PermissionNodeGuard("mod.command.cases"))
-  async modlogs(
-    @SlashOption({
-      name: "user",
-      description: "User to look up",
-      type: ApplicationCommandOptionType.User,
-      required: false,
-    })
-    user: User | null,
-    @SlashOption({
-      name: "case",
-      description: "Case number",
-      type: ApplicationCommandOptionType.Integer,
-      required: false,
-      minValue: 1,
-    })
-    caseNumber: number | null,
-    interaction: CommandInteraction,
-  ): Promise<void> {
-    await this.cases(user, caseNumber, interaction);
-  }
-
   @Slash({ name: "reason", description: "Edit a case reason" })
   @Guard(PermissionNodeGuard("mod.command.reason"))
   async reason(

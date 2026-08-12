@@ -26,7 +26,8 @@
     "grafana:discover": "node scripts/grafana-deploy.mjs discover",
     "grafana:verify": "node scripts/grafana-deploy.mjs verify",
     "grafana:deploy": "node scripts/grafana-deploy.mjs deploy",
-    "grafana:request": "node scripts/grafana-request.mjs"
+    "grafana:request": "node scripts/grafana-request.mjs",
+    "check:commands": "node scripts/check-command-payload-size.mjs"
   },
   "dependencies": {
     "@discordx/importer": "^1.3.1",

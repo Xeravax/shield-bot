@@ -110,9 +110,9 @@ export class RooftopCommands {
     }
   }
 
-  @Slash({ description: "Add a new spin the bottle response" })
+  @Slash({ name: "spin-the-bottle", description: "Add a new spin the bottle response" })
   @Guard(PermissionNodeGuard("rooftop.command.spinthebottle"))
-  async spinthebottle(
+  async spinTheBottle(
     @SlashOption({
       description: "The spin the bottle response text to add",
       name: "content",

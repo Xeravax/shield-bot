@@ -12,7 +12,7 @@ import { patrolTimer, prisma } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 
 @Discord()
-@SlashGroup("group", "settings")
+@SlashGroup("config", "group")
 @Guard(PermissionNodeGuard("settings.command.group"))
 export class GroupSettingsCommand {
   @Slash({

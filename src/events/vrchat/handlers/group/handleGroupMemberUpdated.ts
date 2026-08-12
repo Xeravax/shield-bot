@@ -156,7 +156,7 @@ export async function handleGroupMemberUpdated(content: unknown) {
           {
             name: "ℹ️ Note",
             value:
-              "This change was made directly in VRChat by a group administrator. To keep Discord and VRChat roles in sync, use `/group rolesync` to update VRChat roles based on their Discord roles.",
+              "This change was made directly in VRChat by a group administrator. To keep Discord and VRChat roles in sync, use `/group role-sync` to update VRChat roles based on their Discord roles.",
             inline: false,
           },
         )

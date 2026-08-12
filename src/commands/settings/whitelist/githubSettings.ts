@@ -37,12 +37,7 @@ function safeMaskToken(value: string): string {
 }
 
 @Discord()
-@SlashGroup({
-  name: "settings",
-  description: "Settings",
-  root: "whitelist",
-})
-@SlashGroup("settings", "whitelist")
+@SlashGroup("whitelist", "settings")
 @Guard(PermissionNodeGuard("settings.command.whitelist"))
 export class WhitelistGitHubSettingsCommand {
   @Slash({
