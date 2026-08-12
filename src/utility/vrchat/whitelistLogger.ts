@@ -20,42 +20,45 @@ export interface WhitelistLogData {
 
 /**
  * Send a whitelist log message using componentsv2 to Bot Log (+ legacy channel).
+ * Fire-and-forget so callers are not blocked waiting on Discord.
  */
 export async function sendWhitelistLog(
   _client: Client,
   guildId: string,
   data: WhitelistLogData,
 ): Promise<void> {
-  try {
-    const guildSettings = await prisma.guildSettings.findUnique({
-      where: { guildId },
-      select: { whitelistLogChannelId: true },
-    });
+  void (async () => {
+    try {
+      const guildSettings = await prisma.guildSettings.findUnique({
+        where: { guildId },
+        select: { whitelistLogChannelId: true },
+      });
 
-    const content = buildLogContent(data);
-    const textDisplay = new TextDisplayBuilder().setContent(content);
-    const container = new ContainerBuilder()
-      .setAccentColor(0xffd700)
-      .addTextDisplayComponents([textDisplay]);
+      const content = buildLogContent(data);
+      const textDisplay = new TextDisplayBuilder().setContent(content);
+      const container = new ContainerBuilder()
+        .setAccentColor(0xffd700)
+        .addTextDisplayComponents([textDisplay]);
 
-    const payload = {
-      components: [container],
-      flags: MessageFlags.IsComponentsV2,
-    } as MessageCreateOptions;
+      const payload = {
+        components: [container],
+        flags: MessageFlags.IsComponentsV2,
+      } as MessageCreateOptions;
 
-    await auditLogManager.fanOutWhitelistLog(guildId, payload, [
-      guildSettings?.whitelistLogChannelId,
-    ]);
+      await auditLogManager.fanOutWhitelistLog(guildId, payload, [
+        guildSettings?.whitelistLogChannelId,
+      ]);
 
-    loggers.bot.info(
-      `Logged ${data.action} action for ${data.displayName} in guild ${guildId}`,
-    );
-  } catch (error) {
-    loggers.bot.error(
-      `Failed to send whitelist log for guild ${guildId}`,
-      error,
-    );
-  }
+      loggers.bot.info(
+        `Logged ${data.action} action for ${data.displayName} in guild ${guildId}`,
+      );
+    } catch (error) {
+      loggers.bot.error(
+        `Failed to send whitelist log for guild ${guildId}`,
+        error,
+      );
+    }
+  })();
 }
 
 /**

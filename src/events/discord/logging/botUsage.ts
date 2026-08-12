@@ -219,15 +219,21 @@ export class LoggingBotUsageEvents {
         description = `Type \`${interaction.type}\``;
       }
 
-      await auditLogManager.postLog({
-        guildId: interaction.guildId!,
-        category: "bot",
-        title,
-        description,
-        severity: "info",
-        fields,
-        footer: `Interaction ${interaction.id}`,
-      });
+      void auditLogManager
+        .postLog({
+          guildId: interaction.guildId!,
+          category: "bot",
+          title,
+          description,
+          severity: "info",
+          fields,
+          footer: `Interaction ${interaction.id}`,
+        })
+        .catch((error) => {
+          loggers.bot.debug("bot usage log failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
     } catch (error) {
       loggers.bot.debug("bot usage log failed", {
         error: error instanceof Error ? error.message : String(error),

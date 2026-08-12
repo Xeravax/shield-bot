@@ -226,11 +226,67 @@ export class ModCaseManager {
     }
   }
 
+  /**
+   * Post the moderation case embed to Discord in the background.
+   * Re-fetches the case before send so claim button state stays current.
+   */
+  private async postCaseLogMessage(
+    caseId: number,
+    extraFields?: CreateModCaseInput["extraFields"],
+    claimableDefault = true,
+  ): Promise<void> {
+    try {
+      const modCase = await prisma.modCase.findUnique({ where: { id: caseId } });
+      if (!modCase) {
+        return;
+      }
+
+      const claimable =
+        claimableDefault && !modCase.claimedBy && modCase.type !== "NOTE";
+
+      const embed = this.buildCaseEmbed(modCase);
+      const usedFields = embed.data.fields?.length ?? 0;
+      if (extraFields?.length) {
+        const room = Math.max(0, MAX_EMBED_FIELDS - usedFields);
+        if (room > 0) {
+          embed.addFields(
+            extraFields.slice(0, room).map((f) => ({
+              name: f.name.slice(0, 256),
+              value: f.value.slice(0, 1024) || "—",
+              inline: f.inline,
+            })),
+          );
+        }
+      }
+
+      const guild = await this.client.guilds.fetch(modCase.guildId).catch(() => null);
+      const thread = guild
+        ? await this.auditLog.resolveCategoryThread(guild, "moderation")
+        : null;
+
+      if (thread) {
+        const message = await thread.send({
+          embeds: [embed],
+          components: claimable ? [this.claimRow(modCase.id)] : [],
+        });
+        await prisma.modCase.update({
+          where: { id: modCase.id },
+          data: {
+            logMessageId: message.id,
+            logThreadId: message.channelId,
+          },
+        });
+      }
+    } catch (error) {
+      loggers.bot.warn("Failed to post mod case log", error);
+    }
+  }
+
   async createCase(input: CreateModCaseInput): Promise<ModCase> {
     const claimable = input.claimable !== false && input.type !== "NOTE";
 
     const caseNumber = await this.allocateCaseNumber(input.guildId);
-    let modCase = await prisma.modCase.create({
+    const modCase = await prisma.modCase.create({
       data: {
         guildId: input.guildId,
         caseNumber,
@@ -246,43 +302,9 @@ export class ModCaseManager {
 
     this.suppressGatewayCase(input.guildId, input.targetId, [input.type]);
 
-    try {
-      const embed = this.buildCaseEmbed(modCase);
-      const usedFields = embed.data.fields?.length ?? 0;
-      if (input.extraFields?.length) {
-        const room = Math.max(0, MAX_EMBED_FIELDS - usedFields);
-        if (room > 0) {
-          embed.addFields(
-            input.extraFields.slice(0, room).map((f) => ({
-              name: f.name.slice(0, 256),
-              value: f.value.slice(0, 1024) || "—",
-              inline: f.inline,
-            })),
-          );
-        }
-      }
-
-      const guild = await this.client.guilds.fetch(input.guildId).catch(() => null);
-      const thread = guild
-        ? await this.auditLog.resolveCategoryThread(guild, "moderation")
-        : null;
-
-      if (thread) {
-        const message = await thread.send({
-          embeds: [embed],
-          components: claimable ? [this.claimRow(modCase.id)] : [],
-        });
-        modCase = await prisma.modCase.update({
-          where: { id: modCase.id },
-          data: {
-            logMessageId: message.id,
-            logThreadId: message.channelId,
-          },
-        });
-      }
-    } catch (error) {
-      loggers.bot.warn("Failed to post mod case log", error);
-    }
+    void this.postCaseLogMessage(modCase.id, input.extraFields, claimable).catch(
+      (error) => loggers.bot.warn("Failed to post mod case log", error),
+    );
 
     return modCase;
   }
@@ -317,7 +339,9 @@ export class ModCaseManager {
     }
 
     const modCase = await prisma.modCase.findUniqueOrThrow({ where: { id: caseId } });
-    await this.syncCaseLogMessage(modCase, { clearComponents: true });
+    void this.syncCaseLogMessage(modCase, { clearComponents: true }).catch(
+      (error) => loggers.bot.warn("Failed to update case log message", error),
+    );
 
     return { success: true, modCase };
   }
@@ -339,7 +363,9 @@ export class ModCaseManager {
       data: { reason },
     });
 
-    await this.syncCaseLogMessage(modCase);
+    void this.syncCaseLogMessage(modCase).catch((error) =>
+      loggers.bot.warn("Failed to update case log message", error),
+    );
 
     return { success: true, modCase };
   }

@@ -121,10 +121,6 @@ export class PurgeCommand {
 
       const deleted = await channel.bulkDelete(toDelete, true);
       const snapshots = pendingSnapshots.filter((s) => deleted.has(s.messageId));
-      const txt = messageArchiveManager.buildPurgeTxt(channel.id, snapshots);
-      const file = new AttachmentBuilder(Buffer.from(txt, "utf8"), {
-        name: `purge-${channel.id}-${Date.now()}.txt`,
-      });
 
       const modCase = await modCaseManager.createCase({
         guildId: interaction.guildId,
@@ -147,54 +143,63 @@ export class PurgeCommand {
         ],
       });
 
-      const messagesLog = await auditLogManager.postLog({
-        guildId: interaction.guildId,
-        category: "messages",
-        title: "Messages Purged",
-        severity: "warn",
-        fields: [
-          {
-            name: "Moderator",
-            value: auditLogManager.formatUser(
-              interaction.user.id,
-              interaction.user.tag,
-            ),
-            inline: true,
-          },
-          {
-            name: "Channel",
-            value: auditLogManager.formatChannel(channel.id),
-            inline: true,
-          },
-          {
-            name: "Deleted",
-            value: String(deleted.size),
-            inline: true,
-          },
-          {
-            name: "Case",
-            value: `#${modCase.caseNumber}`,
-            inline: true,
-          },
-        ],
-        files: [file],
-        sourceChannelId: channel.id,
+      await interaction.editReply({
+        content: `✅ Deleted **${deleted.size}** message(s). Archive attached to Messages/Moderation logs (case #${modCase.caseNumber}).`,
       });
-
-      await messageArchiveManager.storePurgeArchive({
-        guildId: interaction.guildId,
-        channelId: channel.id,
-        moderatorId: interaction.user.id,
-        snapshots,
-        txtContent: txt,
-        logMessageId: messagesLog?.id,
-        logThreadId: messagesLog?.channelId,
-        caseId: modCase.id,
-      });
-
-      await messageArchiveManager.deleteCachedMany([...deleted.keys()]);
 
       try {
+        const txt = messageArchiveManager.buildPurgeTxt(channel.id, snapshots);
+        const file = new AttachmentBuilder(Buffer.from(txt, "utf8"), {
+          name: `purge-${channel.id}-${Date.now()}.txt`,
+        });
+
+        const messagesLog = await auditLogManager.postLog({
+          guildId: interaction.guildId,
+          category: "messages",
+          title: "Messages Purged",
+          severity: "warn",
+          fields: [
+            {
+              name: "Moderator",
+              value: auditLogManager.formatUser(
+                interaction.user.id,
+                interaction.user.tag,
+              ),
+              inline: true,
+            },
+            {
+              name: "Channel",
+              value: auditLogManager.formatChannel(channel.id),
+              inline: true,
+            },
+            {
+              name: "Deleted",
+              value: String(deleted.size),
+              inline: true,
+            },
+            {
+              name: "Case",
+              value: `#${modCase.caseNumber}`,
+              inline: true,
+            },
+          ],
+          files: [file],
+          sourceChannelId: channel.id,
+        });
+
+        await messageArchiveManager.storePurgeArchive({
+          guildId: interaction.guildId,
+          channelId: channel.id,
+          moderatorId: interaction.user.id,
+          snapshots,
+          txtContent: txt,
+          logMessageId: messagesLog?.id,
+          logThreadId: messagesLog?.channelId,
+          caseId: modCase.id,
+        });
+
+        await messageArchiveManager.deleteCachedMany([...deleted.keys()]);
+
         await patrolTimer.logCommandUsage(
           interaction.guildId,
           "purge",
@@ -203,12 +208,8 @@ export class PurgeCommand {
           channel.id,
         );
       } catch (logError) {
-        loggers.bot.warn("Failed to log purge command usage", logError);
+        loggers.bot.warn("Failed to log purge archive/usage after success", logError);
       }
-
-      await interaction.editReply({
-        content: `✅ Deleted **${deleted.size}** message(s). Archive attached to Messages/Moderation logs (case #${modCase.caseNumber}).`,
-      });
     } catch (error) {
       loggers.bot.error("Purge failed", error);
       await interaction.editReply({

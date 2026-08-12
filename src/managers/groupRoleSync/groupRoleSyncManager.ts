@@ -350,14 +350,16 @@ export class GroupRoleSyncManager {
         };
       }
 
-      // Log the sync if there were changes
+      // Log the sync in the background so callers can reply immediately
       if (vrcRolesToAdd.length > 0 || vrcRolesToRemove.length > 0) {
-        await this.logRoleSync(
+        void this.logRoleSync(
           guildId,
           member,
           vrcRolesToAdd,
           vrcRolesToRemove,
           "sync",
+        ).catch((error) =>
+          loggers.vrchat.error("Error logging role sync", error),
         );
       }
 

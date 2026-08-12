@@ -111,9 +111,14 @@ export class LoggingUnresolvedClaimModalHandlers {
       });
 
       embed.setFields(fields.slice(0, 25));
-      await message.edit({ embeds: [embed], components: [] });
 
       await interaction.editReply({ content: "✅ Claimed this log." });
+
+      void message
+        .edit({ embeds: [embed], components: [] })
+        .catch((error) =>
+          loggers.bot.warn("Failed to update claimed unresolved log message", error),
+        );
     } catch (error) {
       loggers.bot.error("Error claiming unresolved log", error);
       if (!interaction.replied && !interaction.deferred) {

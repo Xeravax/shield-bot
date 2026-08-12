@@ -1613,6 +1613,7 @@ export class PatrolTimerManager {
 
   /**
    * Log command / staff bot usage to Bot Log (+ legacy patrol log channel).
+   * Fire-and-forget so callers are not blocked waiting on Discord.
    */
   async logCommandUsage(
     guildId: string,
@@ -1621,41 +1622,43 @@ export class PatrolTimerManager {
     targetUserId?: string,
     details?: string,
   ) {
-    try {
-      const settings = await this.getSettings(guildId);
+    void (async () => {
+      try {
+        const settings = await this.getSettings(guildId);
 
-      const actionDisplay = action
-        .split("-")
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
+        const actionDisplay = action
+          .split("-")
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
 
-      const embed = new EmbedBuilder()
-        .setTitle("⚙️ Bot Command Usage")
-        .addFields(
-          { name: "Action", value: actionDisplay, inline: true },
-          { name: "Executor", value: `<@${executorId}>`, inline: true },
-        )
-        .setColor(Colors.Orange)
-        .setFooter({ text: "S.H.I.E.L.D. Bot" })
-        .setTimestamp();
+        const embed = new EmbedBuilder()
+          .setTitle("⚙️ Bot Command Usage")
+          .addFields(
+            { name: "Action", value: actionDisplay, inline: true },
+            { name: "Executor", value: `<@${executorId}>`, inline: true },
+          )
+          .setColor(Colors.Orange)
+          .setFooter({ text: "S.H.I.E.L.D. Bot" })
+          .setTimestamp();
 
-      if (targetUserId) {
-        embed.addFields({ name: "Target User", value: `<@${targetUserId}>`, inline: true });
+        if (targetUserId) {
+          embed.addFields({ name: "Target User", value: `<@${targetUserId}>`, inline: true });
+        }
+
+        if (details) {
+          embed.addFields({ name: "Details", value: details, inline: false });
+        }
+
+        await auditLogManager.fanOutBotLog(
+          guildId,
+          { embeds: [embed], allowedMentions: { users: [] } },
+          [settings.patrolLogChannelId],
+        );
+        loggers.patrol.debug(`Logged command usage: ${action} by ${executorId} in guild ${guildId}`);
+      } catch (err) {
+        loggers.patrol.error("logCommandUsage error", err);
       }
-
-      if (details) {
-        embed.addFields({ name: "Details", value: details, inline: false });
-      }
-
-      await auditLogManager.fanOutBotLog(
-        guildId,
-        { embeds: [embed], allowedMentions: { users: [] } },
-        [settings.patrolLogChannelId],
-      );
-      loggers.patrol.debug(`Logged command usage: ${action} by ${executorId} in guild ${guildId}`);
-    } catch (err) {
-      loggers.patrol.error("logCommandUsage error", err);
-    }
+    })();
   }
 
   // Alone-in-VC staff alerts (patrol category only)
