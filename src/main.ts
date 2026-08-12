@@ -33,6 +33,7 @@ import { loggers, logger, LogLevel } from "./utility/logger.js";
 import { ConfigError } from "./utility/errors.js";
 import { ExceptionConstants } from "./config/constants.js";
 import { BOT_INTENTS, BOT_PARTIALS, BOT_CONFIG } from "./config/discord.js";
+import { groupAuditLogManager } from "./managers/vrchat/groupAuditLogManager.js";
 import {
   AuditLogManager,
   DiscordAuditResolver,
@@ -100,6 +101,7 @@ export const auditLogManager = new AuditLogManager(bot, loggingSetupManager);
 export const discordAuditResolver = new DiscordAuditResolver();
 export const messageArchiveManager = new MessageArchiveManager();
 export const modCaseManager = new ModCaseManager(bot, auditLogManager);
+export { groupAuditLogManager };
 
 bot.rest.on("rateLimited", (info) => {
   loggers.bot.warn("Rate limit hit!", {

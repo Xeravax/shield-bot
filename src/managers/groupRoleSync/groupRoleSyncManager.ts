@@ -1,4 +1,4 @@
-import { prisma, bot, auditLogManager } from "../../main.js";
+import { prisma, bot } from "../../main.js";
 import {
   getGroupMember,
   addRoleToGroupMember,
@@ -383,7 +383,8 @@ export class GroupRoleSyncManager {
   }
 
   /**
-   * Log a role sync action to the promotion logs channel
+   * Log a role sync action to the promotion logs channel only
+   * (VRChat group audit actions go to the VRChat Group forum thread via the poller).
    */
   private async logRoleSync(
     guildId: string,
@@ -396,6 +397,11 @@ export class GroupRoleSyncManager {
       const settings = await prisma.guildSettings.findUnique({
         where: { guildId },
       });
+
+      const channelId = settings?.botPromotionLogsChannelId;
+      if (!channelId) {
+        return;
+      }
 
       // Format VRChat role IDs
       const addedRoles =
@@ -446,11 +452,11 @@ export class GroupRoleSyncManager {
         .setTimestamp()
         .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
 
-      await auditLogManager.fanOutWhitelistLog(
-        guildId,
-        { embeds: [embed] },
-        [settings?.botPromotionLogsChannelId],
-      );
+      const channel = await bot.channels.fetch(channelId).catch(() => null);
+      if (!channel || !channel.isTextBased() || channel.isDMBased()) {
+        return;
+      }
+      await channel.send({ embeds: [embed] });
     } catch (error) {
       loggers.vrchat.error("Error logging role sync", error);
     }
@@ -491,50 +497,6 @@ export class GroupRoleSyncManager {
         `Failed to sync roles on Discord role update: ${result.reason}`,
         { guildId, discordId, vrcUserId },
       );
-    }
-  }
-
-  /**
-   * Handle a user leaving the VRChat group
-   */
-  async handleGroupLeft(
-    guildId: string,
-    discordId: string,
-    _vrcUserId: string,
-  ): Promise<void> {
-    try {
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId },
-      });
-
-      const guild = await bot.guilds.fetch(guildId);
-      if (!guild) {
-        return;
-      }
-
-      const member = await guild.members.fetch(discordId).catch(() => null);
-      const displayName = member?.displayName || discordId;
-
-      const embed = new EmbedBuilder()
-        .setTitle("⬅️ Member Left VRChat Group")
-        .setDescription(
-          `${displayName} has left the VRChat group.`,
-        )
-        .addFields(
-          { name: "Member", value: `<@${discordId}>`, inline: true },
-          { name: "Display Name", value: displayName, inline: true },
-        )
-        .setColor(Colors.Orange)
-        .setTimestamp()
-        .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
-
-      await auditLogManager.fanOutWhitelistLog(
-        guildId,
-        { embeds: [embed] },
-        [settings?.botPromotionLogsChannelId],
-      );
-    } catch (error) {
-      loggers.vrchat.error("Error handling group left", error);
     }
   }
 }

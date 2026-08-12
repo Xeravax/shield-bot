@@ -7,16 +7,9 @@ import {
   handleFriendUpdate,
 } from "./handlers/friend/index.js";
 import { handleFriendAdd } from "./handlers/friend/handleFriendAdded.js";
-// TODO: Implement these handlers when needed
-// import { handleUserUpdate } from "./handlers/user/handleUserUpdate.js";
-// import { handleUserLocation } from "./handlers/user/handleUserLocation.js";
-// import { handleUserBadgeAssigned } from "./handlers/user/handleUserBadgeAssigned.js";
-// import { handleUserBadgeUnassigned } from "./handlers/user/handleUserBadgeUnassigned.js";
-// import { handleContentRefresh } from "./handlers/user/handleContentRefresh.js";
-// import { handleInstanceQueueJoined } from "./handlers/user/handleInstanceQueueJoined.js";
-// import { handleGroupJoined } from "./handlers/group/handleGroupJoined.js";
-// import { handleGroupLeft } from "./handlers/group/handleGroupLeft.js";
-// import { handleGroupRoleUpdated } from "./handlers/group/handleGroupRoleUpdated.js";
+import { handleGroupJoined } from "./handlers/group/handleGroupJoined.js";
+import { handleGroupLeft } from "./handlers/group/handleGroupLeft.js";
+import { handleGroupMemberUpdated } from "./handlers/group/handleGroupMemberUpdated.js";
 import { handleNotification } from "./handlers/notification/notification.js";
 import { WebSocketConstants } from "../../config/constants.js";
 
@@ -139,7 +132,9 @@ export function startVRChatWebSocketListener() {
         EventType.Friend_Update,
         EventType.Notification,
         EventType.Notification_V2,
-        // Add other events as needed
+        EventType.Group_Join,
+        EventType.Group_Leave,
+        EventType.Group_Member_Updated,
       ],
     });
 
@@ -179,6 +174,37 @@ export function startVRChatWebSocketListener() {
         });
       } catch (err) {
         loggers.vrchat.error("Error handling friend-update", err);
+      }
+    });
+
+    // Group events (side effects only — forum audit logs come from audit poller)
+    ws.on(EventType.Group_Join, async (data: unknown) => {
+      try {
+        const typedData = data as VRChatWebSocketData;
+        await handleGroupJoined({
+          userId: typedData.user?.id || typedData.userId || "",
+        });
+      } catch (err) {
+        loggers.vrchat.error("Error handling group-joined", err);
+      }
+    });
+
+    ws.on(EventType.Group_Leave, async (data: unknown) => {
+      try {
+        const typedData = data as VRChatWebSocketData;
+        await handleGroupLeft({
+          userId: typedData.user?.id || typedData.userId || "",
+        });
+      } catch (err) {
+        loggers.vrchat.error("Error handling group-left", err);
+      }
+    });
+
+    ws.on(EventType.Group_Member_Updated, async (data: unknown) => {
+      try {
+        await handleGroupMemberUpdated(data);
+      } catch (err) {
+        loggers.vrchat.error("Error handling group-member-updated", err);
       }
     });
 

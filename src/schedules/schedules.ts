@@ -20,6 +20,10 @@ import {
   initializeTempBanExpirySchedule,
   stopTempBanExpirySchedule,
 } from "./logging/tempBanExpiry.js";
+import {
+  initializeGroupAuditLogPollSchedule,
+  stopGroupAuditLogPollSchedule,
+} from "./vrchat/groupAuditLogPoll.js";
 import * as cron from "node-cron";
 
 let patrolTopJob: cron.ScheduledTask | null = null;
@@ -30,6 +34,7 @@ let hostWeeklyEventReminderJob: cron.ScheduledTask | null = null;
 let serverStatsJob: cron.ScheduledTask | null = null;
 let messageArchiveRetentionJob: cron.ScheduledTask | null = null;
 let tempBanExpiryJob: cron.ScheduledTask | null = null;
+let groupAuditLogPollJob: cron.ScheduledTask | null = null;
 
 export function initializeSchedules(client: Client) {
   loggers.schedules.info("Initializing scheduled tasks...");
@@ -57,6 +62,9 @@ export function initializeSchedules(client: Client) {
 
   // Temp ban expiry (every 15 minutes)
   tempBanExpiryJob = initializeTempBanExpirySchedule(client);
+
+  // VRChat group audit log poll (every 2 minutes)
+  groupAuditLogPollJob = initializeGroupAuditLogPollSchedule(client);
 
   loggers.schedules.info("All scheduled tasks initialized.");
 }
@@ -91,6 +99,9 @@ export function stopSchedules() {
 
   stopTempBanExpirySchedule(tempBanExpiryJob);
   tempBanExpiryJob = null;
+
+  stopGroupAuditLogPollSchedule(groupAuditLogPollJob);
+  groupAuditLogPollJob = null;
 
   loggers.schedules.info("All scheduled tasks stopped.");
 }

@@ -16,6 +16,7 @@ export const LOGGING_THREAD_KEYS = [
   "bot",
   "patrol",
   "whitelist",
+  "vrchatGroup",
 ] as const;
 
 export type LoggingThreadKey = (typeof LOGGING_THREAD_KEYS)[number];
@@ -35,6 +36,7 @@ export const LOGGING_THREAD_NAMES: Record<LoggingThreadKey, string> = {
   bot: "Bot Log",
   patrol: "Patrol Hours",
   whitelist: "Whitelist",
+  vrchatGroup: "VRChat Group",
 };
 
 export type LoggingSeverity = "info" | "warn" | "danger" | "success" | "mod";

@@ -1,23 +1,25 @@
 import { prisma } from "../../../../main.js";
-import { groupRoleSyncManager } from "../../../../managers/groupRoleSync/groupRoleSyncManager.js";
 import { loggers } from "../../../../utility/logger.js";
 
 interface GroupLeftContent {
   userId?: string;
 }
 
+/**
+ * Member left the VRChat group.
+ * Join/leave forum audit logs come from the audit poller (with actor when applicable).
+ * No Discord embed here — avoids duplicates without actor detail.
+ */
 export async function handleGroupLeft(content: unknown) {
-  loggers.vrchat.debug("Group Left", { content });
+  loggers.vrchat.debug("Group Left (audit poller owns Discord logs)", { content });
   const typedContent = content as GroupLeftContent;
 
-  // content should have userId (VRChat user ID)
   const vrcUserId = typedContent.userId;
   if (!vrcUserId) {
-    loggers.vrchat.warn("No userId in event content");
+    loggers.vrchat.warn("No userId in group-left event content");
     return;
   }
 
-  // Find the verified VRChat account in our database
   const vrcAccount = await prisma.vRChatAccount.findFirst({
     where: {
       vrcUserId,
@@ -26,35 +28,14 @@ export async function handleGroupLeft(content: unknown) {
     include: { user: true },
   });
 
-  if (!vrcAccount || !vrcAccount.user) {
+  if (!vrcAccount?.user) {
     loggers.vrchat.debug(
-      `No verified account found for VRChat user ${vrcUserId}`,
+      `No verified account found for VRChat user ${vrcUserId} on group leave`,
     );
     return;
   }
 
-  // Find all guilds with VRChat group ID configured
-  const guildSettings = await prisma.guildSettings.findMany({
-    where: {
-      vrcGroupId: { not: null },
-    },
-  });
-
-  // Log the leave for each configured guild
-  for (const settings of guildSettings) {
-    if (!settings.vrcGroupId) {continue;}
-
-    try {
-      await groupRoleSyncManager.handleGroupLeft(
-        settings.guildId,
-        vrcAccount.user.discordId,
-        vrcUserId,
-      );
-    } catch (error) {
-      loggers.vrchat.error(
-        `Error logging group leave for guild ${settings.guildId}`,
-        error,
-      );
-    }
-  }
+  loggers.vrchat.info(
+    `Verified user left VRChat group: ${vrcAccount.vrchatUsername || vrcUserId} (Discord ${vrcAccount.user.discordId})`,
+  );
 }

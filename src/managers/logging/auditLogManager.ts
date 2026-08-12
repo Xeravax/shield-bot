@@ -390,7 +390,7 @@ export class AuditLogManager {
   }
 
   /**
-   * Fan out whitelist / verification / VRChat group sync logs.
+   * Fan out whitelist / verification logs.
    */
   async fanOutWhitelistLog(
     guildId: string,
@@ -398,6 +398,17 @@ export class AuditLogManager {
     extraChannelIds: Array<string | null | undefined> = [],
   ): Promise<void> {
     await this.fanOutCategoryLog(guildId, "whitelist", options, extraChannelIds);
+  }
+
+  /**
+   * Post VRChat group audit actions to the VRChat Group forum thread only
+   * (no legacy promotion-channel fan-out).
+   */
+  async fanOutVrchatGroupLog(
+    guildId: string,
+    options: MessageCreateOptions,
+  ): Promise<void> {
+    await this.fanOutCategoryLog(guildId, "vrchatGroup", options, []);
   }
 
   formatUser(userId: string, tag?: string | null): string {

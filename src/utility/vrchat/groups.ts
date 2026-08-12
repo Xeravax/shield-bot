@@ -1,6 +1,12 @@
 // VRChat Group API utilities using vrc-ts
 
-import { RequestError, GroupIdType, GroupUserVisibility, GroupRoleIdType } from "vrc-ts";
+import {
+  RequestError,
+  GroupIdType,
+  GroupUserVisibility,
+  GroupRoleIdType,
+  type GroupAudit,
+} from "vrc-ts";
 import { vrchatApi } from "./index.js";
 import { VRChatError } from "../errors.js";
 import { loggers } from "../logger.js";
@@ -222,6 +228,40 @@ export async function getGroupRoles(groupId: string): Promise<unknown> {
     if (error instanceof RequestError) {
       throw new VRChatError(
         `Failed to get group roles: ${error.statusCode} ${error.message}`,
+        error.statusCode,
+        { groupId },
+      );
+    }
+    throw error;
+  }
+}
+
+export type GetGroupAuditLogsOptions = {
+  n?: number;
+  offset?: number;
+  startDate?: string;
+  endDate?: string;
+};
+
+/**
+ * Fetch VRChat group audit log entries (requires group-audit-view permission).
+ */
+export async function getGroupAuditLogs(
+  groupId: string,
+  options: GetGroupAuditLogsOptions = {},
+): Promise<GroupAudit> {
+  try {
+    return await vrchatApi.groupApi.getGroupAuditLogs({
+      groupId: groupId as GroupIdType,
+      n: options.n,
+      offset: options.offset,
+      startDate: options.startDate,
+      endDate: options.endDate,
+    });
+  } catch (error: unknown) {
+    if (error instanceof RequestError) {
+      throw new VRChatError(
+        `Failed to get group audit logs: ${error.statusCode} ${error.message}`,
         error.statusCode,
         { groupId },
       );

@@ -54,6 +54,7 @@ model GuildSettings {
   // VRChat group settings
   vrcGroupId                 String? // VRChat group ID for group invites and role sync (e.g., grp_xxx)
   botPromotionLogsChannelId  String? // Channel ID for logging VRChat group promotions/demotions
+  vrcGroupAuditCursor        Json?   // { lastSeenCreatedAt, lastSeenIds[] } for group audit log poller
   // LOA settings
   loaRoleId                  String? // Discord role ID for LOA
   loaNotificationChannelId  String? // Channel ID for LOA patrol notifications
