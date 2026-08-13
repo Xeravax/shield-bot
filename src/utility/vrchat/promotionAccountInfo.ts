@@ -62,7 +62,7 @@ export function formatPromotionUserLines(
 ): string[] {
   const lines = [
     "**User**",
-    `<@${userId}> — ${userTag} (\`${userId}\`)`,
+    `<@${userId}> - ${userTag} (\`${userId}\`)`,
   ];
   if (mainAccount) {
     lines.push(

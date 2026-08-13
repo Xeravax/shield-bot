@@ -17,7 +17,7 @@ import { loggers } from "../../../../utility/logger.js";
 
 @Discord()
 export class LoggingProvideReasonMsgButtonHandlers {
-  /** No @Guard — showModal must run immediately. */
+  /** No @Guard - showModal must run immediately. */
   @ButtonComponent({ id: PROVIDE_REASON_MSG_BUTTON_ID })
   async handleProvideReason(interaction: ButtonInteraction): Promise<void> {
     try {

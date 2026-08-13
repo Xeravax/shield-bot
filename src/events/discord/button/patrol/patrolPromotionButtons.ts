@@ -58,7 +58,7 @@ async function editPromotionMessage(
 @Discord()
 export class PatrolPromotionButtonHandlers {
   /**
-   * No @Guard on buttons — PermissionNodeGuard hits Prisma before deferUpdate and breaks
+   * No @Guard on buttons - PermissionNodeGuard hits Prisma before deferUpdate and breaks
    * thread/channel component interactions. Staff is checked after deferUpdate.
    */
   @ButtonComponent({ id: /^patrol-promo:approve:/ })
@@ -168,7 +168,7 @@ export class PatrolPromotionButtonHandlers {
             .addFields(
               {
                 name: "User",
-                value: `<@${userId}> — ${promotedMember.user.tag} (\`${userId}\`)`,
+                value: `<@${userId}> - ${promotedMember.user.tag} (\`${userId}\`)`,
                 inline: false,
               },
               {

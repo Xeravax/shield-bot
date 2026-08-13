@@ -138,7 +138,7 @@ export class EventCommands {
     title: string | null,
     @SlashOption({
       name: "time",
-      description: "When the event starts — natural language uses your profile timezone, or a unix timestamp",
+      description: "When the event starts - natural language uses your profile timezone, or a unix timestamp",
       type: ApplicationCommandOptionType.String,
       required: false,
       autocomplete: function (
@@ -292,7 +292,7 @@ export class EventCommands {
     @SlashOption({
       name: "week",
       description:
-        "Which Tue–Mon event week to export (default: auto — current, then previous, then next)",
+        "Which Tue–Mon event week to export (default: auto - current, then previous, then next)",
       type: ApplicationCommandOptionType.String,
       required: false,
     })
@@ -340,7 +340,7 @@ export class EventCommands {
     }
     if (blocked.length > 0) {
       await interaction.editReply({
-        content: `❌ Cannot export — these Jr. Host events need a full Host co-host:\n${blocked.join("\n")}`,
+        content: `❌ Cannot export - these Jr. Host events need a full Host co-host:\n${blocked.join("\n")}`,
       });
       return;
     }

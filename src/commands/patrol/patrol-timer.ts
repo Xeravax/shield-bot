@@ -72,7 +72,7 @@ export class PatrolTimerCommands {
       return;
     }
     const lines = list.map(
-      (it) => `• <@${it.userId}> — ${msToReadable(it.ms)} — <#${it.channelId}>`,
+      (it) => `• <@${it.userId}> - ${msToReadable(it.ms)} - <#${it.channelId}>`,
     );
     await interaction.reply({
       content: lines.join("\n"),
@@ -219,7 +219,7 @@ export class PatrolTimerCommands {
     }
     const lines = rows.map(
       (r: { userId: string; totalMs: bigint | number }, idx: number) =>
-        `${idx + 1}. <@${r.userId}> — ${msToReadable(Number(r.totalMs))}`,
+        `${idx + 1}. <@${r.userId}> - ${msToReadable(Number(r.totalMs))}`,
     );
     const header = timeDescription ? `**Top users for ${timeDescription}:**\n` : "";
     await interaction.reply({
@@ -605,7 +605,7 @@ export class PatrolTimerCommands {
     }
 
     await interaction.reply({
-      content: `<@${targetUserId}> — ${msToReadable(total)} ${timeDescription}.`,
+      content: `<@${targetUserId}> - ${msToReadable(total)} ${timeDescription}.`,
       flags: shouldBeEphemeral ? MessageFlags.Ephemeral : undefined,
     });
   }
@@ -668,8 +668,8 @@ export class PatrolTimerCommands {
 
     const choices = years.map((y) => ({
       name: canViewOthers
-        ? `${y.year} — ${y.userCount} users, ${y.totalHours}h`
-        : `${y.year} — ${y.totalHours}h (your time)`,
+        ? `${y.year} - ${y.userCount} users, ${y.totalHours}h`
+        : `${y.year} - ${y.totalHours}h (your time)`,
       value: y.year.toString(),
     }));
 
@@ -757,8 +757,8 @@ export class PatrolTimerCommands {
 
     const choices = months.map((m) => ({
       name: canViewOthers
-        ? `${MONTH_NAMES[m.month - 1]} ${m.year} — ${m.userCount} users, ${m.totalHours}h`
-        : `${MONTH_NAMES[m.month - 1]} ${m.year} — ${m.totalHours}h (your time)`,
+        ? `${MONTH_NAMES[m.month - 1]} ${m.year} - ${m.userCount} users, ${m.totalHours}h`
+        : `${MONTH_NAMES[m.month - 1]} ${m.year} - ${m.totalHours}h (your time)`,
       value: m.month.toString(),
     }));
 

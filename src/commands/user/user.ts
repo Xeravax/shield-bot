@@ -30,7 +30,7 @@ const PERMISSION_LIST_MAX = 1900;
 function buildPermissionListMessages(): string[] {
   const areaBlocks = Object.entries(PERMISSION_NODE_REGISTRY).map(
     ([area, defs]) => {
-      const lines = defs.map((d) => `  • \`${d.node}\` — ${d.description}`);
+      const lines = defs.map((d) => `  • \`${d.node}\` - ${d.description}`);
       return `**${area}**\n${lines.join("\n")}`;
     },
   );

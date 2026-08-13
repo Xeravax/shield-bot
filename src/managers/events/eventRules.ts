@@ -194,7 +194,7 @@ export async function validateEventRules(
       id: "monday-ban",
       label: "Monday ban",
       severity: "pass",
-      message: `Start time is not on a Monday (EST) — **${estTimeLabel}**.`,
+      message: `Start time is not on a Monday (EST) - **${estTimeLabel}**.`,
     });
   }
 
@@ -423,8 +423,8 @@ export async function validateEventRules(
     if (!isDurationAllowedForDuty(duration, duty)) {
       const message =
         duty === EventDuty.ON_DUTY
-          ? "On-duty events must be 2 or 3 hours — 1 hour is not allowed."
-          : "Off-duty events must be 1 or 2 hours — 3 hours is not allowed.";
+          ? "On-duty events must be 2 or 3 hours - 1 hour is not allowed."
+          : "Off-duty events must be 1 or 2 hours - 3 hours is not allowed.";
       results.push({
         id: "duration-invalid",
         label: "Duration",

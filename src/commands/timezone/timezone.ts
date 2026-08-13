@@ -52,7 +52,7 @@ export class TimezoneCommand {
       if (!resolved) {
         await interaction.reply({
           content:
-            "❌ Invalid timezone. Pick from autocomplete — try a city (`Sydney`), offset (`GMT+10` / `UTC-5`), or abbreviation (`EST`).",
+            "❌ Invalid timezone. Pick from autocomplete - try a city (`Sydney`), offset (`GMT+10` / `UTC-5`), or abbreviation (`EST`).",
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -98,7 +98,7 @@ export class TimezoneCommand {
       await interaction.reply({
         content:
           "❌ You haven't set a timezone yet.\n" +
-          "Use `/timezone timezone:<region>` (autocomplete) to set one — e.g. `America/New_York` or `Europe/Amsterdam`.",
+          "Use `/timezone timezone:<region>` (autocomplete) to set one - e.g. `America/New_York` or `Europe/Amsterdam`.",
         flags: MessageFlags.Ephemeral,
       });
       return;

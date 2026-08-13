@@ -52,7 +52,7 @@ async function executorFields(
       fields: [
         {
           name: "Executor",
-          value: "*Unknown — claim to attribute*",
+          value: "*Unknown - claim to attribute*",
           inline: true,
         },
       ],
@@ -144,7 +144,7 @@ export function unknownExecutorField(): {
 } {
   return {
     name: "Executor",
-    value: "*Unknown — claim to attribute*",
+    value: "*Unknown - claim to attribute*",
     inline: true,
   };
 }

@@ -212,7 +212,7 @@ export class GroupAuditLogManager {
 
     const cursor = parseCursor(settings.vrcGroupAuditCursor);
 
-    // First run: seed cursor to now — no historic backfill
+    // First run: seed cursor to now - no historic backfill
     if (!cursor) {
       const seeded: VrcGroupAuditCursor = {
         lastSeenCreatedAt: new Date().toISOString(),

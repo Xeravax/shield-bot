@@ -19,7 +19,7 @@ import { respondWithError } from "../../../../utility/generalUtils.js";
 import { resolveGuildMember } from "../../../../utility/guards.js";
 
 const BUTTON_PREFIX = "patrol-session-remove:";
-/** Short prefix — modal custom_id max 100 chars (guild + user + two timestamps). */
+/** Short prefix - modal custom_id max 100 chars (guild + user + two timestamps). */
 const MODAL_PREFIX = "psr-m:";
 const LEGACY_MODAL_PREFIX = "patrol-session-remove-modal:";
 
@@ -79,7 +79,7 @@ async function applyPatrolSessionRemoval(
 
   const durationStr = patrolTimer.formatDurationPublic(durationMs);
   const resolvedContent = [
-    "**Patrol session — time removed**",
+    "**Patrol session - time removed**",
     "",
     `❌ Staff removed **${durationStr}** from <@${userId}>'s patrol totals for this session.`,
     "",
@@ -117,7 +117,7 @@ async function applyPatrolSessionRemoval(
 @Discord()
 export class PatrolSessionRemoveButtonHandlers {
   /**
-   * No @Guard here — staff is checked on modal submit. Guards that hit Prisma
+   * No @Guard here - staff is checked on modal submit. Guards that hit Prisma
    * before showModal caused Unknown interaction (10062).
    */
   @ButtonComponent({ id: /^patrol-session-remove:\d+:\d+:\d+:\d+$/ })

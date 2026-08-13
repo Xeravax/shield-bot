@@ -1,4 +1,4 @@
-/** Minimal iCalendar (RFC 5545) helpers — no external dependency. */
+/** Minimal iCalendar (RFC 5545) helpers - no external dependency. */
 
 const DEFAULT_DURATION_MS = 2 * 60 * 60 * 1000;
 const ICAL_LINE_LIMIT = 75;

@@ -260,7 +260,7 @@ export class AuditLogManager {
       embed.addFields(
         options.fields.slice(0, MAX_EMBED_FIELDS).map((f) => ({
           name: f.name.slice(0, 256),
-          value: f.value.slice(0, 1024) || "—",
+          value: f.value.slice(0, 1024) || "-",
           inline: f.inline,
         })),
       );

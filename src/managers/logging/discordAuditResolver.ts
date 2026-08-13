@@ -80,7 +80,7 @@ export class DiscordAuditResolver {
         ) {
           return cached.result;
         }
-        // Cached match is older than caller's cutoff — treat as miss.
+        // Cached match is older than caller's cutoff - treat as miss.
         this.cache.delete(cacheKey);
       }
     } else {

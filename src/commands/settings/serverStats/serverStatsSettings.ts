@@ -149,7 +149,7 @@ export class SettingsServerStatsCommands {
           `• Members: <#${result.membersChannelId}>\n` +
           `• Deputies: <#${result.deputiesChannelId}>\n` +
           `• Boosts: <#${result.boostsChannelId}>\n\n` +
-          `Current values — Goal: **${result.stats.goal}**, Members: **${result.stats.members}**, ` +
+          `Current values - Goal: **${result.stats.goal}**, Members: **${result.stats.members}**, ` +
           `Deputies: **${result.stats.deputies}**, Boosts: **${result.stats.boosts}**.`,
       });
     } catch (error) {

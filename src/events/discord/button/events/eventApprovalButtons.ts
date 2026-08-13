@@ -86,7 +86,7 @@ export class EventApprovalButtonHandlers {
     }
   }
 
-  /** No @Guard — showModal must run immediately. */
+  /** No @Guard - showModal must run immediately. */
   @ButtonComponent({ id: EVENT_DENY_PATTERN })
   async handleDeny(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guildId) {

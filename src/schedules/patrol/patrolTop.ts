@@ -111,7 +111,7 @@ export async function postPatrolTop(client: Client): Promise<void> {
 
         // Format the message
         const lines = rows.map(
-          (r, idx) => `${idx + 1}. <@${r.userId}> — ${msToReadable(Number(r.totalMs))}`,
+          (r, idx) => `${idx + 1}. <@${r.userId}> - ${msToReadable(Number(r.totalMs))}`,
         );
         const header = `**Weekly Patrol Top (${MONTH_NAMES[currentMonth - 1]} ${currentYear}, ${weekLabel}):**\n`;
         const content = header + lines.join("\n");

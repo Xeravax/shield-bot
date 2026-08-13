@@ -42,7 +42,7 @@ export class ServersCommand {
       const description = chunk
         .map((g, idx) => {
           const n = i + idx + 1;
-          const owner = g.ownerId ? `<@${g.ownerId}>` : "—";
+          const owner = g.ownerId ? `<@${g.ownerId}>` : "-";
           return `**${n}.** **${escapeMarkdown(g.name)}** (\`${g.id}\`)\n Owner: ${owner} · Members: **${g.memberCount.toLocaleString()}**`;
         })
         .join("\n\n");

@@ -48,7 +48,7 @@ function wallTimeFromChrono(start: chrono.ParsedComponents, timezone: string): P
 /**
  * Snap natural-language parses into the schedulable event week (Tue–Sun).
  * chrono's forwardDate picks the nearest future weekday, which is often the
- * current week — but Tue–Sun planning only allows the next event week.
+ * current week - but Tue–Sun planning only allows the next event week.
  */
 function ensureForwardDate(
   parsed: Date,
@@ -151,7 +151,7 @@ export function buildTimeAutocompleteChoices(
       const unix = Math.floor(d.getTime() / 1000);
       return [
         {
-          name: `${formatTimezoneLabel(d, tz)} — ${formatRelativeFromNow(d, refDate)}`,
+          name: `${formatTimezoneLabel(d, tz)} - ${formatRelativeFromNow(d, refDate)}`,
           value: String(unix),
         },
       ];
@@ -171,7 +171,7 @@ export function buildTimeAutocompleteChoices(
     const d = ensureForwardDate(r.start.date(), refDate, tz, wallTimeFromChrono(r.start, tz));
     const unix = Math.floor(d.getTime() / 1000);
     return {
-      name: `${formatTimezoneLabel(d, tz)} — ${formatRelativeFromNow(d, refDate)}`,
+      name: `${formatTimezoneLabel(d, tz)} - ${formatRelativeFromNow(d, refDate)}`,
       value: String(unix),
     };
   });

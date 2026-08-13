@@ -65,7 +65,7 @@ function buildReminderContainer(scheduleCommand: string): ContainerBuilder {
       "",
       `Hello ${host} and ${jrHost} - time to get events on the calendar.`,
       "",
-      `Use ${scheduleCommand} to open a draft and schedule your events for the week. You have until **Monday** — the sooner they’re posted, the easier it is for members to plan.`,
+      `Use ${scheduleCommand} to open a draft and schedule your events for the week. You have until **Monday** - the sooner they’re posted, the easier it is for members to plan.`,
     ].join("\n"),
   );
 

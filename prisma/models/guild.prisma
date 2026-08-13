@@ -12,9 +12,9 @@ model GuildSettings {
   jrHostRoleIds              Json? // Array of role IDs for Jr. event hosts
   enrolledChannels           Json? // Array of channel IDs for attendance squads
   aocChannelId               String? // Channel ID for AOC (Attendance Operations Center) squad
-  aocVoiceChannelId          String? // AoC voice channel — panel posts to its linked in-voice text chat
+  aocVoiceChannelId          String? // AoC voice channel - panel posts to its linked in-voice text chat
   aocPanelMessageId          String? // Current AoC panel message ID (reposted to stay at bottom)
-  emtVoiceChannelId          String? // EMT voice channel — same phantom-compiler panel as AoC
+  emtVoiceChannelId          String? // EMT voice channel - same phantom-compiler panel as AoC
   emtPanelMessageId          String? // Current EMT panel message ID (reposted to stay at bottom)
   instigationLogChannelId    String? // Channel ID for instigation logs (reminder channel for AOC leads)
   // Shield member settings

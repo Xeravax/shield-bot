@@ -157,7 +157,7 @@ export function buildPhantomCompilerSelfServicePanel(): ContainerBuilder {
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         [
-          "**Phantom Compiler — Self Enrollment**",
+          "**Phantom Compiler - Self Enrollment**",
           "",
           "If you use a phantom compiler or have sensory needs staff should know about while on patrol, enroll below.",
           "Your reason is shown on the **AoC panel** when you are on patrol.",
@@ -176,7 +176,7 @@ export function buildPhantomCompilerSelfServicePanel(): ContainerBuilder {
         )
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "**Add or update** — opens a form for your phantom/sensory needs.",
+            "**Add or update** - opens a form for your phantom/sensory needs.",
           ),
         ),
       new SectionBuilder()
@@ -188,7 +188,7 @@ export function buildPhantomCompilerSelfServicePanel(): ContainerBuilder {
         )
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "**Remove** — take yourself off the phantom compiler list.",
+            "**Remove** - take yourself off the phantom compiler list.",
           ),
         ),
     );

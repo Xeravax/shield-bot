@@ -119,7 +119,7 @@ export class ModCommands {
       reason: reason ?? null,
     });
     await interaction.editReply({
-      content: `✅ Warned ${user} — case #${modCase.caseNumber}.`,
+      content: `✅ Warned ${user} - case #${modCase.caseNumber}.`,
     });
   }
 
@@ -198,7 +198,7 @@ export class ModCommands {
         active: false,
       });
       await interaction.editReply({
-        content: `✅ Kicked ${user} — case #${modCase.caseNumber}.`,
+        content: `✅ Kicked ${user} - case #${modCase.caseNumber}.`,
       });
     } catch (error) {
       loggers.bot.error("Kick case record failed", error);
@@ -314,8 +314,8 @@ export class ModCommands {
       });
       await interaction.editReply({
         content: expiresAt
-          ? `✅ Temp-banned ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> — case #${modCase.caseNumber}.`
-          : `✅ Banned ${user} — case #${modCase.caseNumber}.`,
+          ? `✅ Temp-banned ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> - case #${modCase.caseNumber}.`
+          : `✅ Banned ${user} - case #${modCase.caseNumber}.`,
       });
     } catch (error) {
       loggers.bot.error("Ban case record failed", error);
@@ -426,10 +426,10 @@ export class ModCommands {
       loggers.bot.error("Softban unban failed", error);
       const casePart =
         caseNumber != null
-          ? ` — case #${caseNumber}`
+          ? ` - case #${caseNumber}`
           : " (case log failed to save)";
       await interaction.editReply({
-        content: `⚠️ Softban ban applied${casePart}, but unban failed — manual recovery is required.`,
+        content: `⚠️ Softban ban applied${casePart}, but unban failed - manual recovery is required.`,
       });
       return;
     }
@@ -437,7 +437,7 @@ export class ModCommands {
     await interaction.editReply({
       content:
         caseNumber != null
-          ? `✅ Softbanned ${user} — case #${caseNumber}.`
+          ? `✅ Softbanned ${user} - case #${caseNumber}.`
           : `✅ Softbanned ${user} (case log failed to save).`,
     });
   }
@@ -477,7 +477,7 @@ export class ModCommands {
         active: false,
       });
       await interaction.editReply({
-        content: `✅ Unbanned ${user} — case #${modCase.caseNumber}.`,
+        content: `✅ Unbanned ${user} - case #${modCase.caseNumber}.`,
       });
     } catch (error) {
       loggers.bot.error("Unban failed", error);
@@ -577,7 +577,7 @@ export class ModCommands {
         expiresAt,
       });
       await interaction.editReply({
-        content: `✅ Timed out ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> — case #${modCase.caseNumber}.`,
+        content: `✅ Timed out ${user} until <t:${Math.floor(expiresAt.getTime() / 1000)}:F> - case #${modCase.caseNumber}.`,
       });
     } catch (error) {
       loggers.bot.error("Timeout case record failed", error);
@@ -638,7 +638,7 @@ export class ModCommands {
         active: false,
       });
       await interaction.editReply({
-        content: `✅ Removed timeout for ${user} — case #${modCase.caseNumber}.`,
+        content: `✅ Removed timeout for ${user} - case #${modCase.caseNumber}.`,
       });
     } catch (error) {
       loggers.bot.error("Untimeout case record failed", error);
@@ -879,7 +879,7 @@ export class ModCommands {
         ],
       });
       await interaction.editReply({
-        content: `✅ Locked <#${target.id}> — case #${modCase.caseNumber}.`,
+        content: `✅ Locked <#${target.id}> - case #${modCase.caseNumber}.`,
       });
     } catch (error) {
       loggers.bot.error("Lock case record failed", error);
@@ -969,7 +969,7 @@ export class ModCommands {
         ],
       });
       await interaction.editReply({
-        content: `✅ Unlocked <#${target.id}> — case #${modCase.caseNumber}.`,
+        content: `✅ Unlocked <#${target.id}> - case #${modCase.caseNumber}.`,
       });
     } catch (error) {
       loggers.bot.error("Unlock case record failed", error);

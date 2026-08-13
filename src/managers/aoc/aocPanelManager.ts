@@ -33,13 +33,13 @@ const PHANTOM_PANEL_SITES: PhantomPanelSite[] = [
     key: "aoc",
     voiceChannelIdField: "aocVoiceChannelId",
     panelMessageIdField: "aocPanelMessageId",
-    headerTitle: "**AoC — Phantom Compiler Panel**",
+    headerTitle: "**AoC - Phantom Compiler Panel**",
   },
   {
     key: "emt",
     voiceChannelIdField: "emtVoiceChannelId",
     panelMessageIdField: "emtPanelMessageId",
-    headerTitle: "**EMT — Phantom Compiler Panel**",
+    headerTitle: "**EMT - Phantom Compiler Panel**",
   },
 ];
 
@@ -75,7 +75,7 @@ function formatOnPatrolSection(users: EnrolledUserOnPatrol[], emptyMessage: stri
   }
   const lines: string[] = [];
   for (const u of users) {
-    lines.push(`<@${u.discordId}> — <#${u.patrolChannelId}>`, u.reason, "");
+    lines.push(`<@${u.discordId}> - <#${u.patrolChannelId}>`, u.reason, "");
   }
   return lines.join("\n").trimEnd();
 }

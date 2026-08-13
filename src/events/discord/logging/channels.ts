@@ -63,7 +63,7 @@ function diffPermissionOverwrites(
     const ow = oldMap.get(id);
     if (!ow) {
       changes.push(
-        `Added ${overwriteTargetLabel(nw, guildId)} — ${formatOverwritePerms(nw)}`,
+        `Added ${overwriteTargetLabel(nw, guildId)} - ${formatOverwritePerms(nw)}`,
       );
       continue;
     }
@@ -93,7 +93,7 @@ function diffPermissionOverwrites(
         bits.push(`-deny ${removedDeny.join(", ")}`);
       }
       changes.push(
-        `Updated ${overwriteTargetLabel(nw, guildId)} — ${bits.join("; ") || "changed"}`,
+        `Updated ${overwriteTargetLabel(nw, guildId)} - ${bits.join("; ") || "changed"}`,
       );
     }
   }
@@ -101,7 +101,7 @@ function diffPermissionOverwrites(
   for (const [id, ow] of oldMap) {
     if (!newMap.has(id)) {
       changes.push(
-        `Removed ${overwriteTargetLabel(ow, guildId)} — ${formatOverwritePerms(ow)}`,
+        `Removed ${overwriteTargetLabel(ow, guildId)} - ${formatOverwritePerms(ow)}`,
       );
     }
   }

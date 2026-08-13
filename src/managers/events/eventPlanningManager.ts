@@ -413,8 +413,8 @@ export function buildDraftPanelEmbed(
     .setColor(editingExported ? EVENT_COLORS.approved : EVENT_COLORS.draft)
     .setFooter({
       text: editingExported
-        ? `Event #${event.id} — Editing exported event`
-        : `Event #${event.id} — Draft`,
+        ? `Event #${event.id} - Editing exported event`
+        : `Event #${event.id} - Draft`,
     });
 
   embed.addFields({
@@ -459,9 +459,9 @@ export function buildPlanningEmbed(
     .setFooter({
       text: isEventLocked(event)
         ? isExportedEventInCurrentWeek(event)
-          ? `Event #${event.id} — ${statusText} (exported — editable this week)`
-          : `Event #${event.id} — ${statusText} (exported — locked)`
-        : `Event #${event.id} — ${statusText}`,
+          ? `Event #${event.id} - ${statusText} (exported - editable this week)`
+          : `Event #${event.id} - ${statusText} (exported - locked)`
+        : `Event #${event.id} - ${statusText}`,
     });
 
   if (event.reviewedById && event.status === PlannedEventStatus.APPROVED) {
@@ -715,7 +715,7 @@ export async function canManageEventDraft(
   return false;
 }
 
-/** Host/behalf, or event leads (`events.manage.approve`) — used by panel modals/selects. */
+/** Host/behalf, or event leads (`events.manage.approve`) - used by panel modals/selects. */
 export async function canEditEventPanel(
   userId: string,
   member: GuildMember | null,
@@ -1240,7 +1240,7 @@ export async function abortEventPanelEdit(
     return {
       success: true,
       message:
-        "Panel closed. The draft was kept — use Cancel and Delete to remove it.",
+        "Panel closed. The draft was kept - use Cancel and Delete to remove it.",
     };
   }
 
@@ -1423,7 +1423,7 @@ export async function cancelPlannedEvent(
           const message = await channel.messages.fetch(event.planningMessageId);
           const embed = buildSummaryFields(event)
             .setColor(EVENT_COLORS.denied)
-            .setFooter({ text: `Event #${event.id} — Cancelled` })
+            .setFooter({ text: `Event #${event.id} - Cancelled` })
             .addFields(
               {
                 name: "Cancelled by",
@@ -1451,7 +1451,7 @@ export async function cancelPlannedEvent(
       `❌ Your event **${event.title}** was cancelled by staff. It no longer counts toward your weekly event limit.`,
       {
         embedColor: EVENT_COLORS.denied,
-        embedFooter: `Event #${event.id} — Cancelled`,
+        embedFooter: `Event #${event.id} - Cancelled`,
       },
     );
   }
@@ -1784,7 +1784,7 @@ export async function exportApprovedEvents(
     return {
       success: false,
       error:
-        `Cannot export — the following Jr. Host events still need a full Host co-host:\n${titles}`,
+        `Cannot export - the following Jr. Host events still need a full Host co-host:\n${titles}`,
     };
   }
 

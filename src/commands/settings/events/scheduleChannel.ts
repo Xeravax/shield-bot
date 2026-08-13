@@ -84,7 +84,7 @@ export class SettingsEventsScheduleChannelCommand {
       }
 
       await interaction.editReply({
-        content: `✅ Legacy event schedule channel set to <#${channel.id}>. The on-duty schedule channel is unchanged — use \`/settings events on-duty-schedule-channel\` to configure it.`,
+        content: `✅ Legacy event schedule channel set to <#${channel.id}>. The on-duty schedule channel is unchanged - use \`/settings events on-duty-schedule-channel\` to configure it.`,
       });
     } catch (error: unknown) {
       loggers.bot.error("Error setting event schedule channel", error);

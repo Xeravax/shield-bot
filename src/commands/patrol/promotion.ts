@@ -36,7 +36,7 @@ function formatPromotionEligibilityReport(
   const totalHours = report?.totalHours ?? totalHoursFallback;
   let content = `${header}\n**Total patrol hours:** ${totalHours.toFixed(2)}h\n\n`;
   if (report?.onLOA) {
-    content += "⚠️ User is on **LOA** — promotion suggestions are paused.\n\n";
+    content += "⚠️ User is on **LOA** - promotion suggestions are paused.\n\n";
   }
   if (report?.blocked) {
     content += `🚫 User is **blocked from promotion suggestions**${report.blockReason ? `: ${report.blockReason}` : ""}.\n\n`;
@@ -449,7 +449,7 @@ export class PatrolPromotionCommands {
       const nextRankName = scrubRoleDisplay(
         guild.roles.cache.get(n.nextRankRoleId)?.name ?? n.nextRankRoleId,
       );
-      const hours = n.totalHoursAtNotify !== null && n.totalHoursAtNotify !== undefined ? `${n.totalHoursAtNotify.toFixed(1)}h` : "—";
+      const hours = n.totalHoursAtNotify !== null && n.totalHoursAtNotify !== undefined ? `${n.totalHoursAtNotify.toFixed(1)}h` : "-";
       const notified = `<t:${Math.floor(n.notifiedAt.getTime() / 1000)}:R>`;
       let resolved = "";
       if (n.resolvedAt && n.resolvedBy) {

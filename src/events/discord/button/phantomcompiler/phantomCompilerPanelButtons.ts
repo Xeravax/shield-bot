@@ -22,7 +22,7 @@ import {
 
 @Discord()
 export class PhantomCompilerPanelButtonHandlers {
-  /** No @Guard — showModal must run immediately (Discord 3s ack window). */
+  /** No @Guard - showModal must run immediately (Discord 3s ack window). */
   @ButtonComponent({ id: PHANTOM_PC_BUTTON_ENROLL })
   async handleEnrollButton(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.guildId) {

@@ -48,29 +48,29 @@ export function buildProfileSettingsEmbed(
       {
         name: "Patrol completion DMs",
         value: patrolDmEnabled(prefs)
-          ? "✅ **Enabled** — you receive a DM when a patrol session completes."
-          : "❌ **Disabled** — no completion DMs.",
+          ? "✅ **Enabled** - you receive a DM when a patrol session completes."
+          : "❌ **Disabled** - no completion DMs.",
         inline: false,
       },
       {
         name: "Patrol join reminders",
         value: noShieldMemberDmEnabled(prefs)
-          ? "✅ **Enabled** — you may be DM'd when joining patrol without the Shield Member role."
-          : "❌ **Disabled** — no join reminders.",
+          ? "✅ **Enabled** - you may be DM'd when joining patrol without the Shield Member role."
+          : "❌ **Disabled** - no join reminders.",
         inline: false,
       },
       {
         name: "Event status updates",
         value: eventStatusDmEnabled(prefs)
-          ? "✅ **Enabled** — you receive DMs when your planned events are submitted, approved, denied, or cancelled."
-          : "❌ **Disabled** — no event status DMs.",
+          ? "✅ **Enabled** - you receive DMs when your planned events are submitted, approved, denied, or cancelled."
+          : "❌ **Disabled** - no event status DMs.",
         inline: false,
       },
       {
         name: "Moderation reason pings",
         value: modReasonPingEnabled(prefs)
-          ? "✅ **Enabled** — you get pinged in mod logs when a reason is missing."
-          : "❌ **Disabled** — you will not be pinged; you are responsible for providing reasons yourself.",
+          ? "✅ **Enabled** - you get pinged in mod logs when a reason is missing."
+          : "❌ **Disabled** - you will not be pinged; you are responsible for providing reasons yourself.",
         inline: false,
       },
     )

@@ -72,7 +72,7 @@ export function queueMemberRoleChange(
   pending.set(key, entry);
 }
 
-/** Name + id only — never <@&id>, which would ping roles in V2 TextDisplay. */
+/** Name + id only - never <@&id>, which would ping roles in V2 TextDisplay. */
 export function formatRoleList(
   roles: Iterable<Role>,
   guildId: string,

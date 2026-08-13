@@ -116,7 +116,7 @@ export class ModCaseManager {
         if (code !== "P2002") {
           throw error;
         }
-        // Concurrent create — fall through to increment.
+        // Concurrent create - fall through to increment.
       }
     }
 
@@ -262,7 +262,7 @@ export class ModCaseManager {
           embed.addFields(
             extraFields.slice(0, room).map((f) => ({
               name: f.name.slice(0, 256),
-              value: f.value.slice(0, 1024) || "—",
+              value: f.value.slice(0, 1024) || "-",
               inline: f.inline,
             })),
           );
@@ -475,7 +475,7 @@ export class ModCaseManager {
           type: "UNBAN",
           targetId: modCase.targetId,
           moderatorId: this.client.user?.id ?? modCase.moderatorId,
-          reason: `Automatic unban — temp ban case #${modCase.caseNumber} expired`,
+          reason: `Automatic unban - temp ban case #${modCase.caseNumber} expired`,
           claimable: false,
           active: false,
         });

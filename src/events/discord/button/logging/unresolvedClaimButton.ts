@@ -17,7 +17,7 @@ import { loggers } from "../../../../utility/logger.js";
 
 @Discord()
 export class LoggingUnresolvedClaimButtonHandlers {
-  /** No @Guard — showModal must run immediately. */
+  /** No @Guard - showModal must run immediately. */
   @ButtonComponent({ id: UNRESOLVED_CLAIM_BUTTON_ID })
   async handleClaim(interaction: ButtonInteraction): Promise<void> {
     try {

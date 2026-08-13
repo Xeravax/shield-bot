@@ -37,7 +37,7 @@ export async function resolveEventMemberDisplayName(
   return (await resolveDiscordDisplayName(guild, userId)) ?? "Unknown";
 }
 
-/** Discord message mention — always use a ping, even if the member left. */
+/** Discord message mention - always use a ping, even if the member left. */
 export function formatEventUserMention(userId: string): string {
   return `<@${userId}>`;
 }

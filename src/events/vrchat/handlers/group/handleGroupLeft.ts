@@ -8,7 +8,7 @@ interface GroupLeftContent {
 /**
  * Member left the VRChat group.
  * Join/leave forum audit logs come from the audit poller (with actor when applicable).
- * No Discord embed here — avoids duplicates without actor detail.
+ * No Discord embed here - avoids duplicates without actor detail.
  */
 export async function handleGroupLeft(content: unknown) {
   loggers.vrchat.debug("Group Left (audit poller owns Discord logs)", { content });

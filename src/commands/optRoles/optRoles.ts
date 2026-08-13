@@ -94,7 +94,7 @@ function collectCustomButtons(slots: RoleSlot[]): { ok: true; buttons: OptRoleBu
       roleId: slot.role.id,
       label,
       emoji: parsedEmoji,
-      hint: `${slot.role} — click to add or remove this role.`,
+      hint: `${slot.role} - click to add or remove this role.`,
     });
   }
 

@@ -94,7 +94,7 @@ export class EvalCommand {
         member: cmdInteraction.member,
         process,
         console,
-        // Dynamic import helper — cannot be named `import` (reserved; breaks Function params)
+        // Dynamic import helper - cannot be named `import` (reserved; breaks Function params)
         dynamicImport: (module: string) => import(module),
         // Prevent access to file system
         __dirname: undefined,

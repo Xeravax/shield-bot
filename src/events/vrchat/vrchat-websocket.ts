@@ -177,7 +177,7 @@ export function startVRChatWebSocketListener() {
       }
     });
 
-    // Group events (side effects only — forum audit logs come from audit poller)
+    // Group events (side effects only - forum audit logs come from audit poller)
     ws.on(EventType.Group_Join, async (data: unknown) => {
       try {
         const typedData = data as VRChatWebSocketData;

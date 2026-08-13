@@ -2072,7 +2072,7 @@ export class PatrolTimerManager {
           ...staffPingPrefix(staffRoleIds),
           "**Patrol promotion – 🟠 Pending**",
           "",
-          "**🟠 Pending** — ✅ Approve · ❌ Deny",
+          "**🟠 Pending** - ✅ Approve · ❌ Deny",
           "",
           "A member is eligible for promotion.",
           "",
@@ -2298,7 +2298,7 @@ export class PatrolTimerManager {
       );
       try {
         await (channel as TextChannel).send({
-          content: `_(Could not update original message — superseded pending promotion for <@${notification.userId}> → **${nextRankName}**.)_`,
+          content: `_(Could not update original message - superseded pending promotion for <@${notification.userId}> → **${nextRankName}**.)_`,
           allowedMentions: { users: [notification.userId] },
         });
       } catch {
@@ -2340,7 +2340,7 @@ export class PatrolTimerManager {
 
     const staffRoleIds = parseStaffRoleIds(guild.id, settings.staffRoleIds);
 
-    const threadName = `Promotion resuggestions — ${new Date().toISOString().slice(0, 10)}`;
+    const threadName = `Promotion resuggestions - ${new Date().toISOString().slice(0, 10)}`;
     const thread = await (promoChannel as TextChannel).threads.create({
       name: threadName.slice(0, 100),
       autoArchiveDuration: 10080,
@@ -2396,7 +2396,7 @@ export class PatrolTimerManager {
         ...staffPingPrefix(staffRoleIds),
         "**Patrol promotion – 🟠 Pending (resuggested)**",
         "",
-        "**🟠 Pending** — ✅ Approve · ❌ Deny",
+        "**🟠 Pending** - ✅ Approve · ❌ Deny",
         "",
         "A member is eligible for promotion (resent by staff).",
         "",
@@ -2586,7 +2586,7 @@ export class PatrolTimerManager {
       }
 
       const embed = new EmbedBuilder()
-        .setTitle("Patrol Channel — Hours Not Recorded")
+        .setTitle("Patrol Channel - Hours Not Recorded")
         .setDescription(
           `You joined **${channelName}**, which is a patrol channel. This can happen if a staff member moved you here, or your current roles allow access to these channels.`,
         )

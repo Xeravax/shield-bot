@@ -1,4 +1,4 @@
-/** America/New_York — all event scheduling rules use this timezone. */
+/** America/New_York - all event scheduling rules use this timezone. */
 export const EVENT_TIMEZONE = "America/New_York";
 
 const WEEKDAY_MAP: Record<string, number> = {

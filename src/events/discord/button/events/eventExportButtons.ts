@@ -100,9 +100,9 @@ export class EventExportButtonHandlers {
 
     const lines = (result.results ?? []).map((r) => {
       if (r.success) {
-        return `✅ **${r.title}** — Discord event created`;
+        return `✅ **${r.title}** - Discord event created`;
       }
-      return `❌ **${r.title}** — ${r.error ?? "Failed"}`;
+      return `❌ **${r.title}** - ${r.error ?? "Failed"}`;
     });
 
     const deniedNote =

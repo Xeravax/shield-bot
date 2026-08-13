@@ -102,7 +102,7 @@ async function loadEditableEvent(eventId: number) {
 
 @Discord()
 export class EventPanelButtonHandlers {
-  /** No @Guard before showModal — Discord 3s ack window. */
+  /** No @Guard before showModal - Discord 3s ack window. */
   @ButtonComponent({ id: EVENT_PANEL_TITLE_PATTERN })
   async handleEditTitle(interaction: ButtonInteraction): Promise<void> {
     const match = matchComponentId(interaction.customId, EVENT_PANEL_TITLE_PATTERN);

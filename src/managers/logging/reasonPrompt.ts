@@ -115,7 +115,7 @@ export function buildMissingReasonModLogV2(options: {
   return {
     components: [container],
     flags: MessageFlags.IsComponentsV2,
-    // Only the staff who owes a reason — never roles / everyone / other users.
+    // Only the staff who owes a reason - never roles / everyone / other users.
     allowedMentions: { parse: [], users: [options.staffUserId] },
   };
 }
@@ -197,7 +197,7 @@ export type StaffActionLogOptions = {
   title: string;
   severity?: LoggingSeverity;
   fields: { name: string; value: string; inline?: boolean }[];
-  /** Staff who performed the action — pinged only when reason is missing. */
+  /** Staff who performed the action - pinged only when reason is missing. */
   executorId?: string | null;
   reason?: string | null;
   /** When true, never ping for a reason (any bot / automated executor). */
@@ -269,7 +269,7 @@ export async function postStaffActionLog(
     !options.executorIsBot &&
     !options.skipReasonPrompt
   ) {
-    // Opted out of ping (or equivalent) — still record that no reason was given.
+    // Opted out of ping (or equivalent) - still record that no reason was given.
     if (!fields.some((f) => f.name === "Reason")) {
       fields.push({
         name: "Reason",

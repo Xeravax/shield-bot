@@ -32,7 +32,7 @@ export type CachedMessageSnapshot = {
 const PURGE_BATCH_SIZE = 5000;
 
 /**
- * Persist attachment metadata only — Discord CDN URLs expire and are not durable.
+ * Persist attachment metadata only - Discord CDN URLs expire and are not durable.
  */
 function serializeAttachments(message: Message | PartialMessage): CachedAttachmentMeta[] {
   if (!message.attachments) {

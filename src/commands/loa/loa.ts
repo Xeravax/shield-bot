@@ -39,7 +39,7 @@ export class LOACommands {
     @SlashChoice({ name: "Blocking (no event participation)", value: "blocking" })
     @SlashOption({
       name: "type",
-      description: "LOA type — attendable (can still attend events) or blocking (no event participation)",
+      description: "LOA type - attendable (can still attend events) or blocking (no event participation)",
       type: ApplicationCommandOptionType.String,
       required: true,
     })

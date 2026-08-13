@@ -20,7 +20,7 @@ const CLAIM_PATTERN = new RegExp(`^${CLAIM_BUTTON_PREFIX}(\\d+)$`);
 
 @Discord()
 export class LoggingClaimButtonHandlers {
-  /** No @Guard — showModal must run immediately. */
+  /** No @Guard - showModal must run immediately. */
   @ButtonComponent({ id: CLAIM_PATTERN })
   async handleClaim(interaction: ButtonInteraction): Promise<void> {
     try {

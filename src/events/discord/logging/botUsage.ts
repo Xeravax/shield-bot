@@ -104,7 +104,7 @@ function shouldSkip(interaction: ArgsOf<"interactionCreate">[0]): boolean {
   if (interaction.user.bot) {
     return true;
   }
-  // Autocomplete fires constantly while typing — do not log.
+  // Autocomplete fires constantly while typing - do not log.
   if (interaction.isAutocomplete()) {
     return true;
   }
@@ -214,7 +214,7 @@ export class LoggingBotUsageEvents {
           ),
         });
       } else {
-        // Unknown interaction type — still record a minimal entry.
+        // Unknown interaction type - still record a minimal entry.
         title = "Bot Interaction";
         description = `Type \`${interaction.type}\``;
       }

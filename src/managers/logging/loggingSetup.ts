@@ -221,7 +221,7 @@ export class LoggingSetupManager {
       }
     }
 
-    // Archived posts still count — reuse instead of duplicating.
+    // Archived posts still count - reuse instead of duplicating.
     let before: string | undefined;
     for (let page = 0; page < 5; page++) {
       const archived = await forum.threads
@@ -306,7 +306,7 @@ export class LoggingSetupManager {
       const created = await forum.threads.create({
         name: expectedName,
         message: {
-          content: `**${expectedName}** log thread — managed by the bot. Do not delete.`,
+          content: `**${expectedName}** log thread - managed by the bot. Do not delete.`,
         },
         reason: `Ensure logging category thread: ${key}`,
       });

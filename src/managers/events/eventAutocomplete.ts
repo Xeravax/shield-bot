@@ -13,7 +13,7 @@ export function formatEventAutocompleteLabel(
     : formatESTLabel(event.startTime);
   const status =
     event.status.charAt(0) + event.status.slice(1).toLowerCase();
-  const label = `${event.title} — ${hostLabel} — ${timeLabel} (${status})`;
+  const label = `${event.title} - ${hostLabel} - ${timeLabel} (${status})`;
   return label.length > 100 ? `${label.slice(0, 97)}...` : label;
 }
 
