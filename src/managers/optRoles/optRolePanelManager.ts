@@ -1,4 +1,5 @@
 import {
+  ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   Colors,
@@ -9,15 +10,16 @@ import {
   MessageFlags,
   PermissionFlagsBits,
   RESTJSONErrorCodes,
-  SectionBuilder,
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
+  type MessageActionRowComponentBuilder,
   type SendableChannels,
 } from "discord.js";
 import { loggers } from "../../utility/logger.js";
 import {
   GOLDEN_COOKIE_DIVIDER,
+  getOptInRequirementError,
   getOptRoleEligibilityError,
   optRoleButtonCustomId,
   type OptRoleButton,
@@ -39,11 +41,15 @@ export class OptRolePanelManager {
         );
       }
 
-      container.addTextDisplayComponents(new TextDisplayBuilder().setContent(section.body));
+      const hintBlock = section.buttons.map((button) => button.hint).join("\n");
+      const sectionText = hintBlock
+        ? `${section.body}\n\n${hintBlock}`
+        : section.body;
 
-      for (const button of section.buttons) {
-        container.addSectionComponents(this.buildRoleSection(button));
-      }
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(sectionText),
+      );
+      container.addActionRowComponents(this.buildButtonRow(section.buttons));
     });
 
     if (panel.footer) {
@@ -102,6 +108,14 @@ export class OptRolePanelManager {
 
     const hasRole = member.roles.cache.has(role.id);
 
+    // Requirements only apply when adding; members can always remove the ping role.
+    if (!hasRole) {
+      const requirementError = getOptInRequirementError(member.roles.cache.keys(), role.id);
+      if (requirementError) {
+        return { ok: false, message: requirementError };
+      }
+    }
+
     try {
       if (hasRole) {
         await member.roles.remove(role, "Opt-in role panel");
@@ -134,16 +148,18 @@ export class OptRolePanelManager {
     }
   }
 
-  private buildRoleSection(button: OptRoleButton): SectionBuilder {
-    return new SectionBuilder()
-      .setButtonAccessory(
+  private buildButtonRow(
+    buttons: OptRoleButton[],
+  ): ActionRowBuilder<MessageActionRowComponentBuilder> {
+    return new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+      buttons.map((button) =>
         new ButtonBuilder()
           .setCustomId(optRoleButtonCustomId(button.roleId))
           .setStyle(ButtonStyle.Secondary)
           .setLabel(button.label)
           .setEmoji(button.emoji),
-      )
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(button.hint));
+      ),
+    );
   }
 }
 

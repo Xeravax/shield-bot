@@ -8,7 +8,7 @@ export const OPT_ROLE_BUTTON_PREFIX = "opt-role:";
 export const OPT_ROLE_BUTTON_PATTERN = /^opt-role:(\d+)$/;
 
 export const GOLDEN_COOKIE_DIVIDER =
-  "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬    <a:GOLDENCOOKIE:868564750001381378>    ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬";
+  "▬▬▬▬▬▬▬▬▬▬▬    <a:GOLDENCOOKIE:868564750001381378>    ▬▬▬▬▬▬▬▬▬▬▬";
 
 const CUSTOM_EMOJI_RE = /^<(a)?:([a-zA-Z0-9_]+):(\d+)>$/;
 const SNOWFLAKE_RE = /^\d{17,20}$/;
@@ -31,7 +31,10 @@ export type OptRoleButton = {
   roleId: string;
   label: string;
   emoji: OptRoleEmoji;
+  /** Short line shown above the button row (full width). */
   hint: string;
+  /** Member must hold all of these roles to *add* the opt-in role. */
+  requiredRoleIds?: string[];
 };
 
 export type OptRoleSection = {
@@ -76,6 +79,11 @@ const ROLE_EMT = "999860876062498827";
 const ROLE_TRU = "999860757770543184";
 const ROLE_STANDBY_ACTOR = "814562269039689778";
 
+/** Membership roles required before opting into certain ping roles. */
+export const ROLE_SHIELD_MEMBER = "813945539526787082";
+export const ROLE_EMT_MEMBER = "814558891651366947";
+export const ROLE_TRU_MEMBER = "814557238647324704";
+
 const EMOJI_VRC_ALERT: OptRoleEmoji = { id: "999877368216825936", name: "vrcAlert" };
 const EMOJI_VRC_INVITE: OptRoleEmoji = { id: "999877383605723196", name: "vrcInvite" };
 const EMOJI_STAR: OptRoleEmoji = { id: "862435339670126592", name: "1468star" };
@@ -92,8 +100,8 @@ export function formatEmojiMarkdown(emoji: OptRoleEmoji): string {
 }
 
 const ACTIVE_EVENT_CONTACT = [
-  "This can only be used outside of Scheduled Events. If you are looking to go out and patrol during an Active event, please get in contact with the current Dispatcher online at that time. They can be found in",
-  `<#${DISPATCHER_CHANNEL_A}> or <#${DISPATCHER_CHANNEL_B}> during Active Events!`,
+  "Outside of Scheduled Events only.",
+  `During Active Events, contact a Dispatcher in <#${DISPATCHER_CHANNEL_A}> or <#${DISPATCHER_CHANNEL_B}>.`,
 ].join(" ");
 
 export const OPT_ROLE_PRESETS: Record<OptRolePresetKey, OptRolePanel> = {
@@ -101,31 +109,34 @@ export const OPT_ROLE_PRESETS: Record<OptRolePresetKey, OptRolePanel> = {
     sections: [
       {
         body: [
-          `Here, you can opt in to get notified about <@&${ROLE_OFF_DUTY_EVENTS}> that occur within <#${EVENT_CHANNEL}>! These Events are prioritized for the community as a whole and not just members of SHIELD, hence, anyone can enjoy them!`,
+          `Opt in for <@&${ROLE_OFF_DUTY_EVENTS}> in <#${EVENT_CHANNEL}>.`,
+          "These Events are for the whole community — not just SHIELD members.",
           "",
-          "Off Duty Events are run by the members of The Event Hosts Team within the SHIELD Community!",
+          "Run by The Event Hosts Team within the SHIELD Community.",
         ].join("\n"),
         buttons: [
           {
             roleId: ROLE_OFF_DUTY_EVENTS,
             label: "Off Duty Events",
             emoji: EMOJI_VRC_ALERT,
-            hint: `${formatEmojiMarkdown(EMOJI_VRC_ALERT)} — Get notified when OFF Duty Events are occurring in <#${EVENT_CHANNEL}>!`,
+            hint: `${formatEmojiMarkdown(EMOJI_VRC_ALERT)} — Ping for Off Duty Events`,
           },
         ],
       },
       {
         body: [
-          `Here, you can opt in to get notified about <@&${ROLE_OFF_DUTY_VR}> that occur within <#${EVENT_CHANNEL}>! These events are prioritized for the community as a whole and not just members of SHIELD. These particular Events are based in VR, so games like VRChat, Pavlov, Elite Dangerous, Population:One and many more are the main focus!`,
+          `Opt in for <@&${ROLE_OFF_DUTY_VR}> in <#${EVENT_CHANNEL}>.`,
+          "VR-focused (VRChat, Pavlov, Elite Dangerous, Population: One, and more).",
+          "Open to the whole community — not just SHIELD members.",
           "",
-          "Off Duty VR Events are run by the members of The Event Hosts Team within the SHIELD Community",
+          "Run by The Event Hosts Team within the SHIELD Community.",
         ].join("\n"),
         buttons: [
           {
             roleId: ROLE_OFF_DUTY_VR,
             label: "Off Duty VR",
             emoji: EMOJI_VRC_INVITE,
-            hint: `${formatEmojiMarkdown(EMOJI_VRC_INVITE)} — Get notified when OFF Duty VR Events are occurring in <#${EVENT_CHANNEL}>!`,
+            hint: `${formatEmojiMarkdown(EMOJI_VRC_INVITE)} — Ping for Off Duty VR Events`,
           },
         ],
       },
@@ -136,66 +147,63 @@ export const OPT_ROLE_PRESETS: Record<OptRolePresetKey, OptRolePanel> = {
       {
         body: [
           "# __Find A Group__",
-          `Here, you can opt in to be notified when somebody is looking for a Patrol Partner outside of Scheduled Events! When you, or another Deputy uses <#${FIND_A_GROUP_CHANNEL}>, you can ping the <@&${ROLE_FIND_A_GROUP}> role to notify other Deputies that you are seeking to patrol!`,
+          `Get notified when someone is looking for a Patrol Partner in <#${FIND_A_GROUP_CHANNEL}> (ping <@&${ROLE_FIND_A_GROUP}>).`,
           "",
           ACTIVE_EVENT_CONTACT,
-          "",
-          `When you wish to go patrolling, please use the <#${FIND_A_GROUP_CHANNEL}> channel and ping the <@&${ROLE_FIND_A_GROUP}> role!`,
         ].join("\n"),
         buttons: [
           {
             roleId: ROLE_FIND_A_GROUP,
             label: "Find A Group",
             emoji: EMOJI_STAR,
-            hint: `${formatEmojiMarkdown(EMOJI_STAR)} — Get notified when someone is looking to go out and Patrol`,
+            hint: `${formatEmojiMarkdown(EMOJI_STAR)} — Looking for a patrol partner`,
+            requiredRoleIds: [ROLE_SHIELD_MEMBER],
           },
         ],
       },
       {
         body: [
           "# __Standby Deputies, TRU, EMT__",
-          `Here, you can be notified when Deputies are requesting backup to one of 3 different backups. <@&${ROLE_STANDBY_DEPUTIES}> <@&${ROLE_EMT}> or <@&${ROLE_TRU}>`,
-          "",
-          `When requesting backup, use the <#${BACKUP_CHANNEL}> channel.`,
+          `Backup pings: <@&${ROLE_STANDBY_DEPUTIES}>, <@&${ROLE_EMT}>, or <@&${ROLE_TRU}> in <#${BACKUP_CHANNEL}>.`,
           "",
           ACTIVE_EVENT_CONTACT,
           "",
-          "If you are responding to any backup call, let the Requester know that you are responding to the call! Please refrain from exceeding 4 backup members to one call, and that the group as a whole does not exceed 8 members to one VC.",
+          "Tell the requester you are responding. Max 4 backup members per call, and max 8 in the VC total.",
         ].join("\n"),
         buttons: [
           {
             roleId: ROLE_STANDBY_DEPUTIES,
             label: "Deputies",
             emoji: EMOJI_SHIELD,
-            hint: `${formatEmojiMarkdown(EMOJI_SHIELD)} — Get notified when a group needs Additional Deputies`,
+            hint: `${formatEmojiMarkdown(EMOJI_SHIELD)} — Additional Deputies`,
           },
           {
             roleId: ROLE_EMT,
             label: "EMT",
             emoji: EMOJI_EMT,
-            hint: `${formatEmojiMarkdown(EMOJI_EMT)} — Get notified when a group needs EMT Support`,
+            hint: `${formatEmojiMarkdown(EMOJI_EMT)} — EMT Support`,
+            requiredRoleIds: [ROLE_EMT_MEMBER],
           },
           {
             roleId: ROLE_TRU,
             label: "TRU",
             emoji: EMOJI_TRU,
-            hint: `${formatEmojiMarkdown(EMOJI_TRU)} — Get notified when a group needs TRU Backup`,
+            hint: `${formatEmojiMarkdown(EMOJI_TRU)} — TRU Backup`,
+            requiredRoleIds: [ROLE_TRU_MEMBER],
           },
         ],
       },
       {
         body: [
           "# __Standby Actor__",
-          `Here, you can opt-in to be an assistant to the Media Team as a <@&${ROLE_STANDBY_ACTOR}>.`,
-          "",
-          "Standby Actors are members of the Community who on their own free time have the option to assist the Media Team in a multitude of projects, ranging from Photoshoots, Live Filming, etc.",
+          `Assist the Media Team as <@&${ROLE_STANDBY_ACTOR}> (photoshoots, live filming, etc.).`,
         ].join("\n"),
         buttons: [
           {
             roleId: ROLE_STANDBY_ACTOR,
             label: "Standby Actor",
             emoji: EMOJI_CAMERA,
-            hint: `${formatEmojiMarkdown(EMOJI_CAMERA)} — Get notified when the Media Team needs Standby Actors`,
+            hint: `${formatEmojiMarkdown(EMOJI_CAMERA)} — Media Team needs actors`,
           },
         ],
       },
@@ -278,4 +286,40 @@ export function getOptRoleEligibilityError(role: OptRoleEligibilityInput): strin
   }
 
   return null;
+}
+
+/** Required membership roles to *add* a preset opt-in role (removal is always allowed). */
+export function getRequiredRoleIdsForOptIn(optInRoleId: string): string[] {
+  for (const panel of Object.values(OPT_ROLE_PRESETS)) {
+    for (const section of panel.sections) {
+      for (const button of section.buttons) {
+        if (button.roleId === optInRoleId) {
+          return button.requiredRoleIds ?? [];
+        }
+      }
+    }
+  }
+  return [];
+}
+
+export function getOptInRequirementError(
+  memberRoleIds: Iterable<string>,
+  optInRoleId: string,
+): string | null {
+  const required = getRequiredRoleIdsForOptIn(optInRoleId);
+  if (required.length === 0) {
+    return null;
+  }
+
+  const owned = new Set(memberRoleIds);
+  const missing = required.filter((id) => !owned.has(id));
+  if (missing.length === 0) {
+    return null;
+  }
+
+  if (missing.length === 1) {
+    return `❌ You need <@&${missing[0]}> to opt into this role.`;
+  }
+
+  return `❌ You need ${missing.map((id) => `<@&${id}>`).join(" and ")} to opt into this role.`;
 }

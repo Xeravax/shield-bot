@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import { PermissionFlagsBits, PermissionsBitField } from "discord.js";
 import {
   OPT_ROLE_PRESETS,
+  ROLE_EMT_MEMBER,
+  ROLE_SHIELD_MEMBER,
+  ROLE_TRU_MEMBER,
   SENSITIVE_OPT_ROLE_PERMISSIONS,
   formatEmojiMarkdown,
+  getOptInRequirementError,
   getOptRoleEligibilityError,
+  getRequiredRoleIdsForOptIn,
   optRoleButtonCustomId,
   parseOptRoleButtonCustomId,
   parseOptRoleEmoji,
@@ -116,6 +121,29 @@ describe("OPT_ROLE_PRESETS", () => {
       "<:TRU:830948641853800509>",
       "🎥",
     ]);
+  });
+
+  it("requires Shield / EMT / TRU membership for the restricted opt-ins", () => {
+    expect(getRequiredRoleIdsForOptIn("999860568431271968")).toEqual([ROLE_SHIELD_MEMBER]);
+    expect(getRequiredRoleIdsForOptIn("999860876062498827")).toEqual([ROLE_EMT_MEMBER]);
+    expect(getRequiredRoleIdsForOptIn("999860757770543184")).toEqual([ROLE_TRU_MEMBER]);
+    expect(getRequiredRoleIdsForOptIn("814562269039689778")).toEqual([]);
+    expect(getRequiredRoleIdsForOptIn("999871775993233488")).toEqual([]);
+  });
+});
+
+describe("getOptInRequirementError", () => {
+  it("allows unrestricted roles and members who hold the required role", () => {
+    expect(getOptInRequirementError([], "999871775993233488")).toBeNull();
+    expect(
+      getOptInRequirementError([ROLE_SHIELD_MEMBER], "999860568431271968"),
+    ).toBeNull();
+  });
+
+  it("blocks Find A Group / EMT / TRU without membership", () => {
+    expect(getOptInRequirementError([], "999860568431271968")).toContain(ROLE_SHIELD_MEMBER);
+    expect(getOptInRequirementError([], "999860876062498827")).toContain(ROLE_EMT_MEMBER);
+    expect(getOptInRequirementError([], "999860757770543184")).toContain(ROLE_TRU_MEMBER);
   });
 });
 
