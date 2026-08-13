@@ -18,6 +18,8 @@ export const SENSITIVE_OPT_ROLE_PERMISSIONS =
   PermissionFlagsBits.ManageGuild |
   PermissionFlagsBits.ManageRoles |
   PermissionFlagsBits.ManageChannels |
+  PermissionFlagsBits.ManageMessages |
+  PermissionFlagsBits.MentionEveryone |
   PermissionFlagsBits.KickMembers |
   PermissionFlagsBits.BanMembers |
   PermissionFlagsBits.ModerateMembers |

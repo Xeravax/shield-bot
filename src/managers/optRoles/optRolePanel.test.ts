@@ -150,4 +150,17 @@ describe("getOptRoleEligibilityError", () => {
       ),
     ).toMatch(/elevated permissions/);
   });
+
+  it("rejects ManageMessages and MentionEveryone", () => {
+    expect(
+      getOptRoleEligibilityError(
+        eligibilityRole({ permissionsBits: PermissionFlagsBits.ManageMessages }),
+      ),
+    ).toMatch(/elevated permissions/);
+    expect(
+      getOptRoleEligibilityError(
+        eligibilityRole({ permissionsBits: PermissionFlagsBits.MentionEveryone }),
+      ),
+    ).toMatch(/elevated permissions/);
+  });
 });
