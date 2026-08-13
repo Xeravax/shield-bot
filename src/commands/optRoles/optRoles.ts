@@ -19,12 +19,13 @@ import { GuildGuard } from "../../utility/guards.js";
 import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { patrolTimer } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
+import { optRolePanelManager } from "../../managers/optRoles/optRolePanelManager.js";
 import {
   OPT_ROLE_PRESET_CHOICES,
   buildCustomOptRolePanel,
+  getOptRoleEligibilityError,
   getOptRolePreset,
   parseOptRoleEmoji,
-  postOptRolePanel,
   type OptRoleButton,
   type OptRolePresetKey,
 } from "../../managers/optRoles/optRolePanel.js";
@@ -78,6 +79,14 @@ function collectCustomButtons(slots: RoleSlot[]): { ok: true; buttons: OptRoleBu
       return {
         ok: false,
         message: `❌ Label ${index} must be between 1 and 80 characters.`,
+      };
+    }
+
+    const eligibilityError = getOptRoleEligibilityError(slot.role);
+    if (eligibilityError) {
+      return {
+        ok: false,
+        message: `❌ Role ${index} (${slot.role.name}) cannot be used: ${eligibilityError.replace(/^❌\s*/, "")}`,
       };
     }
 
@@ -157,7 +166,7 @@ export class OptRolesCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-      await postOptRolePanel(target, panel);
+      await optRolePanelManager.post(target, panel);
 
       try {
         await patrolTimer.logCommandUsage(
@@ -358,7 +367,7 @@ export class OptRolesCommands {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-      await postOptRolePanel(
+      await optRolePanelManager.post(
         target,
         buildCustomOptRolePanel(description, collected.buttons),
       );

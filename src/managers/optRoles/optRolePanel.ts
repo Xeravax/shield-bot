@@ -1,32 +1,27 @@
 import {
-  ButtonBuilder,
-  ButtonStyle,
-  Colors,
-  ContainerBuilder,
-  DiscordAPIError,
-  Guild,
-  GuildMember,
-  MessageFlags,
   PermissionFlagsBits,
-  RESTJSONErrorCodes,
-  SectionBuilder,
-  SeparatorBuilder,
-  SeparatorSpacingSize,
-  TextDisplayBuilder,
   type APIMessageComponentEmoji,
-  type SendableChannels,
+  type PermissionsBitField,
 } from "discord.js";
-import { loggers } from "../../utility/logger.js";
 
 export const OPT_ROLE_BUTTON_PREFIX = "opt-role:";
 export const OPT_ROLE_BUTTON_PATTERN = /^opt-role:(\d+)$/;
-export const OPT_ROLE_PANEL_MESSAGE_FLAGS = MessageFlags.IsComponentsV2;
 
 export const GOLDEN_COOKIE_DIVIDER =
   "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬    <a:GOLDENCOOKIE:868564750001381378>    ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬";
 
-const CUSTOM_EMOJI_RE = /<(a)?:([a-zA-Z0-9_]+):(\d+)>/;
+const CUSTOM_EMOJI_RE = /^<(a)?:([a-zA-Z0-9_]+):(\d+)>$/;
 const SNOWFLAKE_RE = /^\d{17,20}$/;
+
+export const SENSITIVE_OPT_ROLE_PERMISSIONS =
+  PermissionFlagsBits.Administrator |
+  PermissionFlagsBits.ManageGuild |
+  PermissionFlagsBits.ManageRoles |
+  PermissionFlagsBits.ManageChannels |
+  PermissionFlagsBits.KickMembers |
+  PermissionFlagsBits.BanMembers |
+  PermissionFlagsBits.ModerateMembers |
+  PermissionFlagsBits.ManageWebhooks;
 
 export type OptRoleEmoji = APIMessageComponentEmoji;
 
@@ -48,6 +43,17 @@ export type OptRolePanel = {
 };
 
 export type OptRolePresetKey = "event-opt-in" | "opt-in";
+
+export type OptRoleEligibilityInput = {
+  id: string;
+  managed: boolean;
+  guild: { id: string };
+  permissions: Pick<PermissionsBitField, "any">;
+};
+
+export type ToggleOptRoleResult =
+  | { ok: true; added: boolean; roleName: string }
+  | { ok: false; message: string };
 
 export const OPT_ROLE_PRESET_CHOICES: { name: string; value: OptRolePresetKey }[] = [
   { name: "Event opt-in roles", value: "event-opt-in" },
@@ -256,132 +262,18 @@ export function buildCustomOptRolePanel(
   };
 }
 
-export function buildOptRolePanel(panel: OptRolePanel): ContainerBuilder {
-  const container = new ContainerBuilder().setAccentColor(Colors.Gold);
-
-  panel.sections.forEach((section, index) => {
-    if (index > 0) {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(GOLDEN_COOKIE_DIVIDER),
-      );
-    }
-
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(section.body));
-
-    for (const button of section.buttons) {
-      container.addSectionComponents(buildRoleSection(button));
-    }
-  });
-
-  if (panel.footer) {
-    container.addSeparatorComponents(
-      new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
-    );
-    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(panel.footer));
-  }
-
-  return container;
-}
-
-function buildRoleSection(button: OptRoleButton): SectionBuilder {
-  return new SectionBuilder()
-    .setButtonAccessory(
-      new ButtonBuilder()
-        .setCustomId(optRoleButtonCustomId(button.roleId))
-        .setStyle(ButtonStyle.Secondary)
-        .setLabel(button.label)
-        .setEmoji(button.emoji),
-    )
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(button.hint));
-}
-
-export async function postOptRolePanel(
-  channel: SendableChannels,
-  panel: OptRolePanel,
-): Promise<void> {
-  await channel.send({
-    components: [buildOptRolePanel(panel)],
-    flags: OPT_ROLE_PANEL_MESSAGE_FLAGS,
-    allowedMentions: { parse: [] },
-  });
-}
-
-export type ToggleOptRoleResult =
-  | { ok: true; added: boolean; roleName: string }
-  | { ok: false; message: string };
-
-export async function toggleOptRole(
-  guild: Guild,
-  member: GuildMember,
-  roleId: string,
-): Promise<ToggleOptRoleResult> {
-  const role =
-    guild.roles.cache.get(roleId) ?? (await guild.roles.fetch(roleId).catch(() => null));
-  if (!role) {
-    return { ok: false, message: "❌ That opt-in role no longer exists." };
-  }
-
-  if (role.id === guild.id) {
-    return { ok: false, message: "❌ The @everyone role cannot be assigned." };
+export function getOptRoleEligibilityError(role: OptRoleEligibilityInput): string | null {
+  if (role.id === role.guild.id) {
+    return "❌ The @everyone role cannot be assigned.";
   }
 
   if (role.managed) {
-    return {
-      ok: false,
-      message: "❌ That role is managed by an integration and cannot be assigned.",
-    };
+    return "❌ That role is managed by an integration and cannot be assigned.";
   }
 
-  const me = guild.members.me ?? (await guild.members.fetchMe().catch(() => null));
-  if (!me) {
-    return { ok: false, message: "❌ I could not verify my permissions in this server." };
+  if (role.permissions.any(SENSITIVE_OPT_ROLE_PERMISSIONS)) {
+    return "❌ That role has elevated permissions and cannot be used as an opt-in role.";
   }
 
-  if (!me.permissions.has(PermissionFlagsBits.ManageRoles)) {
-    return {
-      ok: false,
-      message: "❌ I need the **Manage Roles** permission to assign opt-in roles.",
-    };
-  }
-
-  if (role.position >= me.roles.highest.position) {
-    return {
-      ok: false,
-      message:
-        "❌ That role is higher than or equal to my highest role. Move my role above it, then try again.",
-    };
-  }
-
-  const hasRole = member.roles.cache.has(role.id);
-
-  try {
-    if (hasRole) {
-      await member.roles.remove(role, "Opt-in role panel");
-      return { ok: true, added: false, roleName: role.name };
-    }
-
-    await member.roles.add(role, "Opt-in role panel");
-    return { ok: true, added: true, roleName: role.name };
-  } catch (error) {
-    loggers.bot.error("Failed to toggle opt-in role", error, {
-      guildId: guild.id,
-      userId: member.id,
-      roleId,
-    });
-
-    if (
-      error instanceof DiscordAPIError &&
-      error.code === RESTJSONErrorCodes.MissingPermissions
-    ) {
-      return {
-        ok: false,
-        message: "❌ I don't have permission to update that role.",
-      };
-    }
-
-    return {
-      ok: false,
-      message: "❌ Failed to update your roles. Please try again in a moment.",
-    };
-  }
+  return null;
 }

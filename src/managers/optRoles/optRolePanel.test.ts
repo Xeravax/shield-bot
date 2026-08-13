@@ -1,11 +1,30 @@
 import { describe, expect, it } from "vitest";
+import { PermissionFlagsBits, PermissionsBitField } from "discord.js";
 import {
   OPT_ROLE_PRESETS,
+  SENSITIVE_OPT_ROLE_PERMISSIONS,
   formatEmojiMarkdown,
+  getOptRoleEligibilityError,
   optRoleButtonCustomId,
   parseOptRoleButtonCustomId,
   parseOptRoleEmoji,
+  type OptRoleEligibilityInput,
 } from "./optRolePanel.js";
+
+function eligibilityRole(
+  overrides: Partial<OptRoleEligibilityInput> & {
+    permissionsBits?: bigint;
+  } = {},
+): OptRoleEligibilityInput {
+  const { permissionsBits, ...rest } = overrides;
+  return {
+    id: "999871775993233488",
+    managed: false,
+    guild: { id: "1" },
+    permissions: new PermissionsBitField(permissionsBits ?? 0n),
+    ...rest,
+  };
+}
 
 describe("parseOptRoleEmoji", () => {
   it("parses static custom emojis", () => {
@@ -41,6 +60,12 @@ describe("parseOptRoleEmoji", () => {
     expect(parseOptRoleEmoji("   ")).toBeNull();
     expect(parseOptRoleEmoji("<:missingid>")).toBeNull();
     expect(parseOptRoleEmoji("not an emoji at all")).toBeNull();
+  });
+
+  it("rejects custom emojis with leading or trailing text", () => {
+    expect(parseOptRoleEmoji("<:vrcAlert:999877368216825936> trailing")).toBeNull();
+    expect(parseOptRoleEmoji("leading <:vrcAlert:999877368216825936>")).toBeNull();
+    expect(parseOptRoleEmoji("please use <:vrcAlert:999877368216825936> thanks")).toBeNull();
   });
 });
 
@@ -91,5 +116,38 @@ describe("OPT_ROLE_PRESETS", () => {
       "<:TRU:830948641853800509>",
       "🎥",
     ]);
+  });
+});
+
+describe("getOptRoleEligibilityError", () => {
+  it("allows a ping role with no elevated permissions", () => {
+    expect(getOptRoleEligibilityError(eligibilityRole())).toBeNull();
+  });
+
+  it("rejects @everyone, managed roles, and Administrator", () => {
+    expect(
+      getOptRoleEligibilityError(eligibilityRole({ id: "1", guild: { id: "1" } })),
+    ).toMatch(/@everyone/);
+    expect(getOptRoleEligibilityError(eligibilityRole({ managed: true }))).toMatch(
+      /managed/,
+    );
+    expect(
+      getOptRoleEligibilityError(
+        eligibilityRole({ permissionsBits: PermissionFlagsBits.Administrator }),
+      ),
+    ).toMatch(/elevated permissions/);
+  });
+
+  it("rejects other sensitive permissions used by the toggle path", () => {
+    expect(
+      getOptRoleEligibilityError(
+        eligibilityRole({ permissionsBits: PermissionFlagsBits.ManageRoles }),
+      ),
+    ).toMatch(/elevated permissions/);
+    expect(
+      getOptRoleEligibilityError(
+        eligibilityRole({ permissionsBits: SENSITIVE_OPT_ROLE_PERMISSIONS }),
+      ),
+    ).toMatch(/elevated permissions/);
   });
 });
