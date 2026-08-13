@@ -132,6 +132,12 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "phantomcompiler.command.panel", description: "/phantomcompiler panel — post the phantom compiler panel" },
     { node: "phantomcompiler.command.add", description: "/phantomcompiler add — enroll another member" },
   ],
+  "opt-roles": [
+    {
+      node: "opt-roles.command.post",
+      description: "/opt-roles post|custom — post button-based opt-in role panels",
+    },
+  ],
   user: [
     { node: "user.command.list", description: "/user list — list verified users" },
     { node: "user.command.role", description: "/user role — user role operations" },
