@@ -361,7 +361,7 @@ export class VRChatAttendanceAutofillCommand {
       // Build options with Discord user mentions
       const options = await Promise.all(
         activeMembers.map(async (member: { userId: number; isLead: boolean; user: { discordId: string } }) => {
-          let displayName = member.user.discordId;
+          let displayName: string;
 
           try {
             const guildMember = await interaction.guild?.members.fetch(

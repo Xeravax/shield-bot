@@ -275,7 +275,7 @@ export class ServerStatsManager {
     value: number,
   ): Promise<void> {
     const desired = formatServerStatsChannelName(kind, value);
-    let channel: GuildChannel | null = null;
+    let channel: GuildChannel | null;
     try {
       const fetched = await guild.channels.fetch(channelId);
       channel = fetched as GuildChannel | null;

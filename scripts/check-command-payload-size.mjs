@@ -3,7 +3,7 @@
  * Validates Discord slash command payload sizes per top-level command.
  * Discord limits each top-level command tree to 8000 characters total.
  */
-import { dirname, importx } from "@discordx/importer";
+import { importx } from "@discordx/importer";
 import { MetadataStorage } from "discordx";
 import fs from "fs";
 import path from "path";

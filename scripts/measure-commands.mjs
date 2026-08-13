@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { dirname as importerDirname, importx } from "@discordx/importer";
+import { importx } from "@discordx/importer";
 import { fileURLToPath } from "url";
 import { Client } from "discordx";
 import { GatewayIntentBits } from "discord.js";

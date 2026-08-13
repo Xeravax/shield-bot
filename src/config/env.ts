@@ -121,7 +121,7 @@ export function validateEnv(): Env {
         errorMessage += `Invalid variables:\n${invalidVars.map((v: string) => `  - ${v}`).join("\n")}\n`;
       }
 
-      throw new Error(errorMessage);
+      throw new Error(errorMessage, { cause: error });
     }
     throw error;
   }

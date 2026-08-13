@@ -171,21 +171,32 @@ export class SettingsPatrolPromotionCommands {
       : "Not set";
     const guild = interaction.guild;
     const rules = patrolTimer.getEffectivePromotionRules(settings);
-    let rulesBlock = "";
-    if (rules && rules.length > 0) {
-      rulesBlock = "\n**Rules:**\n" + rules.map((r, i) => {
-        const cooldown = r.cooldownHours !== null && r.cooldownHours !== undefined ? `, cooldown ${r.cooldownHours}h` : "";
-        const declined =
-          r.declinedCooldownHours !== undefined && r.declinedCooldownHours !== null
-            ? `, declined ${r.declinedCooldownHours}h`
-            : `, declined ${DEFAULT_DECLINED_COOLDOWN_HOURS}h (default)`;
-        const currentName = scrubRoleDisplay(guild?.roles.cache.get(r.currentRankRoleId)?.name ?? r.currentRankRoleId);
-        const nextLabel = scrubRoleDisplay(guild?.roles.cache.get(r.nextRankRoleId)?.name ?? r.nextRankRoleId);
-        return `${i + 1}. ${currentName} → ${nextLabel} at ${r.requiredHours}h${cooldown}${declined}`;
-      }).join("\n");
-    } else {
-      rulesBlock = "\n**Rules:** No rules configured. Use add-rule.";
-    }
+    const rulesBlock =
+      rules && rules.length > 0
+        ? "\n**Rules:**\n" +
+          rules
+            .map((r, i) => {
+              const cooldown =
+                r.cooldownHours !== null && r.cooldownHours !== undefined
+                  ? `, cooldown ${r.cooldownHours}h`
+                  : "";
+              const declined =
+                r.declinedCooldownHours !== undefined &&
+                r.declinedCooldownHours !== null
+                  ? `, declined ${r.declinedCooldownHours}h`
+                  : `, declined ${DEFAULT_DECLINED_COOLDOWN_HOURS}h (default)`;
+              const currentName = scrubRoleDisplay(
+                guild?.roles.cache.get(r.currentRankRoleId)?.name ??
+                  r.currentRankRoleId,
+              );
+              const nextLabel = scrubRoleDisplay(
+                guild?.roles.cache.get(r.nextRankRoleId)?.name ??
+                  r.nextRankRoleId,
+              );
+              return `${i + 1}. ${currentName} → ${nextLabel} at ${r.requiredHours}h${cooldown}${declined}`;
+            })
+            .join("\n")
+        : "\n**Rules:** No rules configured. Use add-rule.";
 
     const message = `**Promotion Settings**
 **Promotion channel:** ${channel}
