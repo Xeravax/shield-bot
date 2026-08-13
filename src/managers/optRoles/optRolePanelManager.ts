@@ -2,7 +2,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  Colors,
   ContainerBuilder,
   DiscordAPIError,
   Guild,
@@ -32,7 +31,7 @@ import {
  */
 export class OptRolePanelManager {
   build(panel: OptRolePanel): ContainerBuilder {
-    const container = new ContainerBuilder().setAccentColor(Colors.Gold);
+    const container = new ContainerBuilder().setAccentColor(0x5865f2);
 
     panel.sections.forEach((section, index) => {
       if (index > 0) {
