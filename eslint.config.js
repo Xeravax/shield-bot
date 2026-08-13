@@ -5,7 +5,7 @@ import tsparser from "@typescript-eslint/parser";
 export default [
   js.configs.recommended,
   {
-    files: ["**/*.js"],
+    files: ["**/*.js", "**/*.mjs"],
     languageOptions: {
       globals: {
         console: "readonly",
@@ -16,6 +16,9 @@ export default [
         setInterval: "readonly",
         clearInterval: "readonly",
         fetch: "readonly",
+        URL: "readonly",
+        URLSearchParams: "readonly",
+        structuredClone: "readonly",
         NodeJS: "readonly",
       },
     },

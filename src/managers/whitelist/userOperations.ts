@@ -128,6 +128,7 @@ export class WhitelistUserOperations {
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(
         `Failed to add user by VRChat username: ${errorMessage}`,
+        { cause: error },
       );
     }
   }

@@ -49,7 +49,7 @@ export async function encrypt(plaintext: string, encryptionKey: string): Promise
     return `${salt.toString("base64")}:${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted}`;
   } catch (error) {
     loggers.bot.error("Encryption failed", error);
-    throw new Error("Failed to encrypt value");
+    throw new Error("Failed to encrypt value", { cause: error });
   }
 }
 
@@ -104,7 +104,9 @@ export async function decrypt(ciphertext: string, encryptionKey: string): Promis
     return decrypted;
   } catch (error) {
     loggers.bot.error("Decryption failed", error);
-    throw new Error("Failed to decrypt value - invalid key or corrupted data");
+    throw new Error("Failed to decrypt value - invalid key or corrupted data", {
+      cause: error,
+    });
   }
 }
 

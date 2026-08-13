@@ -68,6 +68,7 @@ export async function createInstance({
     if (error instanceof RequestError) {
       throw new Error(
         `Failed to create instance: ${error.statusCode} ${error.message}`,
+        { cause: error },
       );
     }
     throw error;
@@ -90,6 +91,7 @@ export async function inviteUser(
     if (error instanceof RequestError) {
       throw new Error(
         `Failed to invite user: ${error.statusCode} ${error.message}`,
+        { cause: error },
       );
     }
     throw error;
@@ -122,6 +124,7 @@ export async function getInstanceInfoByShortName(
     if (error instanceof RequestError) {
       throw new Error(
         `Failed to fetch instance info by shortName: ${error.statusCode} ${error.message}`,
+        { cause: error },
       );
     }
     throw error;

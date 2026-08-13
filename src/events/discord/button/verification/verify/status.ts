@@ -89,15 +89,12 @@ export class VRChatStatusVerifyButtonHandler {
       return;
     }
     // Fetch the VRChat user info
-    let userInfo: Awaited<ReturnType<typeof getUserById>> | null = null;
-    try {
-      userInfo = await getUserById(vrcUserId);
-    } catch (e) {
+    const userInfo = await getUserById(vrcUserId).catch((e) => {
       loggers.vrchat.error("Failed to fetch user info for verification", e, {
         vrcUserId,
       });
-      userInfo = null;
-    }
+      return null;
+    });
     const userTyped = userInfo as { statusDescription?: string } | null;
     if (!userTyped || !userTyped.statusDescription) {
       const embed = new EmbedBuilder()

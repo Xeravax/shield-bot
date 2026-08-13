@@ -79,7 +79,7 @@ export class VRChatGroupRoleSyncButtonHandler {
       await interaction.editReply({ embeds: [embed] });
     } else {
       // Build error message based on error type
-      let errorMessage = "";
+      let errorMessage: string;
       const title = "❌ Role Sync Failed";
 
       switch (result.errorType) {

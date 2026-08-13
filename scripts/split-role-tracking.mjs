@@ -6,19 +6,6 @@ const settingsPath = path.join(root, "settings/roleTracking/roleTrackingSettings
 const warningsPath = path.join(root, "settings/roleTracking/roleTrackingWarningCommands.ts");
 const actionsPath = path.join(root, "roleTracking/roleTrackingActions.ts");
 
-const ACTION_METHODS = new Set([
-  "manage",
-  "resetTimer",
-  "syncRoleMembers",
-  "cleanup",
-  "listUsers",
-  "viewConditions",
-  "viewStaffPing",
-  "queryPatrolTime",
-  "listWarnings",
-  "listWarningHistory",
-]);
-
 const ACTION_SLASH_NAMES = new Set([
   "manage",
   "reset-timer",
@@ -54,7 +41,7 @@ function renameConfig(content) {
 
 function extractMethods(classBody, slashNames) {
   const extracted = [];
-  const regex = /  @Slash\(\{[\s\S]*?name: "([^"]+)"[\s\S]*?\}\)\n  async (\w+)\(/g;
+  const regex = / {2}@Slash\(\{[\s\S]*?name: "([^"]+)"[\s\S]*?\}\)\n {2}async (\w+)\(/g;
   let match;
   const matches = [];
   while ((match = regex.exec(classBody)) !== null) {

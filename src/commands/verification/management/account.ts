@@ -55,12 +55,9 @@ export class VRChatVerifyAccountCommand {
     }
 
     // Fetch user details from VRChat API (resolves username to ID if needed)
-    let userInfo: VRChatUser | null = null;
-    try {
-      userInfo = await getUserById(userId);
-    } catch {
-      userInfo = null;
-    }
+    const userInfo: VRChatUser | null = await getUserById(userId).catch(
+      () => null,
+    );
     if (!userInfo || !userInfo.id) {
       await interaction.reply({
         content: `We couldn't find that VRChat user. You can type your **VRChat username** or use the autocomplete: type a few letters and select your account from the list.`,
