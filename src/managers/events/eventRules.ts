@@ -9,10 +9,11 @@ import {
 } from "./eventDraftDefaults.js";
 import {
   buildPlanningMessageUrl,
+  formatEventWeekRangeLabel,
   formatSchedulableWeekRangeLabel,
+  getCurrentEventWeekRange,
   getEventWeekRangeForDate,
   getSchedulableEventWeekRange,
-  isWithinSchedulableEventWeek,
 } from "./eventWeek.js";
 import { isDurationAllowedForDuty, defaultDurationMinutes } from "./eventType.js";
 
@@ -37,6 +38,8 @@ export interface ValidateEventInput {
   guild?: Guild | null;
   durationMinutes?: number;
   planningChannelId?: string | null;
+  /** Exported current-week edits may stay in this week instead of the next schedulable week. */
+  allowCurrentEventWeek?: boolean;
 }
 
 function formatQueuedEventLink(
@@ -134,6 +137,7 @@ export async function validateEventRules(
     guild,
     durationMinutes,
     planningChannelId,
+    allowCurrentEventWeek,
   } = input;
 
   if (isDraftPlaceholderTitle(title)) {
@@ -199,22 +203,31 @@ export async function validateEventRules(
   }
 
   const schedulableWeek = getSchedulableEventWeekRange();
-  const startInWindow = isWithinSchedulableEventWeek(startTime);
-  const endInWindow = newEndMs <= schedulableWeek.end.getTime();
+  const allowedWeek = allowCurrentEventWeek
+    ? getCurrentEventWeekRange()
+    : schedulableWeek;
+  const startInWindow =
+    startTime.getTime() >= allowedWeek.start.getTime() &&
+    startTime.getTime() < allowedWeek.end.getTime();
+  const endInWindow = newEndMs <= allowedWeek.end.getTime();
 
   if (!startInWindow || !endInWindow) {
     results.push({
       id: "scheduling-window",
       label: "Scheduling window",
       severity: "fail",
-      message: `Events can only be scheduled for ${formatSchedulableWeekRangeLabel()} (Tuesday–Sunday). On Mondays you may plan the current week; otherwise only the next week.`,
+      message: allowCurrentEventWeek
+        ? `This exported event must remain in the current event week (${formatEventWeekRangeLabel(allowedWeek)}).`
+        : `Events can only be scheduled for ${formatSchedulableWeekRangeLabel()} (Tuesday–Sunday). On Mondays you may plan the current week; otherwise only the next week.`,
     });
   } else {
     results.push({
       id: "scheduling-window",
       label: "Scheduling window",
       severity: "pass",
-      message: `Event falls within the allowed scheduling window (${formatSchedulableWeekRangeLabel()}).`,
+      message: allowCurrentEventWeek
+        ? `Event remains in the current event week (${formatEventWeekRangeLabel(allowedWeek)}).`
+        : `Event falls within the allowed scheduling window (${formatSchedulableWeekRangeLabel()}).`,
     });
   }
 

@@ -7,10 +7,7 @@ import {
   getTimezoneDateParts,
   timezoneLocalToUtc,
 } from "../../utility/estTime.js";
-import {
-  getSchedulableEventWeekRange,
-  isWithinSchedulableEventWeek,
-} from "./eventWeek.js";
+import { getSchedulableEventWeekRange } from "./eventWeek.js";
 
 const MAX_AUTOCOMPLETE = 25;
 
@@ -19,6 +16,18 @@ const DISCORD_TS_RE = /<t:(\d+)(?::[tTdDfFR])?>/;
 export interface EventTimeParseOptions {
   refDate?: Date;
   timezone?: string;
+  /**
+   * Week to snap weekday-only / out-of-window parses into.
+   * Defaults to the schedulable planning week (next week Tue–Sun).
+   * Pass the current event week when editing an already-exported event.
+   * Ignored when `enforceWeek` is false (force).
+   */
+  snapIntoWeek?: { start: Date; end: Date };
+  /**
+   * When false (force), keep chrono's date instead of snapping into a planning week.
+   * Defaults to true.
+   */
+  enforceWeek?: boolean;
 }
 
 function resolveTimezone(timezone?: string): string {
@@ -45,38 +54,40 @@ function wallTimeFromChrono(start: chrono.ParsedComponents, timezone: string): P
   };
 }
 
+function isWithinWeek(
+  date: Date,
+  week: { start: Date; end: Date },
+): boolean {
+  const t = date.getTime();
+  return t >= week.start.getTime() && t < week.end.getTime();
+}
+
 /**
- * Snap natural-language parses into the schedulable event week (Tue–Sun).
+ * Snap natural-language parses into the target event week (Tue–Sun).
  * chrono's forwardDate picks the nearest future weekday, which is often the
- * current week - but Tue–Sun planning only allows the next event week.
+ * current week - but new planning on Tue–Sun only allows the next event week.
+ * Exported current-week edits pass that week so the time is not jumped forward.
+ * Force (`enforceWeek: false`) keeps the parsed date as-is.
  */
 function ensureForwardDate(
   parsed: Date,
   refDate: Date,
   timezone: string,
   wallTime: ParsedWallTime,
+  snapIntoWeek?: { start: Date; end: Date },
+  enforceWeek = true,
 ): Date {
   const parsedEst = getESTDateParts(parsed);
-  if (parsedEst.weekday === 0) {
-    return timezoneLocalToUtc(
-      timezone,
-      parsedEst.year,
-      parsedEst.month,
-      parsedEst.day,
-      wallTime.hour,
-      wallTime.minute,
-      wallTime.second,
-    );
-  }
-
   let { year, month, day } = parsedEst;
 
-  if (!isWithinSchedulableEventWeek(parsed, refDate)) {
-    const { start: weekStart } = getSchedulableEventWeekRange(refDate);
-    const weekStartEst = getESTDateParts(weekStart);
-    year = weekStartEst.year;
-    month = weekStartEst.month;
-    day = weekStartEst.day + (parsedEst.weekday - 1);
+  if (enforceWeek && parsedEst.weekday !== 0) {
+    const week = snapIntoWeek ?? getSchedulableEventWeekRange(refDate);
+    if (!isWithinWeek(parsed, week)) {
+      const weekStartEst = getESTDateParts(week.start);
+      year = weekStartEst.year;
+      month = weekStartEst.month;
+      day = weekStartEst.day + (parsedEst.weekday - 1);
+    }
   }
 
   return timezoneLocalToUtc(
@@ -94,6 +105,8 @@ function parseNaturalLanguageTime(
   trimmed: string,
   refDate: Date,
   timezone: string,
+  snapIntoWeek?: { start: Date; end: Date },
+  enforceWeek = true,
 ): Date | null {
   const results = chrono.parse(
     trimmed,
@@ -105,14 +118,21 @@ function parseNaturalLanguageTime(
   }
 
   const start = results[0].start;
-  return ensureForwardDate(start.date(), refDate, timezone, wallTimeFromChrono(start, timezone));
+  return ensureForwardDate(
+    start.date(),
+    refDate,
+    timezone,
+    wallTimeFromChrono(start, timezone),
+    snapIntoWeek,
+    enforceWeek,
+  );
 }
 
 export function parseEventTime(
   input: string,
   options: EventTimeParseOptions = {},
 ): Date | null {
-  const { refDate = new Date(), timezone } = options;
+  const { refDate = new Date(), timezone, snapIntoWeek, enforceWeek = true } = options;
   const trimmed = input.trim();
   if (!trimmed) {
     return null;
@@ -129,14 +149,20 @@ export function parseEventTime(
     return new Date(parseInt(tsMatch[1], 10) * 1000);
   }
 
-  return parseNaturalLanguageTime(trimmed, refDate, resolveTimezone(timezone));
+  return parseNaturalLanguageTime(
+    trimmed,
+    refDate,
+    resolveTimezone(timezone),
+    snapIntoWeek,
+    enforceWeek,
+  );
 }
 
 export function buildTimeAutocompleteChoices(
   focused: string,
   options: EventTimeParseOptions = {},
 ): { name: string; value: string }[] {
-  const { refDate = new Date(), timezone } = options;
+  const { refDate = new Date(), timezone, snapIntoWeek, enforceWeek = true } = options;
   const tz = resolveTimezone(timezone);
   const trimmed = focused.trim();
   if (!trimmed) {
@@ -168,7 +194,14 @@ export function buildTimeAutocompleteChoices(
     { forwardDate: true },
   );
   return results.slice(0, MAX_AUTOCOMPLETE).map((r) => {
-    const d = ensureForwardDate(r.start.date(), refDate, tz, wallTimeFromChrono(r.start, tz));
+    const d = ensureForwardDate(
+      r.start.date(),
+      refDate,
+      tz,
+      wallTimeFromChrono(r.start, tz),
+      snapIntoWeek,
+      enforceWeek,
+    );
     const unix = Math.floor(d.getTime() / 1000);
     return {
       name: `${formatTimezoneLabel(d, tz)} - ${formatRelativeFromNow(d, refDate)}`,

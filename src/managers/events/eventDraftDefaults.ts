@@ -31,9 +31,13 @@ export function isDraftPlaceholderTime(startTime: Date): boolean {
 export function resolveDraftStartTime(
   time: string | null | undefined,
   timezone?: string,
+  options?: { enforceWeek?: boolean },
 ): Date {
   if (!time) {
     return new Date(DRAFT_PLACEHOLDER_TIME_MS);
   }
-  return parseEventTime(time, { timezone }) ?? new Date(DRAFT_PLACEHOLDER_TIME_MS);
+  return (
+    parseEventTime(time, { timezone, enforceWeek: options?.enforceWeek }) ??
+    new Date(DRAFT_PLACEHOLDER_TIME_MS)
+  );
 }

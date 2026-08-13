@@ -1,7 +1,9 @@
 import { MessageFlags, ModalSubmitInteraction } from "discord.js";
 import { Discord, ModalComponent } from "discordx";
+import { PlannedEventStatus } from "../../../../generated/prisma/client.js";
 import { prisma } from "../../../../main.js";
 import { parseEventTime } from "../../../../managers/events/eventTimeParser.js";
+import { getCurrentEventWeekRange } from "../../../../managers/events/eventWeek.js";
 import {
   getUserTimezone,
   hasStoredTimezone,
@@ -135,7 +137,16 @@ export class EventPanelModalHandlers {
     const timezone = isAbsoluteTime
       ? undefined
       : await getUserTimezone(event.hostId);
-    const startTime = parseEventTime(timeRaw, { timezone });
+    const startTime = parseEventTime(timeRaw, {
+      timezone,
+      enforceWeek: !event.forceOverride,
+      snapIntoWeek:
+        !event.forceOverride &&
+        event.status === PlannedEventStatus.APPROVED &&
+        event.discordEventId
+          ? getCurrentEventWeekRange()
+          : undefined,
+    });
 
     if (!startTime || startTime.getTime() <= Date.now()) {
       await interaction.reply({

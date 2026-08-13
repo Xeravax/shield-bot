@@ -200,7 +200,7 @@ export class EventCommands {
     durationOption: number | null,
     @SlashOption({
       name: "force",
-      description: "Bypass blocking rule failures (requires events.schedule.force)",
+      description: "Bypass week window and other blocking rules (requires events.schedule.force)",
       type: ApplicationCommandOptionType.Boolean,
       required: false,
     })
@@ -256,7 +256,9 @@ export class EventCommands {
           title: title?.trim()
             ? normalizeEventTitle(title)
             : DRAFT_PLACEHOLDER_TITLE,
-          startTime: resolveDraftStartTime(time, timezone),
+          startTime: resolveDraftStartTime(time, timezone, {
+            enforceWeek: !useForce,
+          }),
           hostId,
           coHostOpen,
           duty: eventDuty,
@@ -879,7 +881,11 @@ export class EventCommands {
   async autocompleteTime(interaction: AutocompleteInteraction): Promise<void> {
     const focused = interaction.options.getFocused();
     const timezone = await getUserTimezone(interaction.user.id);
-    const choices = buildTimeAutocompleteChoices(focused, { timezone });
+    const force = interaction.options.getBoolean("force") === true;
+    const choices = buildTimeAutocompleteChoices(focused, {
+      timezone,
+      enforceWeek: !force,
+    });
     await interaction.respond(choices);
   }
 }

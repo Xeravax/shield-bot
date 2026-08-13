@@ -364,6 +364,8 @@ export async function runEventValidation(
     guild,
     durationMinutes: event.durationMinutes,
     planningChannelId: settings?.eventPlanningChannelId ?? null,
+    allowCurrentEventWeek:
+      event.status === PlannedEventStatus.APPROVED && event.discordEventId != null,
   });
   return applyForceOverride(raw, useForce);
 }
