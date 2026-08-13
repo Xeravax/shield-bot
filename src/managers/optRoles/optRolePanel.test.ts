@@ -101,8 +101,8 @@ describe("OPT_ROLE_PRESETS", () => {
     expect(optInRoles).toEqual([
       "999860568431271968",
       "999860674404569242",
-      "999860876062498827",
       "999860757770543184",
+      "999860876062498827",
       "814562269039689778",
     ]);
   });
@@ -125,8 +125,8 @@ describe("OPT_ROLE_PRESETS", () => {
 
   it("requires Shield / EMT / TRU membership for the restricted opt-ins", () => {
     expect(getRequiredRoleIdsForOptIn("999860568431271968")).toEqual([ROLE_SHIELD_MEMBER]);
-    expect(getRequiredRoleIdsForOptIn("999860876062498827")).toEqual([ROLE_EMT_MEMBER]);
-    expect(getRequiredRoleIdsForOptIn("999860757770543184")).toEqual([ROLE_TRU_MEMBER]);
+    expect(getRequiredRoleIdsForOptIn("999860757770543184")).toEqual([ROLE_EMT_MEMBER]);
+    expect(getRequiredRoleIdsForOptIn("999860876062498827")).toEqual([ROLE_TRU_MEMBER]);
     expect(getRequiredRoleIdsForOptIn("814562269039689778")).toEqual([]);
     expect(getRequiredRoleIdsForOptIn("999871775993233488")).toEqual([]);
   });
@@ -142,8 +142,8 @@ describe("getOptInRequirementError", () => {
 
   it("blocks Find A Group / EMT / TRU without membership", () => {
     expect(getOptInRequirementError([], "999860568431271968")).toContain(ROLE_SHIELD_MEMBER);
-    expect(getOptInRequirementError([], "999860876062498827")).toContain(ROLE_EMT_MEMBER);
-    expect(getOptInRequirementError([], "999860757770543184")).toContain(ROLE_TRU_MEMBER);
+    expect(getOptInRequirementError([], "999860757770543184")).toContain(ROLE_EMT_MEMBER);
+    expect(getOptInRequirementError([], "999860876062498827")).toContain(ROLE_TRU_MEMBER);
   });
 });
 
