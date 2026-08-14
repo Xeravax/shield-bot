@@ -5,10 +5,10 @@ import {
   Colors,
 } from "discord.js";
 import { Discord, ButtonComponent } from "discordx";
-import { prisma } from "../../../../main.js";
 import { getUserById } from "../../../../utility/vrchat/user.js";
 import { createInstance, inviteUser } from "../../../../utility/vrchat/index.js";
 import { loggers } from "../../../../utility/logger.js";
+import { requireVerifiedAccount } from "../../../../utility/verification/requireVerifiedAccount.js";
 
 @Discord()
 export class VRChatAvatarInviteButtonHandler {
@@ -20,31 +20,14 @@ export class VRChatAvatarInviteButtonHandler {
     const discordId = interaction.user.id;
 
     try {
-      // Get user's verified accounts
-      const user = await prisma.user.findUnique({
-        where: { discordId },
-        include: {
-          vrchatAccounts: {
-            where: {
-              accountType: { in: ["MAIN", "ALT"] },
-            },
-          },
-        },
-      });
-
-      if (!user || !user.vrchatAccounts || user.vrchatAccounts.length === 0) {
+      const accountResult = await requireVerifiedAccount(discordId);
+      if (!accountResult.ok) {
         await interaction.editReply({
-          content:
-            "❌ You don't have any verified VRChat accounts. Please run `/verify account` first.",
+          content: accountResult.message,
         });
         return;
       }
-
-      // Use the MAIN account, or first ALT if no MAIN exists
-      const mainAccount = user.vrchatAccounts.find(
-        (acc: { accountType: string }) => acc.accountType === "MAIN"
-      );
-      const vrcAccount = mainAccount || user.vrchatAccounts[0];
+      const vrcAccount = accountResult.value;
 
       // Check if user is friends with the bot
       const vrcUser = await getUserById(vrcAccount.vrcUserId);

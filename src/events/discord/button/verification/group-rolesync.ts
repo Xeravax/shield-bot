@@ -5,9 +5,10 @@ import {
   Colors,
 } from "discord.js";
 import { Discord, ButtonComponent } from "discordx";
-import { prisma } from "../../../../main.js";
 import { groupRoleSyncManager } from "../../../../managers/groupRoleSync/groupRoleSyncManager.js";
 import { loggers } from "../../../../utility/logger.js";
+import { requireVerifiedAccounts } from "../../../../utility/verification/requireVerifiedAccount.js";
+import { requireGuildVrcGroupId } from "../../../../utility/group/guildGroupConfig.js";
 
 @Discord()
 export class VRChatGroupRoleSyncButtonHandler {
@@ -17,7 +18,6 @@ export class VRChatGroupRoleSyncButtonHandler {
     const discordId = parts[1];
     const vrcUserId = parts[2];
 
-    // Verify this is the correct user
     if (interaction.user.id !== discordId) {
       await interaction.reply({
         content: "❌ This button is not for you.",
@@ -26,15 +26,27 @@ export class VRChatGroupRoleSyncButtonHandler {
       return;
     }
 
-    // Verify the account is verified and belongs to this user
-    const vrcAccount = await prisma.vRChatAccount.findFirst({
-      where: {
-        vrcUserId,
-        user: { discordId },
-        accountType: { in: ["MAIN", "ALT"] },
-      },
-    });
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
+    const accountsResult = await requireVerifiedAccounts(discordId);
+    if (!accountsResult.ok) {
+      await interaction.reply({
+        content:
+          "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const vrcAccount = accountsResult.value.find(
+      (account) => account.vrcUserId === vrcUserId,
+    );
     if (!vrcAccount) {
       await interaction.reply({
         content:
@@ -44,14 +56,10 @@ export class VRChatGroupRoleSyncButtonHandler {
       return;
     }
 
-    // Get the guild ID from settings
-    const guildSettings = await prisma.guildSettings.findFirst({
-      where: { vrcGroupId: { not: null } },
-    });
-
-    if (!guildSettings?.vrcGroupId) {
+    const groupResult = await requireGuildVrcGroupId(interaction.guildId);
+    if (!groupResult.ok) {
       await interaction.reply({
-        content: "❌ No VRChat group configured.",
+        content: groupResult.message,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -59,9 +67,8 @@ export class VRChatGroupRoleSyncButtonHandler {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    // Sync roles
     const result = await groupRoleSyncManager.syncUserRoles(
-      guildSettings.guildId,
+      interaction.guildId,
       discordId,
       vrcUserId,
     );
@@ -78,7 +85,6 @@ export class VRChatGroupRoleSyncButtonHandler {
 
       await interaction.editReply({ embeds: [embed] });
     } else {
-      // Build error message based on error type
       let errorMessage: string;
       const title = "❌ Role Sync Failed";
 
@@ -108,14 +114,12 @@ export class VRChatGroupRoleSyncButtonHandler {
           break;
       }
 
-      // Build the error embed
       const embed = new EmbedBuilder()
         .setTitle(title)
         .setDescription(errorMessage)
         .setColor(Colors.Red)
         .setFooter({ text: "S.H.I.E.L.D. Bot - Group Role Sync" });
 
-      // Add contact instructions if needed
       if (result.requiresDevContact) {
         embed.addFields({
           name: "Need Help?",

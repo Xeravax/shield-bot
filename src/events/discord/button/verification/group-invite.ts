@@ -5,9 +5,10 @@ import {
   Colors,
 } from "discord.js";
 import { Discord, ButtonComponent } from "discordx";
-import { prisma } from "../../../../main.js";
 import { inviteUserToGroup } from "../../../../utility/vrchat/groups.js";
 import { loggers } from "../../../../utility/logger.js";
+import { requireVerifiedAccounts } from "../../../../utility/verification/requireVerifiedAccount.js";
+import { requireGuildVrcGroupId } from "../../../../utility/group/guildGroupConfig.js";
 
 @Discord()
 export class VRChatGroupInviteButtonHandler {
@@ -17,7 +18,6 @@ export class VRChatGroupInviteButtonHandler {
     const discordId = parts[1];
     const vrcUserId = parts[2];
 
-    // Verify this is the correct user
     if (interaction.user.id !== discordId) {
       await interaction.reply({
         content: "❌ This button is not for you.",
@@ -26,15 +26,27 @@ export class VRChatGroupInviteButtonHandler {
       return;
     }
 
-    // Verify the account is verified and belongs to this user
-    const vrcAccount = await prisma.vRChatAccount.findFirst({
-      where: {
-        vrcUserId,
-        user: { discordId },
-        accountType: { in: ["MAIN", "ALT"] },
-      },
-    });
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "❌ This can only be used in a server.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
+    const accountsResult = await requireVerifiedAccounts(discordId);
+    if (!accountsResult.ok) {
+      await interaction.reply({
+        content:
+          "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const vrcAccount = accountsResult.value.find(
+      (account) => account.vrcUserId === vrcUserId,
+    );
     if (!vrcAccount) {
       await interaction.reply({
         content:
@@ -44,14 +56,10 @@ export class VRChatGroupInviteButtonHandler {
       return;
     }
 
-    // Get the VRChat group ID from guild settings
-    const guildSettings = await prisma.guildSettings.findFirst({
-      where: { vrcGroupId: { not: null } },
-    });
-
-    if (!guildSettings?.vrcGroupId) {
+    const groupResult = await requireGuildVrcGroupId(interaction.guildId);
+    if (!groupResult.ok) {
       await interaction.reply({
-        content: "❌ No VRChat group configured.",
+        content: groupResult.message,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -60,10 +68,8 @@ export class VRChatGroupInviteButtonHandler {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
-      // Send group invite
-      const result = await inviteUserToGroup(guildSettings.vrcGroupId, vrcUserId);
+      const result = await inviteUserToGroup(groupResult.value, vrcUserId);
 
-      // Check if user is already a member
       if (result && typeof result === "object" && "alreadyMember" in result && result.alreadyMember) {
         const embed = new EmbedBuilder()
           .setTitle("ℹ️ Already a Member")
