@@ -46,36 +46,48 @@ export class VRChatGroupInviteButtonHandler {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const accountsResult = await requireVerifiedAccounts(discordId);
-    if (!accountsResult.ok) {
+    let vrcAccount;
+    let groupId: string;
+    try {
+      const accountsResult = await requireVerifiedAccounts(discordId);
+      if (!accountsResult.ok) {
+        await interaction.editReply({
+          content:
+            "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
+        });
+        return;
+      }
+
+      vrcAccount = accountsResult.value.find(
+        (account) => account.vrcUserId === vrcUserId,
+      );
+      if (!vrcAccount) {
+        await interaction.editReply({
+          content:
+            "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
+        });
+        return;
+      }
+
+      const groupResult = await requireGuildVrcGroupId(interaction.guildId);
+      if (!groupResult.ok) {
+        await interaction.editReply({
+          content: groupResult.message,
+        });
+        return;
+      }
+      groupId = groupResult.value;
+    } catch (error: unknown) {
+      loggers.vrchat.error("Error validating group invite prerequisites", error);
       await interaction.editReply({
         content:
-          "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
-      });
-      return;
-    }
-
-    const vrcAccount = accountsResult.value.find(
-      (account) => account.vrcUserId === vrcUserId,
-    );
-    if (!vrcAccount) {
-      await interaction.editReply({
-        content:
-          "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
-      });
-      return;
-    }
-
-    const groupResult = await requireGuildVrcGroupId(interaction.guildId);
-    if (!groupResult.ok) {
-      await interaction.editReply({
-        content: groupResult.message,
+          "❌ Failed to validate your account or group settings. Please try again later.",
       });
       return;
     }
 
     try {
-      const result = await inviteUserToGroup(groupResult.value, vrcUserId);
+      const result = await inviteUserToGroup(groupId, vrcUserId);
 
       if (result && typeof result === "object" && "alreadyMember" in result && result.alreadyMember) {
         const embed = new EmbedBuilder()

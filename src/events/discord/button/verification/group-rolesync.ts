@@ -46,30 +46,40 @@ export class VRChatGroupRoleSyncButtonHandler {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const accountsResult = await requireVerifiedAccounts(discordId);
-    if (!accountsResult.ok) {
+    let vrcAccount;
+    try {
+      const accountsResult = await requireVerifiedAccounts(discordId);
+      if (!accountsResult.ok) {
+        await interaction.editReply({
+          content:
+            "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
+        });
+        return;
+      }
+
+      vrcAccount = accountsResult.value.find(
+        (account) => account.vrcUserId === vrcUserId,
+      );
+      if (!vrcAccount) {
+        await interaction.editReply({
+          content:
+            "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
+        });
+        return;
+      }
+
+      const groupResult = await requireGuildVrcGroupId(interaction.guildId);
+      if (!groupResult.ok) {
+        await interaction.editReply({
+          content: groupResult.message,
+        });
+        return;
+      }
+    } catch (error: unknown) {
+      loggers.vrchat.error("Error validating group role sync prerequisites", error);
       await interaction.editReply({
         content:
-          "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
-      });
-      return;
-    }
-
-    const vrcAccount = accountsResult.value.find(
-      (account) => account.vrcUserId === vrcUserId,
-    );
-    if (!vrcAccount) {
-      await interaction.editReply({
-        content:
-          "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
-      });
-      return;
-    }
-
-    const groupResult = await requireGuildVrcGroupId(interaction.guildId);
-    if (!groupResult.ok) {
-      await interaction.editReply({
-        content: groupResult.message,
+          "❌ Failed to validate your account or group settings. Please try again later.",
       });
       return;
     }

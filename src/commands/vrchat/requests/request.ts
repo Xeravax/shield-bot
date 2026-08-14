@@ -113,6 +113,8 @@ export class VRChatRequestCommand {
       return this.autocompleteAccount(interaction);
     }
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     // Use role directly as roleId
     const roleId = role;
 
@@ -127,18 +129,16 @@ export class VRChatRequestCommand {
     // Get user info
     const vrcUser = await getUserById(vrcUserId);
     if (!vrcUser) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "Could not find VRChat user information.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     // Validate world is required for dispatch logs
     if (type === "dispatch" && !world) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "World link is required for dispatch logs. Please provide a world link (vrch.at or vrc.group).",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -184,7 +184,9 @@ Status: ${statusText}
 \`\`\``;
     }
 
-    await interaction.reply({ content: replyMsg });
+    // Ephemeral defer keeps error replies private; public follow-up matches prior reply behavior.
+    await interaction.deleteReply().catch(() => undefined);
+    await interaction.followUp({ content: replyMsg });
   }
 
   private async autocompleteAccount(interaction: AutocompleteInteraction) {
