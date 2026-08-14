@@ -11,13 +11,19 @@ import {
   ApplicationCommandOptionType,
   MessageFlags,
   AutocompleteInteraction,
+  Client,
 } from "discord.js";
 import {
   getInstanceInfoByShortName,
   getUserById,
 } from "../../../utility/vrchat.js";
-import { VRChatLoginGuard, GuildGuard } from "../../../utility/guards.js";
+import {
+  VRChatLoginGuard,
+  GuildGuard,
+  VerifiedAccountGuard,
+} from "../../../utility/guards.js";
 import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
+import type { AppGuardData } from "../../../utility/guardData.js";
 import { prisma } from "../../../main.js";
 
 @Discord()
@@ -32,7 +38,11 @@ export class VRChatRequestCommand {
     name: "request",
     description: "Request backup or log dispatch for SHIELD.",
   })
-  @Guard(GuildGuard, PermissionNodeGuard("vrchat.command.request"))
+  @Guard(
+    GuildGuard,
+    PermissionNodeGuard("vrchat.command.request"),
+    VerifiedAccountGuard({ skipIfOption: "account" }),
+  )
   async request(
     @SlashChoice({ name: "Backup Request", value: "backup" })
     @SlashChoice({ name: "Dispatch Log", value: "dispatch" })
@@ -93,6 +103,8 @@ export class VRChatRequestCommand {
     })
     account: string | null,
     interaction: CommandInteraction | AutocompleteInteraction,
+    _client: Client,
+    guardData: AppGuardData,
   ) {
     if (interaction.isAutocomplete()) {
       return this.autocompleteAccount(interaction);
@@ -107,23 +119,7 @@ export class VRChatRequestCommand {
     // Use status directly
     const incidentStatus = status;
 
-    // Get the user's main account if no account specified
-    let vrcUserId = account;
-    if (!vrcUserId) {
-      const user = await prisma.user.findUnique({
-        where: { discordId: interaction.user.id },
-        include: { vrchatAccounts: true },
-      });
-      if (user && user.vrchatAccounts.length > 0) {
-        const mainAccount = user.vrchatAccounts.find(
-          (acc) => acc.accountType === "MAIN",
-        );
-        vrcUserId = mainAccount
-          ? mainAccount.vrcUserId
-          : user.vrchatAccounts[0].vrcUserId;
-      }
-    }
-
+    const vrcUserId = account ?? guardData.verifiedAccount?.vrcUserId;
     if (!vrcUserId) {
       await interaction.reply({
         content: "No VRChat account found. Please verify your account first.",
