@@ -11,6 +11,13 @@ import { getEnv } from "../config/env.js";
 import { loggers } from "./logger.js";
 import { hasNode } from "./permissionNodes.js";
 import { hasStoredTimezone } from "./userPreferences.js";
+import type { AppGuardData } from "./guardData.js";
+import { requireVerifiedAccount } from "./verification/requireVerifiedAccount.js";
+import {
+  requireGroupRoleMappings,
+  requireGuildVrcGroupId,
+} from "./group/guildGroupConfig.js";
+import { requireAttendanceAutofillConfig } from "./patrol/requirePatrolConfig.js";
 
 async function denyMissingPermissionNode(
   interaction: Interaction,
@@ -43,6 +50,7 @@ export async function GuildGuard(
   interaction: Interaction,
   _client: Client,
   next: Next,
+  _guardData: AppGuardData,
 ): Promise<unknown> {
   const guildCheck = await requireGuild(interaction);
   if (!guildCheck) {
@@ -58,6 +66,7 @@ export async function RequireTimezoneGuard(
   interaction: Interaction,
   _client: Client,
   next: Next,
+  _guardData: AppGuardData,
 ): Promise<unknown> {
   if (await hasStoredTimezone(interaction.user.id)) {
     return next();
@@ -76,6 +85,7 @@ export async function VRChatLoginGuard(
   interaction: Interaction,
   _client: Client,
   next: Next,
+  _guardData: AppGuardData,
 ): Promise<unknown> {
   if (await isLoggedInAndVerified()) {
     return next();
@@ -120,6 +130,7 @@ export function PermissionNodeGuard(node: string) {
     interaction: Interaction,
     _client: Client,
     next: Next,
+    _guardData: AppGuardData,
   ): Promise<unknown> {
     if (!interaction.guildId || !interaction.guild) {
       await respondWithError(
@@ -158,6 +169,7 @@ export function PermissionNodeGuardAny(...nodes: string[]) {
     interaction: Interaction,
     _client: Client,
     next: Next,
+    _guardData: AppGuardData,
   ): Promise<unknown> {
     if (!interaction.guildId || !interaction.guild) {
       await respondWithError(
@@ -197,6 +209,7 @@ export async function BotOwnerGuard(
   interaction: Interaction,
   _client: Client,
   next: Next,
+  _guardData: AppGuardData,
 ): Promise<unknown> {
   const env = getEnv();
   const botOwnerId = env.BOT_OWNER_ID;
@@ -217,4 +230,120 @@ export async function BotOwnerGuard(
     interaction,
     "This command is restricted to the bot owner.",
   );
+}
+
+export type VerifiedAccountGuardOptions = {
+  requireMain?: boolean;
+  /** Skip the check when this slash option is already provided (e.g. `/vrchat request account`). */
+  skipIfOption?: string;
+};
+
+function readStringOption(interaction: Interaction, name: string): string | null {
+  if (!interaction.isChatInputCommand()) {
+    return null;
+  }
+  const value = interaction.options.getString(name);
+  return value && value.trim() ? value : null;
+}
+
+/**
+ * Guard factory: require a verified MAIN/ALT VRChat account for the invoker.
+ * On success, sets `guardData.verifiedAccount` for the command method.
+ * Distinct from VRChatLoginGuard, which checks the bot's VRChat session.
+ */
+export function VerifiedAccountGuard(options: VerifiedAccountGuardOptions = {}) {
+  return async function verifiedAccountGuard(
+    interaction: Interaction,
+    _client: Client,
+    next: Next,
+    guardData: AppGuardData,
+  ): Promise<unknown> {
+    if (interaction.isAutocomplete()) {
+      return next();
+    }
+
+    if (options.skipIfOption && readStringOption(interaction, options.skipIfOption)) {
+      return next();
+    }
+
+    const result = await requireVerifiedAccount(interaction.user.id, {
+      requireMain: options.requireMain,
+    });
+    if (!result.ok) {
+      return respondWithError(interaction, result.message);
+    }
+
+    guardData.verifiedAccount = result.value;
+    return next();
+  };
+}
+
+/**
+ * Guard: require this guild to have a VRChat group id configured.
+ * On success, sets `guardData.vrcGroupId` for the command method.
+ */
+export async function VrchatGroupConfiguredGuard(
+  interaction: Interaction,
+  _client: Client,
+  next: Next,
+  guardData: AppGuardData,
+): Promise<unknown> {
+  const guildCheck = await requireGuild(interaction);
+  if (!guildCheck) {
+    return undefined;
+  }
+
+  const result = await requireGuildVrcGroupId(guildCheck.guildId);
+  if (!result.ok) {
+    return respondWithError(interaction, result.message);
+  }
+
+  guardData.vrcGroupId = result.value;
+  return next();
+}
+
+/**
+ * Guard: require at least one Discord ↔ VRChat group role mapping for this guild.
+ */
+export async function VrchatRoleMappingsGuard(
+  interaction: Interaction,
+  _client: Client,
+  next: Next,
+  _guardData: AppGuardData,
+): Promise<unknown> {
+  const guildCheck = await requireGuild(interaction);
+  if (!guildCheck) {
+    return undefined;
+  }
+
+  const result = await requireGroupRoleMappings(guildCheck.guildId);
+  if (!result.ok) {
+    return respondWithError(interaction, result.message);
+  }
+
+  return next();
+}
+
+/**
+ * Guard: require patrol category + enrolled attendance channels.
+ * On success, sets `guardData.autofillConfig` for the command method.
+ */
+export async function AttendanceAutofillConfigGuard(
+  interaction: Interaction,
+  _client: Client,
+  next: Next,
+  guardData: AppGuardData,
+): Promise<unknown> {
+  const guildCheck = await requireGuild(interaction);
+  if (!guildCheck) {
+    return undefined;
+  }
+
+  const result = await requireAttendanceAutofillConfig(guildCheck.guildId);
+  if (!result.ok) {
+    return respondWithError(interaction, result.message);
+  }
+
+  guardData.autofillConfig = result.value;
+  return next();
 }
