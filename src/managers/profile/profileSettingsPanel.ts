@@ -17,6 +17,7 @@ import {
   patrolDmEnabled,
   eventStatusDmEnabled,
   modReasonPingEnabled,
+  memberCardPublicEnabled,
   type ResolvedUserPreferences,
 } from "../../utility/userPreferences.js";
 import { EVENT_TIMEZONE } from "../../utility/estTime.js";
@@ -73,6 +74,13 @@ export function buildProfileSettingsEmbed(
           : "❌ **Disabled** - you will not be pinged; you are responsible for providing reasons yourself.",
         inline: false,
       },
+      {
+        name: "Public member card",
+        value: memberCardPublicEnabled(prefs)
+          ? "✅ **Enabled** - other members can see your verified MAIN VRChat account, patrol hours this month, and whether you are on leave (end date only, never the reason)."
+          : "❌ **Disabled** - `/user lookup` shows only your Discord identity to others. You can still preview the full card yourself.",
+        inline: false,
+      },
     )
     .setFooter({ text: "Event scheduling rules (Monday ban, weekly limits) always use EST." });
 }
@@ -91,6 +99,9 @@ export function buildProfileSettingsComponents(
   const modReasonPingLabel = modReasonPingEnabled(prefs)
     ? "Mod reason pings: On"
     : "Mod reason pings: Off";
+  const memberCardLabel = memberCardPublicEnabled(prefs)
+    ? "Public card: On"
+    : "Public card: Off";
 
   return [
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
@@ -135,6 +146,16 @@ export function buildProfileSettingsComponents(
         .setLabel("Reset timezone to default")
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(!prefs.timezoneStored),
+    ),
+    new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`profile-settings:toggle-member-card:${discordId}`)
+        .setLabel(memberCardLabel)
+        .setStyle(
+          memberCardPublicEnabled(prefs)
+            ? ButtonStyle.Success
+            : ButtonStyle.Secondary,
+        ),
     ),
   ];
 }

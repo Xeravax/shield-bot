@@ -23,6 +23,7 @@ export interface UserExportPayload {
     patrolNoShieldMemberDmDisabled: boolean;
     eventStatusDmDisabled: boolean;
     modReasonPingDisabled: boolean;
+    memberCardPublic: boolean;
     timezone: string | null;
     createdAt: string;
     updatedAt: string;
@@ -447,6 +448,7 @@ export async function getUserExportData(
                 user.userPreferences.patrolNoShieldMemberDmDisabled,
               eventStatusDmDisabled: user.userPreferences.eventStatusDmDisabled,
               modReasonPingDisabled: user.userPreferences.modReasonPingDisabled,
+              memberCardPublic: user.userPreferences.memberCardPublic,
               timezone: user.userPreferences.timezone,
               createdAt: toIso(user.userPreferences.createdAt),
               updatedAt: toIso(user.userPreferences.updatedAt),

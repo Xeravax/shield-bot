@@ -141,6 +141,10 @@ export const PERMISSION_NODE_REGISTRY: Record<
   user: [
     { node: "user.command.list", description: "/user list - list verified users" },
     { node: "user.command.role", description: "/user role - user role operations" },
+    {
+      node: "user.manage.view-private-card",
+      description: "View private member cards via /user lookup",
+    },
   ],
   dev: [
     // Dev commands additionally keep a hard bot-owner check.

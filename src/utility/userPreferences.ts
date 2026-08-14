@@ -24,6 +24,8 @@ export interface ResolvedUserPreferences {
   eventStatusDmDisabled: boolean;
   /** When true, staff is not pinged for missing mod-log reasons. */
   modReasonPingDisabled: boolean;
+  /** When true, other members can see MAIN VRChat, hours this month, and LOA end date. */
+  memberCardPublic: boolean;
   /** Effective timezone used for parsing (falls back to EST). */
   timezone: string;
   /** Raw stored value, null when using the default. */
@@ -37,6 +39,7 @@ export type UserPreferenceUpdate = Partial<
     | "patrolNoShieldMemberDmDisabled"
     | "eventStatusDmDisabled"
     | "modReasonPingDisabled"
+    | "memberCardPublic"
     | "timezone"
   >
 >;
@@ -314,6 +317,7 @@ function resolvePreferences(
       prefs?.patrolNoShieldMemberDmDisabled ?? false,
     eventStatusDmDisabled: prefs?.eventStatusDmDisabled ?? false,
     modReasonPingDisabled: prefs?.modReasonPingDisabled ?? false,
+    memberCardPublic: prefs?.memberCardPublic ?? false,
     timezone,
     timezoneStored: stored,
   };
@@ -402,6 +406,11 @@ export function eventStatusDmEnabled(prefs: ResolvedUserPreferences): boolean {
 /** Default on: staff prefers being pinged when a mod reason is missing. */
 export function modReasonPingEnabled(prefs: ResolvedUserPreferences): boolean {
   return !prefs.modReasonPingDisabled;
+}
+
+/** Default off: other members cannot see hours / MAIN account / LOA until opted in. */
+export function memberCardPublicEnabled(prefs: ResolvedUserPreferences): boolean {
+  return prefs.memberCardPublic;
 }
 
 /** Look up whether a Discord user prefers mod-reason pings (default true). */
