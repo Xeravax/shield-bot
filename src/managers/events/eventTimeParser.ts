@@ -28,6 +28,11 @@ export interface EventTimeParseOptions {
    * Defaults to true.
    */
   enforceWeek?: boolean;
+  /**
+   * When false, do not push past parses into the future (approved-event edits).
+   * Defaults to true.
+   */
+  forwardDate?: boolean;
 }
 
 function resolveTimezone(timezone?: string): string {
@@ -107,11 +112,12 @@ function parseNaturalLanguageTime(
   timezone: string,
   snapIntoWeek?: { start: Date; end: Date },
   enforceWeek = true,
+  forwardDate = true,
 ): Date | null {
   const results = chrono.parse(
     trimmed,
     { instant: refDate, timezone },
-    { forwardDate: true },
+    { forwardDate },
   );
   if (results.length === 0) {
     return null;
@@ -132,7 +138,13 @@ export function parseEventTime(
   input: string,
   options: EventTimeParseOptions = {},
 ): Date | null {
-  const { refDate = new Date(), timezone, snapIntoWeek, enforceWeek = true } = options;
+  const {
+    refDate = new Date(),
+    timezone,
+    snapIntoWeek,
+    enforceWeek = true,
+    forwardDate = true,
+  } = options;
   const trimmed = input.trim();
   if (!trimmed) {
     return null;
@@ -155,6 +167,7 @@ export function parseEventTime(
     resolveTimezone(timezone),
     snapIntoWeek,
     enforceWeek,
+    forwardDate,
   );
 }
 

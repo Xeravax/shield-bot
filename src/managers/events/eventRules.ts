@@ -40,6 +40,8 @@ export interface ValidateEventInput {
   planningChannelId?: string | null;
   /** Exported current-week edits may stay in this week instead of the next schedulable week. */
   allowCurrentEventWeek?: boolean;
+  /** Approved exported events may keep a start time that is already in the past. */
+  allowPastTime?: boolean;
 }
 
 function formatQueuedEventLink(
@@ -138,6 +140,7 @@ export async function validateEventRules(
     durationMinutes,
     planningChannelId,
     allowCurrentEventWeek,
+    allowPastTime,
   } = input;
 
   if (isDraftPlaceholderTitle(title)) {
@@ -156,7 +159,8 @@ export async function validateEventRules(
     });
   }
 
-  if (isDraftPlaceholderTime(startTime) || startTime.getTime() <= Date.now()) {
+  const timeInPast = startTime.getTime() <= Date.now();
+  if (isDraftPlaceholderTime(startTime) || (!allowPastTime && timeInPast)) {
     results.push({
       id: "time",
       label: "Time",
@@ -168,11 +172,14 @@ export async function validateEventRules(
       id: "time",
       label: "Time",
       severity: "pass",
-      message: "Event time is set.",
+      message: allowPastTime && timeInPast
+        ? "Event time is set (already in the past)."
+        : "Event time is set.",
     });
   }
 
-  const timeIsSet = !isDraftPlaceholderTime(startTime) && startTime.getTime() > Date.now();
+  const timeIsSet =
+    !isDraftPlaceholderTime(startTime) && (allowPastTime || !timeInPast);
 
   if (!timeIsSet) {
     return results;

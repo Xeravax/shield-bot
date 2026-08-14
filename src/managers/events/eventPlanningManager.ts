@@ -366,6 +366,8 @@ export async function runEventValidation(
     planningChannelId: settings?.eventPlanningChannelId ?? null,
     allowCurrentEventWeek:
       event.status === PlannedEventStatus.APPROVED && event.discordEventId != null,
+    allowPastTime:
+      event.status === PlannedEventStatus.APPROVED && event.discordEventId != null,
   });
   return applyForceOverride(raw, useForce);
 }
@@ -1675,18 +1677,31 @@ export async function updateDiscordScheduledEvent(
     const name = buildDiscordScheduledEventName(hostName, event.title);
     const description = await buildDiscordEventDescription(guild, event);
 
-    await scheduled.edit({
+    const payload: Record<string, unknown> = {
       name,
-      scheduledStartTime: new Date(startMs),
-      scheduledEndTime: new Date(endMs),
       description,
       entityType: GuildScheduledEventEntityType.External,
       entityMetadata: { location: DEFAULT_EXTERNAL_EVENT_LOCATION },
       channel: null,
-    } as unknown as Parameters<GuildScheduledEvent["edit"]>[0]);
+    };
+    if (startMs > Date.now()) {
+      payload.scheduledStartTime = new Date(startMs);
+      payload.scheduledEndTime = new Date(endMs);
+    }
+
+    await scheduled.edit(
+      payload as unknown as Parameters<GuildScheduledEvent["edit"]>[0],
+    );
 
     return { success: true };
   } catch (error) {
+    if (event.startTime.getTime() <= Date.now()) {
+      loggers.bot.warn(
+        `Could not sync Discord scheduled event ${event.discordEventId} after a past start-time edit`,
+        error,
+      );
+      return { success: true };
+    }
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

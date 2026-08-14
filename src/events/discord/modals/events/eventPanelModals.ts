@@ -18,7 +18,10 @@ import {
 import { loggers } from "../../../../utility/logger.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
 import { resolveGuildMember } from "../../../../utility/guards.js";
-import { normalizeEventTitle } from "../../../../managers/events/eventDraftDefaults.js";
+import {
+  isDraftPlaceholderTime,
+  normalizeEventTitle,
+} from "../../../../managers/events/eventDraftDefaults.js";
 
 const EVENT_MODAL_TITLE_PATTERN = /^event-modal:title:(\d+)$/;
 const EVENT_MODAL_TIME_PATTERN = /^event-modal:time:(\d+)$/;
@@ -137,18 +140,26 @@ export class EventPanelModalHandlers {
     const timezone = isAbsoluteTime
       ? undefined
       : await getUserTimezone(event.hostId);
+    const approvedExported =
+      event.status === PlannedEventStatus.APPROVED && event.discordEventId != null;
     const startTime = parseEventTime(timeRaw, {
       timezone,
       enforceWeek: !event.forceOverride,
+      forwardDate: !approvedExported,
       snapIntoWeek:
-        !event.forceOverride &&
-        event.status === PlannedEventStatus.APPROVED &&
-        event.discordEventId
+        !event.forceOverride && approvedExported
           ? getCurrentEventWeekRange()
           : undefined,
     });
 
-    if (!startTime || startTime.getTime() <= Date.now()) {
+    if (!startTime || isDraftPlaceholderTime(startTime)) {
+      await interaction.reply({
+        content: "❌ Invalid time.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    if (!approvedExported && startTime.getTime() <= Date.now()) {
       await interaction.reply({
         content: "❌ Invalid or past time.",
         flags: MessageFlags.Ephemeral,
