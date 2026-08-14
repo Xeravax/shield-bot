@@ -6,7 +6,7 @@ import {
   TextChannel,
   User,
 } from "discord.js";
-import { GuildGuard } from "../../utility/guards.js";
+import { GuildGuard, VerifiedAccountGuard } from "../../utility/guards.js";
 import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
 import {
@@ -72,6 +72,7 @@ export class PhantomCompilerCommands {
     name: "enroll",
     description: "Enroll your MAIN verified VRChat account on the phantom compiler list",
   })
+  @Guard(VerifiedAccountGuard({ requireMain: true }))
   async enroll(
     @SlashOption({
       name: "reason",

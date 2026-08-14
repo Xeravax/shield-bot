@@ -5,19 +5,29 @@ import {
   Colors,
 } from "discord.js";
 import { Discord, ButtonComponent } from "discordx";
-import { prisma } from "../../../../main.js";
 import { inviteUserToGroup } from "../../../../utility/vrchat/groups.js";
 import { loggers } from "../../../../utility/logger.js";
+import { requireVerifiedAccounts } from "../../../../utility/verification/requireVerifiedAccount.js";
+import { requireGuildVrcGroupId } from "../../../../utility/group/guildGroupConfig.js";
 
 @Discord()
 export class VRChatGroupInviteButtonHandler {
   @ButtonComponent({ id: /grp-inv:(\d+):([a-zA-Z0-9\-_]+)/ })
   async handleGroupInvite(interaction: ButtonInteraction) {
-    const parts = interaction.customId.split(":");
-    const discordId = parts[1];
-    const vrcUserId = parts[2];
+    const match = interaction.customId.match(
+      /^grp-inv:(\d+):([a-zA-Z0-9\-_]+)$/,
+    );
+    const discordId = match?.[1];
+    const vrcUserId = match?.[2];
 
-    // Verify this is the correct user
+    if (!discordId || !vrcUserId) {
+      await interaction.reply({
+        content: "❌ Invalid invite button.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     if (interaction.user.id !== discordId) {
       await interaction.reply({
         content: "❌ This button is not for you.",
@@ -26,32 +36,9 @@ export class VRChatGroupInviteButtonHandler {
       return;
     }
 
-    // Verify the account is verified and belongs to this user
-    const vrcAccount = await prisma.vRChatAccount.findFirst({
-      where: {
-        vrcUserId,
-        user: { discordId },
-        accountType: { in: ["MAIN", "ALT"] },
-      },
-    });
-
-    if (!vrcAccount) {
+    if (!interaction.guildId) {
       await interaction.reply({
-        content:
-          "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    // Get the VRChat group ID from guild settings
-    const guildSettings = await prisma.guildSettings.findFirst({
-      where: { vrcGroupId: { not: null } },
-    });
-
-    if (!guildSettings?.vrcGroupId) {
-      await interaction.reply({
-        content: "❌ No VRChat group configured.",
+        content: "❌ This can only be used in a server.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -59,11 +46,49 @@ export class VRChatGroupInviteButtonHandler {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+    let vrcAccount;
+    let groupId: string;
     try {
-      // Send group invite
-      const result = await inviteUserToGroup(guildSettings.vrcGroupId, vrcUserId);
+      const accountsResult = await requireVerifiedAccounts(discordId);
+      if (!accountsResult.ok) {
+        await interaction.editReply({
+          content:
+            "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
+        });
+        return;
+      }
 
-      // Check if user is already a member
+      vrcAccount = accountsResult.value.find(
+        (account) => account.vrcUserId === vrcUserId,
+      );
+      if (!vrcAccount) {
+        await interaction.editReply({
+          content:
+            "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
+        });
+        return;
+      }
+
+      const groupResult = await requireGuildVrcGroupId(interaction.guildId);
+      if (!groupResult.ok) {
+        await interaction.editReply({
+          content: groupResult.message,
+        });
+        return;
+      }
+      groupId = groupResult.value;
+    } catch (error: unknown) {
+      loggers.vrchat.error("Error validating group invite prerequisites", error);
+      await interaction.editReply({
+        content:
+          "❌ Failed to validate your account or group settings. Please try again later.",
+      });
+      return;
+    }
+
+    try {
+      const result = await inviteUserToGroup(groupId, vrcUserId);
+
       if (result && typeof result === "object" && "alreadyMember" in result && result.alreadyMember) {
         const embed = new EmbedBuilder()
           .setTitle("ℹ️ Already a Member")

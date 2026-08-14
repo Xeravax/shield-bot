@@ -9,6 +9,7 @@ import {
 } from "discord.js";
 import { prisma, patrolTimer, aocPanelManager } from "../main.js";
 import { loggers } from "./logger.js";
+import { requireVerifiedAccount } from "./verification/requireVerifiedAccount.js";
 
 export const PHANTOM_PC_BUTTON_ENROLL = "phantom-pc:enroll";
 export const PHANTOM_PC_BUTTON_UNENROLL = "phantom-pc:unenroll";
@@ -43,32 +44,30 @@ export async function enrollPhantomCompiler(
 ): Promise<EnrollResult> {
   const formattedReason = formatPhantomCompilerReason(reason);
 
-  const user = await prisma.user.findUnique({
-    where: { discordId },
-    include: {
-      vrchatAccounts: {
-        where: { accountType: "MAIN" },
-        take: 1,
-      },
+  const accountResult = await requireVerifiedAccount(discordId, {
+    requireMain: true,
+  });
+  if (!accountResult.ok) {
+    return { ok: false, message: accountResult.message };
+  }
+  const mainAccount = accountResult.value;
+
+  const existing = await prisma.vRChatAccount.findUnique({
+    where: { id: mainAccount.id },
+    select: {
+      phantomCompilerReason: true,
+      phantomCompilerEnrolledAt: true,
     },
   });
 
-  const mainAccount = user?.vrchatAccounts?.[0];
-  if (!mainAccount) {
-    return {
-      ok: false,
-      message:
-        "❌ You need a **verified MAIN** VRChat account linked before enrolling. Use `/verify account` first.",
-    };
-  }
-
-  const updated = !!mainAccount.phantomCompilerReason;
+  const updated = !!existing?.phantomCompilerReason;
 
   await prisma.vRChatAccount.update({
     where: { id: mainAccount.id },
     data: {
       phantomCompilerReason: formattedReason,
-      phantomCompilerEnrolledAt: mainAccount.phantomCompilerEnrolledAt ?? new Date(),
+      phantomCompilerEnrolledAt:
+        existing?.phantomCompilerEnrolledAt ?? new Date(),
     },
   });
 

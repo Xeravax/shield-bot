@@ -6,11 +6,20 @@ import {
   Colors,
   Role,
   MessageFlags,
+  Client,
 } from "discord.js";
 import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
+import {
+  GuildGuard,
+  VrchatGroupConfiguredGuard,
+} from "../../../utility/guards.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { getGroupRoles } from "../../../utility/vrchat/groups.js";
 import { loggers } from "../../../utility/logger.js";
+import {
+  type AppGuardData,
+  requireGuardVrcGroupId,
+} from "../../../utility/guardData.js";
 
 @Discord()
 @SlashGroup({ name: "group", description: "VRChat group management" })
@@ -20,12 +29,13 @@ import { loggers } from "../../../utility/logger.js";
   root: "group",
 })
 @SlashGroup("role", "group")
-@Guard(PermissionNodeGuard("vrchat.command.role-mapping"))
+@Guard(GuildGuard, PermissionNodeGuard("vrchat.command.role-mapping"))
 export class GroupRoleMappingCommand {
   @Slash({
     name: "map",
     description: "Map a Discord role to a VRChat group role",
   })
+  @Guard(VrchatGroupConfiguredGuard)
   async mapRole(
     @SlashOption({
       name: "discord_role",
@@ -42,29 +52,14 @@ export class GroupRoleMappingCommand {
     })
     vrcRoleId: string,
     interaction: CommandInteraction,
+    _client: Client,
+    guardData: AppGuardData,
   ): Promise<void> {
     try {
-      if (!interaction.guildId) {
-        await interaction.reply({
-          content: "❌ This command can only be used in a server.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
-      // Get guild settings to find VRChat group ID
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId: interaction.guildId },
-      });
-
-      if (!settings?.vrcGroupId) {
-        await interaction.reply({
-          content:
-            "❌ No VRChat group ID configured. Please set it first using `/group config set-group-id`.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      // GuildGuard ensures guildId is present
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const guildId = interaction.guildId!;
+      const vrcGroupId = requireGuardVrcGroupId(guardData);
 
       // Validate VRChat role ID format
       if (!vrcRoleId.startsWith("grol_")) {
@@ -80,7 +75,7 @@ export class GroupRoleMappingCommand {
       await prisma.groupRoleMapping.upsert({
         where: {
           guildId_discordRoleId_vrcGroupRoleId: {
-            guildId: interaction.guildId,
+            guildId,
             discordRoleId: discordRole.id,
             vrcGroupRoleId: vrcRoleId,
           },
@@ -89,15 +84,15 @@ export class GroupRoleMappingCommand {
           // Nothing to update since all fields are in the unique key
         },
         create: {
-          guildId: interaction.guildId,
-          vrcGroupId: settings.vrcGroupId,
+          guildId,
+          vrcGroupId,
           vrcGroupRoleId: vrcRoleId,
           discordRoleId: discordRole.id,
         },
       });
 
       await patrolTimer.logCommandUsage(
-        interaction.guildId,
+        guildId,
         "settings-group-role-mapping",
         interaction.user.id,
         undefined,
@@ -150,17 +145,13 @@ export class GroupRoleMappingCommand {
     interaction: CommandInteraction,
   ): Promise<void> {
     try {
-      if (!interaction.guildId) {
-        await interaction.reply({
-          content: "❌ This command can only be used in a server.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      // GuildGuard ensures guildId is present
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const guildId = interaction.guildId!;
 
       const mapping = await prisma.groupRoleMapping.findFirst({
         where: {
-          guildId: interaction.guildId,
+          guildId,
           discordRoleId: discordRole.id,
           vrcGroupRoleId: vrcRoleId,
         },
@@ -181,7 +172,7 @@ export class GroupRoleMappingCommand {
       });
 
       await patrolTimer.logCommandUsage(
-        interaction.guildId,
+        guildId,
         "settings-group-role-mapping",
         interaction.user.id,
         undefined,
@@ -213,16 +204,12 @@ export class GroupRoleMappingCommand {
   })
   async listMappings(interaction: CommandInteraction): Promise<void> {
     try {
-      if (!interaction.guildId) {
-        await interaction.reply({
-          content: "❌ This command can only be used in a server.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      // GuildGuard ensures guildId is present
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const guildId = interaction.guildId!;
 
       const mappings = await prisma.groupRoleMapping.findMany({
-        where: { guildId: interaction.guildId },
+        where: { guildId },
       });
 
       if (mappings.length === 0) {
@@ -280,32 +267,19 @@ export class GroupRoleMappingCommand {
     name: "fetch-roles",
     description: "Fetch and display all roles from the VRChat group",
   })
-  async fetchRoles(interaction: CommandInteraction): Promise<void> {
+  @Guard(VrchatGroupConfiguredGuard)
+  async fetchRoles(
+    interaction: CommandInteraction,
+    _client: Client,
+    guardData: AppGuardData,
+  ): Promise<void> {
     try {
-      if (!interaction.guildId) {
-        await interaction.reply({
-          content: "❌ This command can only be used in a server.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId: interaction.guildId },
-      });
-
-      if (!settings?.vrcGroupId) {
-        await interaction.editReply({
-          content:
-            "❌ No VRChat group ID configured. Please set it first using `/group config set-group-id`.",
-        });
-        return;
-      }
+      const vrcGroupId = requireGuardVrcGroupId(guardData);
 
       // Fetch roles from VRChat API
-      const roles = await getGroupRoles(settings.vrcGroupId);
+      const roles = await getGroupRoles(vrcGroupId);
 
       if (!roles || !Array.isArray(roles) || roles.length === 0) {
         await interaction.editReply({

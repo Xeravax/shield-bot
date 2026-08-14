@@ -7,15 +7,26 @@ import {
   User,
   MessageFlags,
 } from "discord.js";
+import {
+  GuildGuard,
+  VrchatGroupConfiguredGuard,
+  VrchatRoleMappingsGuard,
+} from "../../../utility/guards.js";
 import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
-import { patrolTimer, prisma } from "../../../main.js";
+import { patrolTimer } from "../../../main.js";
 import { groupRoleSyncManager } from "../../../managers/groupRoleSync/groupRoleSyncManager.js";
 import { loggers } from "../../../utility/logger.js";
+import { requireVerifiedAccounts } from "../../../utility/verification/requireVerifiedAccount.js";
 
 @Discord()
 @SlashGroup({ name: "group", description: "VRChat group management" })
 @SlashGroup("group")
-@Guard(PermissionNodeGuard("vrchat.command.rolesync"))
+@Guard(
+  GuildGuard,
+  PermissionNodeGuard("vrchat.command.rolesync"),
+  VrchatGroupConfiguredGuard,
+  VrchatRoleMappingsGuard,
+)
 export class GroupRoleSyncCommand {
   @Slash({
     name: "role-sync",
@@ -32,62 +43,20 @@ export class GroupRoleSyncCommand {
     interaction: CommandInteraction,
   ): Promise<void> {
     try {
-      if (!interaction.guildId) {
-        await interaction.reply({
-          content: "❌ This command can only be used in a server.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      // Check if VRChat group is configured
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId: interaction.guildId },
-      });
+      // GuildGuard ensures guildId is present
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const guildId = interaction.guildId!;
 
-      if (!settings?.vrcGroupId) {
+      const accountsResult = await requireVerifiedAccounts(user.id);
+      if (!accountsResult.ok) {
         await interaction.editReply({
-          content:
-            "❌ No VRChat group ID configured. Please set it first using `/group config set-group-id`.",
+          content: accountsResult.message,
         });
         return;
       }
 
-      // Check if user has any verified VRChat accounts
-      const discordUser = await prisma.user.findUnique({
-        where: { discordId: user.id },
-        include: {
-          vrchatAccounts: {
-            where: {
-              accountType: { in: ["MAIN", "ALT"] },
-            },
-          },
-        },
-      });
-
-      if (!discordUser || discordUser.vrchatAccounts.length === 0) {
-        await interaction.editReply({
-          content: `❌ ${user.username} does not have any verified VRChat accounts.`,
-        });
-        return;
-      }
-
-      // Check if there are any role mappings configured
-      const mappingsCount = await prisma.groupRoleMapping.count({
-        where: { guildId: interaction.guildId },
-      });
-
-      if (mappingsCount === 0) {
-        await interaction.editReply({
-          content:
-            "❌ No role mappings configured. Please configure role mappings using `/group role map`.",
-        });
-        return;
-      }
-
-      // Attempt to sync for each verified account
       const syncedAccounts: Array<{
         username: string;
         userId: string;
@@ -95,9 +64,9 @@ export class GroupRoleSyncCommand {
         error?: string;
       }> = [];
 
-      for (const vrcAccount of discordUser.vrchatAccounts) {
+      for (const vrcAccount of accountsResult.value) {
         const result = await groupRoleSyncManager.syncUserRoles(
-          interaction.guildId,
+          guildId,
           user.id,
           vrcAccount.vrcUserId,
         );
@@ -120,7 +89,7 @@ export class GroupRoleSyncCommand {
 
       const successCount = syncedAccounts.filter((a) => a.success).length;
       await patrolTimer.logCommandUsage(
-        interaction.guildId,
+        guildId,
         "settings-group-role-sync",
         interaction.user.id,
         user.id,

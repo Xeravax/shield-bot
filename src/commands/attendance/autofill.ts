@@ -6,9 +6,19 @@ import {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   EmbedBuilder,
+  Client,
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
-import { PermissionNodeGuard, hasNode } from "../../utility/permissionNodes.js";
+import { hasNode } from "../../utility/permissionNodes.js";
+import {
+  AttendanceAutofillConfigGuard,
+  GuildGuard,
+  PermissionNodeGuard,
+} from "../../utility/guards.js";
+import {
+  type AppGuardData,
+  requireGuardAutofillConfig,
+} from "../../utility/guardData.js";
 import { prisma, loaManager } from "../../main.js";
 import { isBlockingLOA } from "../../managers/loa/loaManager.js";
 
@@ -20,55 +30,33 @@ const attendanceManager = new AttendanceManager();
   description: "VRChat attendance tracking commands.",
 })
 @SlashGroup("attendance")
-@Guard(PermissionNodeGuard("attendance.command.autofill"))
+@Guard(
+  GuildGuard,
+  PermissionNodeGuard("attendance.command.autofill"),
+  AttendanceAutofillConfigGuard,
+)
 export class VRChatAttendanceAutofillCommand {
   @Slash({
     name: "autofill",
     description:
       "Auto-fill attendance based on voice channel presence in patrol category.",
   })
-  async autofill(interaction: CommandInteraction) {
+  async autofill(
+    interaction: CommandInteraction,
+    _client: Client,
+    guardData: AppGuardData,
+  ) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    if (!interaction.guild) {
-      await interaction.editReply({
-        content: "This command can only be used in a server.",
-      });
-      return;
-    }
-
-    // Get guild settings
-    if (!interaction.guildId) {
-      await interaction.editReply({
-        content: "This command can only be used in a server.",
-      });
-      return;
-    }
-    const settings = await prisma.guildSettings.findUnique({
-      where: { guildId: interaction.guildId },
-    });
-
-    if (!settings?.patrolChannelCategoryId) {
-      await interaction.editReply({
-        content:
-          "Patrol category is not configured. Please configure it in the guild settings first.",
-      });
-      return;
-    }
-
-    const patrolCategoryId = settings.patrolChannelCategoryId;
-    const enrolledChannels = (settings?.enrolledChannels as string[]) || [];
-
-    if (enrolledChannels.length === 0) {
-      await interaction.editReply({
-        content:
-          "No enrolled channels configured. Please configure enrolled channels in the guild settings first.",
-      });
-      return;
-    }
+    // GuildGuard ensures guild is present
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const guild = interaction.guild!;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const guildId = interaction.guildId!;
+    const { patrolCategoryId, enrolledChannels } =
+      requireGuardAutofillConfig(guardData);
 
     // Get all voice channels in the patrol category
-    const guild = interaction.guild;
     const patrolCategory = guild.channels.cache.get(patrolCategoryId);
 
     if (!patrolCategory || patrolCategory.type !== ChannelType.GuildCategory) {
@@ -195,7 +183,7 @@ export class VRChatAttendanceAutofillCommand {
       const members = channel.members;
 
       for (const memberId of members.keys()) {
-        const activeLOA = await loaManager.getActiveLOA(interaction.guildId, memberId);
+        const activeLOA = await loaManager.getActiveLOA(guildId, memberId);
         if (isBlockingLOA(activeLOA)) {
           skippedBlockingLoaCount++;
           continue;
@@ -215,7 +203,7 @@ export class VRChatAttendanceAutofillCommand {
 
         if (!previousSquad) {
           // New member - add them
-          await attendanceManager.addUserToSquad(eventId, dbUser.id, channelId, interaction.guildId);
+          await attendanceManager.addUserToSquad(eventId, dbUser.id, channelId, guildId);
           addedCount++;
 
           // Mark as late if this is not the first autofill (they joined after initial roll call)
@@ -236,7 +224,7 @@ export class VRChatAttendanceAutofillCommand {
             dbUser.id,
             channelId,
             previousSquad,
-            interaction.guildId || undefined,
+            guildId,
           );
           splitCount++;
 

@@ -6,6 +6,11 @@ import {
   Colors,
   MessageFlags,
 } from "discord.js";
+import {
+  GuildGuard,
+  VrchatGroupConfiguredGuard,
+  VrchatRoleMappingsGuard,
+} from "../../../utility/guards.js";
 import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { groupRoleSyncManager } from "../../../managers/groupRoleSync/groupRoleSyncManager.js";
@@ -14,7 +19,12 @@ import { loggers } from "../../../utility/logger.js";
 @Discord()
 @SlashGroup({ name: "group", description: "VRChat group management" })
 @SlashGroup("group")
-@Guard(PermissionNodeGuard("vrchat.command.bulkrolesync"))
+@Guard(
+  GuildGuard,
+  PermissionNodeGuard("vrchat.command.bulkrolesync"),
+  VrchatGroupConfiguredGuard,
+  VrchatRoleMappingsGuard,
+)
 export class GroupBulkRoleSyncCommand {
   @Slash({
     name: "bulk-role-sync",
@@ -31,41 +41,11 @@ export class GroupBulkRoleSyncCommand {
     interaction: CommandInteraction,
   ): Promise<void> {
     try {
-      if (!interaction.guildId) {
-        await interaction.reply({
-          content: "❌ This command can only be used in a server.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      // Check if VRChat group is configured
-      const settings = await prisma.guildSettings.findUnique({
-        where: { guildId: interaction.guildId },
-      });
-
-      if (!settings?.vrcGroupId) {
-        await interaction.editReply({
-          content:
-            "❌ No VRChat group ID configured. Please set it first using `/group config set-group-id`.",
-        });
-        return;
-      }
-
-      // Check if there are any role mappings configured
-      const mappingsCount = await prisma.groupRoleMapping.count({
-        where: { guildId: interaction.guildId },
-      });
-
-      if (mappingsCount === 0) {
-        await interaction.editReply({
-          content:
-            "❌ No role mappings configured. Please configure role mappings using `/group role map`.",
-        });
-        return;
-      }
+      // GuildGuard ensures guildId is present
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const guildId = interaction.guildId!;
 
       // Get all guild members
       const guild = await interaction.guild?.fetch();
@@ -132,7 +112,7 @@ export class GroupBulkRoleSyncCommand {
 
           if (!dryRun) {
             const result = await groupRoleSyncManager.syncUserRoles(
-              interaction.guildId,
+              guildId,
               vrcAccount.user.discordId,
               vrcAccount.vrcUserId,
             );
@@ -181,9 +161,9 @@ export class GroupBulkRoleSyncCommand {
         }
       }
 
-      if (!dryRun && interaction.guildId) {
+      if (!dryRun) {
         await patrolTimer.logCommandUsage(
-          interaction.guildId,
+          guildId,
           "settings-bulk-role-sync",
           interaction.user.id,
           undefined,

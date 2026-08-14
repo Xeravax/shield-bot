@@ -11,13 +11,23 @@ import {
   ApplicationCommandOptionType,
   MessageFlags,
   AutocompleteInteraction,
+  Client,
 } from "discord.js";
 import {
   getInstanceInfoByShortName,
   getUserById,
 } from "../../../utility/vrchat.js";
-import { VRChatLoginGuard, GuildGuard } from "../../../utility/guards.js";
-import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
+import {
+  VRChatLoginGuard,
+  GuildGuard,
+  PermissionNodeGuard,
+  VerifiedAccountGuard,
+} from "../../../utility/guards.js";
+import {
+  type AppGuardData,
+  requireGuardVerifiedAccount,
+} from "../../../utility/guardData.js";
+import { loggers } from "../../../utility/logger.js";
 import { prisma } from "../../../main.js";
 
 @Discord()
@@ -32,7 +42,11 @@ export class VRChatRequestCommand {
     name: "request",
     description: "Request backup or log dispatch for SHIELD.",
   })
-  @Guard(GuildGuard, PermissionNodeGuard("vrchat.command.request"))
+  @Guard(
+    GuildGuard,
+    PermissionNodeGuard("vrchat.command.request"),
+    VerifiedAccountGuard({ skipIfOption: "account" }),
+  )
   async request(
     @SlashChoice({ name: "Backup Request", value: "backup" })
     @SlashChoice({ name: "Dispatch Log", value: "dispatch" })
@@ -91,89 +105,82 @@ export class VRChatRequestCommand {
       required: false,
       autocomplete: true,
     })
-    account: string | null,
+    _account: string | null,
     interaction: CommandInteraction | AutocompleteInteraction,
+    _client: Client,
+    guardData: AppGuardData,
   ) {
     if (interaction.isAutocomplete()) {
       return this.autocompleteAccount(interaction);
     }
 
-    // Use role directly as roleId
-    const roleId = role;
-
-    // Use squad as the channel ID directly
-    const channelId = squad;
-
-    // Use status directly
-    const incidentStatus = status;
-
-    // Get the user's main account if no account specified
-    let vrcUserId = account;
-    if (!vrcUserId) {
-      const user = await prisma.user.findUnique({
-        where: { discordId: interaction.user.id },
-        include: { vrchatAccounts: true },
-      });
-      if (user && user.vrchatAccounts.length > 0) {
-        const mainAccount = user.vrchatAccounts.find(
-          (acc) => acc.accountType === "MAIN",
-        );
-        vrcUserId = mainAccount
-          ? mainAccount.vrcUserId
-          : user.vrchatAccounts[0].vrcUserId;
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } catch {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction
+          .reply({
+            content: "❌ Failed to start the request. Please try again.",
+            flags: MessageFlags.Ephemeral,
+          })
+          .catch(() => undefined);
       }
-    }
-
-    if (!vrcUserId) {
-      await interaction.reply({
-        content: "No VRChat account found. Please verify your account first.",
-        flags: MessageFlags.Ephemeral,
-      });
       return;
     }
 
-    // Get user info
-    const vrcUser = await getUserById(vrcUserId);
-    if (!vrcUser) {
-      await interaction.reply({
-        content: "Could not find VRChat user information.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+    try {
+      // Use role directly as roleId
+      const roleId = role;
 
-    // Validate world is required for dispatch logs
-    if (type === "dispatch" && !world) {
-      await interaction.reply({
-        content: "World link is required for dispatch logs. Please provide a world link (vrch.at or vrc.group).",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+      // Use squad as the channel ID directly
+      const channelId = squad;
 
-    // Get world info if provided
-    let worldInfo = "";
-    if (world) {
-      worldInfo = await this.resolveWorldFromLink(world);
-    }
+      // Use status directly
+      const incidentStatus = status;
 
-    // Create reply message based on type
-    const roleMention = `<@&${roleId}>`;
-    const requestType =
-      roleId === "814239954641223760"
-        ? "EMT"
-        : roleId === "999860876062498827"
-          ? "TRU"
-          : "Backup";
-    const squadText = `<#${channelId}>`;
-    const statusText =
-      incidentStatus === "active" ? "Active 🔴" : "Resolved 🟢";
-    const situationText = situation || "[SITUATION NOT PROVIDED]";
+      const vrcUserId = requireGuardVerifiedAccount(guardData).vrcUserId;
 
-    let replyMsg: string;
-    if (type === "backup") {
-      // Backup request format (with role mention at top)
-      replyMsg = `\`\`\`
+      // Get user info
+      const vrcUser = await getUserById(vrcUserId);
+      if (!vrcUser) {
+        await interaction.editReply({
+          content: "Could not find VRChat user information.",
+        });
+        return;
+      }
+
+      // Validate world is required for dispatch logs
+      if (type === "dispatch" && !world) {
+        await interaction.editReply({
+          content:
+            "World link is required for dispatch logs. Please provide a world link (vrch.at or vrc.group).",
+        });
+        return;
+      }
+
+      // Get world info if provided
+      let worldInfo = "";
+      if (world) {
+        worldInfo = await this.resolveWorldFromLink(world);
+      }
+
+      // Create reply message based on type
+      const roleMention = `<@&${roleId}>`;
+      const requestType =
+        roleId === "814239954641223760"
+          ? "EMT"
+          : roleId === "999860876062498827"
+            ? "TRU"
+            : "Backup";
+      const squadText = `<#${channelId}>`;
+      const statusText =
+        incidentStatus === "active" ? "Active 🔴" : "Resolved 🟢";
+      const situationText = situation || "[SITUATION NOT PROVIDED]";
+
+      let replyMsg: string;
+      if (type === "backup") {
+        // Backup request format (with role mention at top)
+        replyMsg = `\`\`\`
 ${roleMention}
 **Request**: ${requestType}
 **World**: ${world ? worldInfo : "[WORLD NOT PROVIDED]"}
@@ -181,18 +188,60 @@ ${roleMention}
 **Squad**: ${squadText}
 **Status**: ${statusText}
 \`\`\``;
-    } else {
-      // Dispatch log format
-      replyMsg = `\`\`\`
+      } else {
+        // Dispatch log format
+        replyMsg = `\`\`\`
 World: ${world ? worldInfo : "[WORLD NOT PROVIDED]"}
 Request: ${requestType}
 Situation: ${situationText}
 Squad: ${squadText}
 Status: ${statusText}
 \`\`\``;
-    }
+      }
 
-    await interaction.reply({ content: replyMsg });
+      // Ephemeral defer keeps error replies private; public follow-up matches prior reply behavior.
+      let deletedEphemeral = false;
+      try {
+        await interaction.deleteReply();
+        deletedEphemeral = true;
+      } catch (deleteError) {
+        loggers.vrchat.error(
+          "Failed to delete ephemeral request reply before public follow-up",
+          deleteError,
+        );
+        // Keep the ephemeral response as an ack; never put the public payload into editReply.
+        await interaction
+          .editReply({
+            content: "✅ Request ready — posting publicly below.",
+          })
+          .catch(() => undefined);
+      }
+
+      try {
+        await interaction.followUp({ content: replyMsg });
+      } catch (followUpError) {
+        loggers.vrchat.error(
+          "Failed to post public request follow-up",
+          followUpError,
+        );
+        if (!deletedEphemeral) {
+          await interaction
+            .editReply({
+              content: "❌ Failed to post the request. Please try again.",
+            })
+            .catch(() => undefined);
+        }
+        // If the ephemeral reply was already deleted, there is no loading
+        // state left to edit; the failure is logged above.
+      }
+    } catch (error: unknown) {
+      loggers.vrchat.error("Error handling /vrchat request", error);
+      await interaction
+        .editReply({
+          content: "❌ Failed to process the request. Please try again later.",
+        })
+        .catch(() => undefined);
+    }
   }
 
   private async autocompleteAccount(interaction: AutocompleteInteraction) {

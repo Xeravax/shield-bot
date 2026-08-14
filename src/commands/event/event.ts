@@ -91,17 +91,13 @@ export class EventCalendarCommand {
   })
   @Guard(PermissionNodeGuard("events.command.calendar"))
   async calendar(interaction: CommandInteraction): Promise<void> {
-    if (!interaction.guildId) {
-      await interaction.reply({
-        content: "❌ This command can only be used in a server.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+    // GuildGuard ensures guildId is present
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const guildId = interaction.guildId!;
 
-    const guildUrl = getGuildCalendarFeedUrl(interaction.guildId);
+    const guildUrl = getGuildCalendarFeedUrl(guildId);
     const hostUrl = getHostCalendarFeedUrl(
-      interaction.guildId,
+      guildId,
       interaction.user.id,
     );
     await interaction.reply({
@@ -120,13 +116,13 @@ export class EventCalendarCommand {
 
 @Discord()
 @SlashGroup("event")
-@Guard(GuildGuard, RequireTimezoneGuard)
+@Guard(GuildGuard)
 export class EventCommands {
   @Slash({
     name: "schedule",
     description: "Schedule a planned event (opens an editable draft panel)",
   })
-  @Guard(PermissionNodeGuard("events.command.schedule"))
+  @Guard(PermissionNodeGuard("events.command.schedule"), RequireTimezoneGuard)
   async schedule(
     @SlashOption({
       name: "title",

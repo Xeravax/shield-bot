@@ -1,13 +1,23 @@
-import { Discord, Slash, SlashGroup } from "discordx";
+import { Discord, Guard, Slash, SlashGroup } from "discordx";
 import {
   CommandInteraction,
   EmbedBuilder,
   Colors,
   MessageFlags,
+  Client,
 } from "discord.js";
-import { prisma } from "../../../main.js";
 import { inviteUserToGroup } from "../../../utility/vrchat/groups.js";
 import { loggers } from "../../../utility/logger.js";
+import {
+  GuildGuard,
+  VerifiedAccountGuard,
+  VrchatGroupConfiguredGuard,
+} from "../../../utility/guards.js";
+import {
+  type AppGuardData,
+  requireGuardVerifiedAccount,
+  requireGuardVrcGroupId,
+} from "../../../utility/guardData.js";
 
 @Discord()
 @SlashGroup({ name: "group", description: "VRChat group commands" })
@@ -17,48 +27,20 @@ export class GroupSelfInviteCommand {
     name: "join",
     description: "Request an invite to the SHIELD VRChat group",
   })
-  async selfInvite(interaction: CommandInteraction): Promise<void> {
+  @Guard(GuildGuard, VerifiedAccountGuard(), VrchatGroupConfiguredGuard)
+  async selfInvite(
+    interaction: CommandInteraction,
+    _client: Client,
+    guardData: AppGuardData,
+  ): Promise<void> {
     try {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      // Get the VRChat group ID from guild settings
-      const guildSettings = await prisma.guildSettings.findFirst({
-        where: { vrcGroupId: { not: null } },
-      });
+      const vrcGroupId = requireGuardVrcGroupId(guardData);
+      const vrcAccount = requireGuardVerifiedAccount(guardData);
 
-      if (!guildSettings?.vrcGroupId) {
-        await interaction.editReply({
-          content: "❌ No VRChat group configured for this server.",
-        });
-        return;
-      }
+      const result = await inviteUserToGroup(vrcGroupId, vrcAccount.vrcUserId);
 
-      // Get user's verified VRChat account
-      const user = await prisma.user.findUnique({
-        where: { discordId: interaction.user.id },
-        include: {
-          vrchatAccounts: {
-            where: { accountType: { in: ["MAIN", "ALT"] } },
-          },
-        },
-      });
-
-      if (!user || user.vrchatAccounts.length === 0) {
-        await interaction.editReply({
-          content:
-            "❌ You don't have a verified VRChat account. Please verify your account first using `/verify account`.",
-        });
-        return;
-      }
-
-      // Use the main account if available, otherwise first verified account
-      const mainAccount = user.vrchatAccounts.find((acc: { accountType: string }) => acc.accountType === "MAIN");
-      const vrcAccount = mainAccount || user.vrchatAccounts[0];
-
-      // Send group invite
-      const result = await inviteUserToGroup(guildSettings.vrcGroupId, vrcAccount.vrcUserId);
-
-      // Check if user is already a member
       if (result && typeof result === "object" && "alreadyMember" in result && result.alreadyMember) {
         const embed = new EmbedBuilder()
           .setTitle("ℹ️ Already a Member")
