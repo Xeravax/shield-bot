@@ -13,8 +13,6 @@ const sampleAccount: VerifiedAccount = {
   vrcUserId: "usr_1",
   vrchatUsername: "Test",
   accountType: "MAIN",
-  phantomCompilerReason: null,
-  phantomCompilerEnrolledAt: null,
 };
 
 describe("AppGuardData helpers", () => {

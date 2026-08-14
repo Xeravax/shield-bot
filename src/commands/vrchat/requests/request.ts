@@ -20,10 +20,13 @@ import {
 import {
   VRChatLoginGuard,
   GuildGuard,
+  PermissionNodeGuard,
   VerifiedAccountGuard,
 } from "../../../utility/guards.js";
-import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
-import type { AppGuardData } from "../../../utility/guardData.js";
+import {
+  type AppGuardData,
+  requireGuardVerifiedAccount,
+} from "../../../utility/guardData.js";
 import { prisma } from "../../../main.js";
 
 @Discord()
@@ -101,7 +104,7 @@ export class VRChatRequestCommand {
       required: false,
       autocomplete: true,
     })
-    account: string | null,
+    _account: string | null,
     interaction: CommandInteraction | AutocompleteInteraction,
     _client: Client,
     guardData: AppGuardData,
@@ -119,14 +122,7 @@ export class VRChatRequestCommand {
     // Use status directly
     const incidentStatus = status;
 
-    const vrcUserId = account ?? guardData.verifiedAccount?.vrcUserId;
-    if (!vrcUserId) {
-      await interaction.reply({
-        content: "No VRChat account found. Please verify your account first.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+    const vrcUserId = requireGuardVerifiedAccount(guardData).vrcUserId;
 
     // Get user info
     const vrcUser = await getUserById(vrcUserId);

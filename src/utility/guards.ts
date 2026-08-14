@@ -12,7 +12,7 @@ import { loggers } from "./logger.js";
 import { hasNode } from "./permissionNodes.js";
 import { hasStoredTimezone } from "./userPreferences.js";
 import type { AppGuardData } from "./guardData.js";
-import { requireVerifiedAccount } from "./verification/requireVerifiedAccount.js";
+import { requireVerifiedAccount, requireVerifiedAccounts } from "./verification/requireVerifiedAccount.js";
 import {
   requireGroupRoleMappings,
   requireGuildVrcGroupId,
@@ -249,6 +249,8 @@ function readStringOption(interaction: Interaction, name: string): string | null
 /**
  * Guard factory: require a verified MAIN/ALT VRChat account for the invoker.
  * On success, sets `guardData.verifiedAccount` for the command method.
+ * When `skipIfOption` is set and that option is present, resolves that vrcUserId
+ * only if it belongs to the invoker's verified accounts (no untrusted bypass).
  * Distinct from VRChatLoginGuard, which checks the bot's VRChat session.
  */
 export function VerifiedAccountGuard(options: VerifiedAccountGuardOptions = {}) {
@@ -262,7 +264,28 @@ export function VerifiedAccountGuard(options: VerifiedAccountGuardOptions = {}) 
       return next();
     }
 
-    if (options.skipIfOption && readStringOption(interaction, options.skipIfOption)) {
+    const optionValue = options.skipIfOption
+      ? readStringOption(interaction, options.skipIfOption)
+      : null;
+
+    if (optionValue) {
+      const accountsResult = await requireVerifiedAccounts(interaction.user.id);
+      if (!accountsResult.ok) {
+        return respondWithError(
+          interaction,
+          "❌ You don't have a verified VRChat account. Please verify your account first using `/verify account`.",
+        );
+      }
+      const owned = accountsResult.value.find(
+        (account) => account.vrcUserId === optionValue,
+      );
+      if (!owned) {
+        return respondWithError(
+          interaction,
+          "❌ That VRChat account is not linked to your Discord account.",
+        );
+      }
+      guardData.verifiedAccount = owned;
       return next();
     }
 

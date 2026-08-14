@@ -14,9 +14,19 @@ import { requireGuildVrcGroupId } from "../../../../utility/group/guildGroupConf
 export class VRChatGroupInviteButtonHandler {
   @ButtonComponent({ id: /grp-inv:(\d+):([a-zA-Z0-9\-_]+)/ })
   async handleGroupInvite(interaction: ButtonInteraction) {
-    const parts = interaction.customId.split(":");
-    const discordId = parts[1];
-    const vrcUserId = parts[2];
+    const match = interaction.customId.match(
+      /^grp-inv:(\d+):([a-zA-Z0-9\-_]+)$/,
+    );
+    const discordId = match?.[1];
+    const vrcUserId = match?.[2];
+
+    if (!discordId || !vrcUserId) {
+      await interaction.reply({
+        content: "❌ Invalid invite button.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
     if (interaction.user.id !== discordId) {
       await interaction.reply({
@@ -34,12 +44,13 @@ export class VRChatGroupInviteButtonHandler {
       return;
     }
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const accountsResult = await requireVerifiedAccounts(discordId);
     if (!accountsResult.ok) {
-      await interaction.reply({
+      await interaction.editReply({
         content:
           "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -48,24 +59,20 @@ export class VRChatGroupInviteButtonHandler {
       (account) => account.vrcUserId === vrcUserId,
     );
     if (!vrcAccount) {
-      await interaction.reply({
+      await interaction.editReply({
         content:
           "❌ VRChat account not found or not verified. Please verify your account first using `/verify account`.",
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     const groupResult = await requireGuildVrcGroupId(interaction.guildId);
     if (!groupResult.ok) {
-      await interaction.reply({
+      await interaction.editReply({
         content: groupResult.message,
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
-
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     try {
       const result = await inviteUserToGroup(groupResult.value, vrcUserId);

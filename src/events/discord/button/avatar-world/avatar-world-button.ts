@@ -16,7 +16,14 @@ export class VRChatAvatarInviteButtonHandler {
   async handleJoinInstance(interaction: ButtonInteraction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const worldId = interaction.customId.split(":")[1];
+    const match = interaction.customId.match(/^avatar-invite-join:(.+)$/);
+    const worldId = match?.[1];
+    if (!worldId) {
+      await interaction.editReply({
+        content: "❌ Invalid invite button.",
+      });
+      return;
+    }
     const discordId = interaction.user.id;
 
     try {

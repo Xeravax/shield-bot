@@ -52,13 +52,22 @@ export async function enrollPhantomCompiler(
   }
   const mainAccount = accountResult.value;
 
-  const updated = !!mainAccount.phantomCompilerReason;
+  const existing = await prisma.vRChatAccount.findUnique({
+    where: { id: mainAccount.id },
+    select: {
+      phantomCompilerReason: true,
+      phantomCompilerEnrolledAt: true,
+    },
+  });
+
+  const updated = !!existing?.phantomCompilerReason;
 
   await prisma.vRChatAccount.update({
     where: { id: mainAccount.id },
     data: {
       phantomCompilerReason: formattedReason,
-      phantomCompilerEnrolledAt: mainAccount.phantomCompilerEnrolledAt ?? new Date(),
+      phantomCompilerEnrolledAt:
+        existing?.phantomCompilerEnrolledAt ?? new Date(),
     },
   });
 

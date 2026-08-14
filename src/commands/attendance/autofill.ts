@@ -9,10 +9,11 @@ import {
   Client,
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
-import { PermissionNodeGuard, hasNode } from "../../utility/permissionNodes.js";
+import { hasNode } from "../../utility/permissionNodes.js";
 import {
   AttendanceAutofillConfigGuard,
   GuildGuard,
+  PermissionNodeGuard,
 } from "../../utility/guards.js";
 import {
   type AppGuardData,

@@ -23,8 +23,6 @@ function makeAccount(
     id: overrides.id ?? 1,
     userId: overrides.userId ?? 10,
     vrchatUsername: overrides.vrchatUsername ?? "User",
-    phantomCompilerReason: overrides.phantomCompilerReason ?? null,
-    phantomCompilerEnrolledAt: overrides.phantomCompilerEnrolledAt ?? null,
     ...overrides,
   };
 }

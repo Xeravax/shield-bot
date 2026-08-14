@@ -7,8 +7,6 @@ export type VerifiedAccount = {
   vrcUserId: string;
   vrchatUsername: string | null;
   accountType: "MAIN" | "ALT";
-  phantomCompilerReason: string | null;
-  phantomCompilerEnrolledAt: Date | null;
 };
 
 const NO_VERIFIED_ACCOUNT_MESSAGE =
@@ -33,6 +31,13 @@ async function loadVerifiedAccounts(
       vrchatAccounts: {
         where: { accountType: { in: ["MAIN", "ALT"] } },
         orderBy: { id: "asc" },
+        select: {
+          id: true,
+          userId: true,
+          vrcUserId: true,
+          vrchatUsername: true,
+          accountType: true,
+        },
       },
     },
   });
@@ -47,8 +52,6 @@ async function loadVerifiedAccounts(
     vrcUserId: account.vrcUserId,
     vrchatUsername: account.vrchatUsername,
     accountType: account.accountType as "MAIN" | "ALT",
-    phantomCompilerReason: account.phantomCompilerReason,
-    phantomCompilerEnrolledAt: account.phantomCompilerEnrolledAt,
   }));
 }
 
