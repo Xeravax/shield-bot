@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import { Discord, Slash, SlashGroup, SlashOption, Guard, SlashChoice } from "discordx";
 import {
   ApplicationCommandOptionType,
@@ -19,6 +20,9 @@ import { loggers } from "../../utility/logger.js";
 import { GuildGuard } from "../../utility/guards.js";
 import { getUserExportData } from "../../utility/userDataExport.js";
 import { patrolTimer } from "../../main.js";
+
+/** Discord's typical bot upload cap; gzip if the JSON would exceed this. */
+const DISCORD_UPLOAD_LIMIT_BYTES = 10 * 1024 * 1024;
 
 const PERMISSION_LIST_HEADER =
   `📋 **Permission Node System**\n\n` +
@@ -81,30 +85,37 @@ export class UserCommands {
   })
   async export(interaction: CommandInteraction): Promise<void> {
     try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const payload = await getUserExportData(interaction.user.id);
       if (!payload) {
-        await interaction.reply({
+        await interaction.editReply({
           content: "You have no data stored.",
-          flags: MessageFlags.Ephemeral,
         });
         return;
       }
-      const jsonString = JSON.stringify(payload, null, 2);
-      await interaction.reply({
+      const jsonBuffer = Buffer.from(JSON.stringify(payload, null, 2), "utf-8");
+      const useGzip = jsonBuffer.byteLength > DISCORD_UPLOAD_LIMIT_BYTES;
+      const attachment = useGzip ? gzipSync(jsonBuffer) : jsonBuffer;
+      if (attachment.byteLength > DISCORD_UPLOAD_LIMIT_BYTES) {
+        await interaction.editReply({
+          content:
+            "Your export is too large to send as a Discord attachment. Please contact an administrator.",
+        });
+        return;
+      }
+      await interaction.editReply({
         files: [
           {
-            attachment: Buffer.from(jsonString, "utf-8"),
-            name: "my-shield-bot-data.json",
+            attachment,
+            name: useGzip
+              ? "my-shield-bot-data.json.gz"
+              : "my-shield-bot-data.json",
           },
         ],
-        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       loggers.bot.error("Error exporting user data", error);
-      const content =
-        interaction.replied || interaction.deferred
-          ? "Failed to export your data. Please try again later."
-          : "Failed to export your data. Please try again later.";
+      const content = "Failed to export your data. Please try again later.";
       try {
         if (interaction.replied || interaction.deferred) {
           await interaction.editReply({ content }).catch(() => {});
