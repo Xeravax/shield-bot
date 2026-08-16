@@ -73,6 +73,11 @@ export {
 } from "./roleChangeCoalesce.js";
 
 export {
+  CHANNEL_POSITION_COALESCE_MS,
+  queueChannelPositionChange,
+} from "./channelPositionCoalesce.js";
+
+export {
   formatLoggedUser,
   formatDiscordUserLine,
   formatVrchatProfileLine,

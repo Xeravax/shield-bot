@@ -9,7 +9,10 @@ import {
 } from "discord.js";
 import { auditLogManager } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
-import { auditExecutorFields } from "../../../managers/logging/index.js";
+import {
+  auditExecutorFields,
+  queueChannelPositionChange,
+} from "../../../managers/logging/index.js";
 
 function channelLabel(channel: { id: string; name?: string; type: ChannelType }): string {
   const name = "name" in channel && channel.name ? `#${channel.name}` : channel.id;
@@ -181,6 +184,19 @@ export class LoggingChannelEvents {
       if (!("guild" in newChannel) || !newChannel.guild) {
         return;
       }
+
+      const positionChanged =
+        "rawPosition" in oldChannel &&
+        "rawPosition" in newChannel &&
+        oldChannel.rawPosition !== newChannel.rawPosition;
+      if (positionChanged) {
+        queueChannelPositionChange(
+          newChannel.guild.id,
+          newChannel.id,
+          (guildId, channelIds) => this.flushChannelReorder(guildId, channelIds),
+        );
+      }
+
       if (await auditLogManager.shouldIgnoreChannel(newChannel.guild.id, newChannel.id)) {
         return;
       }
@@ -237,15 +253,6 @@ export class LoggingChannelEvents {
           `Category: ${oldChannel.parentId ?? "none"} → ${newChannel.parentId ?? "none"}`,
         );
       }
-      if (
-        "rawPosition" in oldChannel &&
-        "rawPosition" in newChannel &&
-        oldChannel.rawPosition !== newChannel.rawPosition
-      ) {
-        changes.push(
-          `Position: ${oldChannel.rawPosition} → ${newChannel.rawPosition}`,
-        );
-      }
 
       const overwriteChanges = diffPermissionOverwrites(
         oldChannel as GuildChannel,
@@ -285,6 +292,37 @@ export class LoggingChannelEvents {
       });
     } catch (error) {
       loggers.bot.debug("channelUpdate log failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async flushChannelReorder(
+    guildId: string,
+    channelIds: string[],
+  ): Promise<void> {
+    try {
+      const count = channelIds.length;
+      if (count === 0) {
+        return;
+      }
+      await auditLogManager.postLog({
+        guildId,
+        category: "channels",
+        title: "Channels Reordered",
+        severity: "info",
+        fields: [
+          {
+            name: "Channels",
+            value:
+              count === 1
+                ? "1 channel was reordered."
+                : `${count} channels were reordered.`,
+          },
+        ],
+      });
+    } catch (error) {
+      loggers.bot.debug("channel reorder log failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     }
