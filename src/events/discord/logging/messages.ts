@@ -245,12 +245,14 @@ export class LoggingMessageEvents {
 
       let executorField: string | undefined;
       let hasExecutor = false;
+      let auditEntryId: string | null = null;
       if (message.guild) {
         const audit = await discordAuditResolver.resolve(
           message.guild,
           AuditLogEvent.MessageDelete,
           { targetId: cached?.authorId, maxAgeMs: 20_000 },
         );
+        auditEntryId = audit.entryId;
         if (audit.executor) {
           hasExecutor = true;
           executorField = await auditLogManager.formatUser(
@@ -309,6 +311,7 @@ export class LoggingMessageEvents {
         sourceChannelId: message.channelId,
         imageUrl: cached?.attachments?.[0]?.url,
         components: claimComponentsIfUnresolved(hasExecutor),
+        auditEntryId,
       });
 
       await messageArchiveManager.deleteCached(message.id);
@@ -348,12 +351,14 @@ export class LoggingMessageEvents {
 
       const extraFields: { name: string; value: string; inline?: boolean }[] = [];
       let components;
+      let auditEntryId: string | null = null;
       if (channel.guild) {
         const audit = await discordAuditResolver.resolve(
           channel.guild,
           AuditLogEvent.MessageBulkDelete,
           { targetId: channel.id, maxAgeMs: 20_000 },
         );
+        auditEntryId = audit.entryId;
         if (audit.executor) {
           extraFields.push({
             name: "Executor",
@@ -399,6 +404,7 @@ export class LoggingMessageEvents {
         ],
         sourceChannelId: channel.id,
         components,
+        auditEntryId,
       });
 
       await messageArchiveManager.deleteCachedMany([...messages.keys()]);

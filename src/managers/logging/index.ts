@@ -31,6 +31,8 @@ export type { PostLogOptions } from "./auditLogManager.js";
 export { DiscordAuditResolver } from "./discordAuditResolver.js";
 export type { ResolvedAuditActor } from "./discordAuditResolver.js";
 
+export { AuditLogSeen, auditLogSeen } from "./auditLogSeen.js";
+
 export { MessageArchiveManager } from "./messageArchiveManager.js";
 export type {
   CachedAttachmentMeta,

@@ -6,6 +6,7 @@ import {
   Interaction,
   Message,
   MessageFlags,
+  type Guild,
 } from "discord.js";
 import { Client } from "discordx";
 import bodyParser from "@koa/bodyparser";
@@ -41,6 +42,11 @@ import {
   MessageArchiveManager,
   ModCaseManager,
 } from "./managers/logging/index.js";
+import {
+  buildShieldBannerLines,
+  formatShieldBannerCodeBlock,
+} from "./utility/shieldBanner.js";
+import { pollAllGuildAuditCatchup } from "./events/discord/logging/auditLogSafetyNet.js";
 
 // Validate environment variables at startup
 let env;
@@ -99,6 +105,7 @@ export const serverStatsManager = new ServerStatsManager(bot);
 export const loggingSetupManager = new LoggingSetupManager(bot);
 export const auditLogManager = new AuditLogManager(bot, loggingSetupManager);
 export const discordAuditResolver = new DiscordAuditResolver();
+export { auditLogSeen } from "./managers/logging/auditLogSeen.js";
 export const messageArchiveManager = new MessageArchiveManager();
 export const modCaseManager = new ModCaseManager(bot, auditLogManager);
 export { groupAuditLogManager };
@@ -130,17 +137,33 @@ bot.once("clientReady", async () => {
 
     const mode = isDevelopmentForBot ? "DEVELOPMENT" : "PROD";
     const logLevel = normalizedLogLevel;
-    const left = `Mode: ${mode}`, right = `Log: ${logLevel}`;
-    const modeLogLine = `|${" ".repeat(Math.floor((24 - left.length - 2) / 2))}${left}${" ".repeat(Math.ceil((24 - left.length - 2) / 2))}|${" ".repeat(Math.floor((27 - right.length - 1) / 2))}${right}${" ".repeat(Math.ceil((27 - right.length - 1) / 2))}|`;
-    
-    loggers.bot.info("###################################################");
-    loggers.bot.info(modeLogLine);
-    loggers.bot.info("|                      |     S.H.I.E.L.D. Bot     |");
-    loggers.bot.info("|                      |                          |");
-    loggers.bot.info("|                      | stefano@stefanocoding.me |");
-    loggers.bot.info("|                      |         Xeravax          |");
-    loggers.bot.info("|                      |                          |");
-    loggers.bot.info("###################################################");
+    for (const line of buildShieldBannerLines({ mode, logLevel })) {
+      loggers.bot.info(line);
+    }
+
+    // Welcome post in each guild's Bot Log thread (once per process start)
+    const welcomeDescription =
+      `${formatShieldBannerCodeBlock({ mode, logLevel })}\n` +
+      `**Status:** Online · ${mode} · log ${logLevel}`;
+    for (const guild of bot.guilds.cache.values()) {
+      void auditLogManager
+        .postLog({
+          guildId: guild.id,
+          category: "bot",
+          title: "Welcome to SHIELD Bot",
+          description: welcomeDescription,
+          severity: "success",
+        })
+        .catch((error) => {
+          loggers.bot.debug("Welcome bot log failed", {
+            guildId: guild.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+    }
+
+    // Audit-log safety net catch-up (seed cursor or process missed entries)
+    runAuditCatchup(bot.guilds.cache.values(), "ready");
 
     // VRChat login on startup
     if (!hasVRChatCredentials()) {
@@ -190,6 +213,24 @@ bot.once("clientReady", async () => {
     loggers.vrchat.info("VRChat is not running");
   }
 });
+
+bot.on("shardResume", (shardId, _replayedEvents) => {
+  const guilds = [...bot.guilds.cache.values()].filter(
+    (guild) => guild.shardId === shardId,
+  );
+  runAuditCatchup(guilds, "shardResume");
+});
+
+function runAuditCatchup(
+  guilds: Iterable<Guild>,
+  source: string,
+): void {
+  void pollAllGuildAuditCatchup(guilds).catch((error) => {
+    loggers.bot.debug(`Audit catch-up on ${source} failed`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
 
 bot.on("interactionCreate", async (interaction: Interaction) => {
   try {

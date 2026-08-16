@@ -10,6 +10,8 @@ export type ResolvedAuditActor = {
   executor: User | null;
   reason: string | null;
   entry: GuildAuditLogsEntry | null;
+  /** Audit entry id for consume-after-successful-post; null when unresolved. */
+  entryId: string | null;
 };
 
 type CacheEntry = {
@@ -110,6 +112,7 @@ export class DiscordAuditResolver {
         executor,
         reason: entry?.reason ?? null,
         entry,
+        entryId: entry?.id ?? null,
       };
       this.cache.set(cacheKey, {
         expiresAt: Date.now() + CACHE_TTL_MS,
@@ -125,7 +128,7 @@ export class DiscordAuditResolver {
         type,
         error: error instanceof Error ? error.message : String(error),
       });
-      return { executor: null, reason: null, entry: null };
+      return { executor: null, reason: null, entry: null, entryId: null };
     }
   }
 

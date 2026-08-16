@@ -10,6 +10,7 @@ import {
 import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
 import { LoggingSetupManager } from "./loggingSetup.js";
+import { auditLogSeen } from "./auditLogSeen.js";
 import {
   LOGGING_COLORS,
   parseLoggingThreadIds,
@@ -36,6 +37,11 @@ export type PostLogOptions = {
   allowedMentions?: MessageCreateOptions["allowedMentions"];
   /** Skip posting when channel is the logging forum or an ignored channel. */
   sourceChannelId?: string | null;
+  /**
+   * When set, mark this Discord audit entry consumed only after a successful
+   * send so the safety-net fallback remains available on soft-fail/early return.
+   */
+  auditEntryId?: string | null;
 };
 
 const SETTINGS_SELECT = {
@@ -303,13 +309,17 @@ export class AuditLogManager {
       }
 
       const embed = this.buildEmbed(options);
-      return await thread.send({
+      const message = await thread.send({
         content: options.content ?? undefined,
         allowedMentions: options.allowedMentions,
         embeds: [embed],
         files: options.files,
         components: options.components,
       });
+      if (options.auditEntryId) {
+        auditLogSeen.consume(options.guildId, options.auditEntryId);
+      }
+      return message;
     } catch (error) {
       loggers.bot.warn("Failed to post audit log", error);
       return null;

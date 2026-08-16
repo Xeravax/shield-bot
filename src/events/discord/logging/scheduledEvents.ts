@@ -68,7 +68,7 @@ export class LoggingScheduledEventEvents {
       if (!event.guild) {
         return;
       }
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         event.guild,
         AuditLogEvent.GuildScheduledEventCreate,
         event.id,
@@ -81,6 +81,7 @@ export class LoggingScheduledEventEvents {
         fields: [...eventFields(event), ...extra],
         components,
         imageUrl: event.coverImageURL({ size: 512 }),
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("guildScheduledEventCreate log failed", {
@@ -131,7 +132,7 @@ export class LoggingScheduledEventEvents {
         return;
       }
 
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         newEvent.guild,
         AuditLogEvent.GuildScheduledEventUpdate,
         newEvent.id,
@@ -148,6 +149,7 @@ export class LoggingScheduledEventEvents {
         ],
         components,
         imageUrl: newEvent.coverImageURL({ size: 512 }),
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("guildScheduledEventUpdate log failed", {
@@ -162,7 +164,7 @@ export class LoggingScheduledEventEvents {
       if (!event.guild) {
         return;
       }
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         event.guild,
         AuditLogEvent.GuildScheduledEventDelete,
         event.id,
@@ -185,9 +187,86 @@ export class LoggingScheduledEventEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("guildScheduledEventDelete log failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  @On({ event: "guildScheduledEventUserAdd" })
+  async onUserAdd([
+    event,
+    user,
+  ]: ArgsOf<"guildScheduledEventUserAdd">): Promise<void> {
+    try {
+      if (!event.guild) {
+        return;
+      }
+      await auditLogManager.postLog({
+        guildId: event.guild.id,
+        category: "events",
+        title: "Event Interest Added",
+        severity: "success",
+        fields: [
+          {
+            name: "User",
+            value: await auditLogManager.formatUser(user.id, user.username),
+          },
+          {
+            name: "Event",
+            value: (event.name ?? "Unknown event").slice(0, 1024),
+          },
+          {
+            name: "Event ID",
+            value: `\`${event.id}\``,
+            inline: true,
+          },
+        ],
+        thumbnailUrl: user.displayAvatarURL(),
+      });
+    } catch (error) {
+      loggers.bot.debug("guildScheduledEventUserAdd log failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  @On({ event: "guildScheduledEventUserRemove" })
+  async onUserRemove([
+    event,
+    user,
+  ]: ArgsOf<"guildScheduledEventUserRemove">): Promise<void> {
+    try {
+      if (!event.guild) {
+        return;
+      }
+      await auditLogManager.postLog({
+        guildId: event.guild.id,
+        category: "events",
+        title: "Event Interest Removed",
+        severity: "info",
+        fields: [
+          {
+            name: "User",
+            value: await auditLogManager.formatUser(user.id, user.username),
+          },
+          {
+            name: "Event",
+            value: (event.name ?? "Unknown event").slice(0, 1024),
+          },
+          {
+            name: "Event ID",
+            value: `\`${event.id}\``,
+            inline: true,
+          },
+        ],
+        thumbnailUrl: user.displayAvatarURL(),
+      });
+    } catch (error) {
+      loggers.bot.debug("guildScheduledEventUserRemove log failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     }

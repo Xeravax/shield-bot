@@ -28,7 +28,7 @@ export class LoggingAutoModEvents {
     rule,
   ]: ArgsOf<"autoModerationRuleCreate">): Promise<void> {
     try {
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         rule.guild,
         AuditLogEvent.AutoModerationRuleCreate,
         rule.id,
@@ -59,6 +59,7 @@ export class LoggingAutoModEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("autoModerationRuleCreate log failed", {
@@ -98,7 +99,7 @@ export class LoggingAutoModEvents {
         changes.push("Rule configuration changed");
       }
 
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         newRule.guild,
         AuditLogEvent.AutoModerationRuleUpdate,
         newRule.id,
@@ -115,6 +116,7 @@ export class LoggingAutoModEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("autoModerationRuleUpdate log failed", {
@@ -128,7 +130,7 @@ export class LoggingAutoModEvents {
     rule,
   ]: ArgsOf<"autoModerationRuleDelete">): Promise<void> {
     try {
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         rule.guild,
         AuditLogEvent.AutoModerationRuleDelete,
         rule.id,
@@ -149,6 +151,7 @@ export class LoggingAutoModEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("autoModerationRuleDelete log failed", {

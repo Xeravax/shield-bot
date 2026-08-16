@@ -14,7 +14,7 @@ export class LoggingSoundboardEvents {
       if (!sound.guild) {
         return;
       }
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         sound.guild,
         AuditLogEvent.SoundboardSoundCreate,
         sound.soundId,
@@ -32,6 +32,7 @@ export class LoggingSoundboardEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("guildSoundboardSoundCreate log failed", {
@@ -64,7 +65,7 @@ export class LoggingSoundboardEvents {
       if (changes.length === 0) {
         return;
       }
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         newSound.guild,
         AuditLogEvent.SoundboardSoundUpdate,
         newSound.soundId,
@@ -83,6 +84,7 @@ export class LoggingSoundboardEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("guildSoundboardSoundUpdate log failed", {
@@ -102,13 +104,13 @@ export class LoggingSoundboardEvents {
       const guild =
         sound.guild ??
         (await sound.client.guilds.fetch(sound.guildId).catch(() => null));
-      const { fields: extra, components } = guild
+      const { fields: extra, components, entryId } = guild
         ? await auditExecutorFields(
             guild,
             AuditLogEvent.SoundboardSoundDelete,
             sound.soundId,
           )
-        : { fields: [], components: undefined };
+        : { fields: [], components: undefined, entryId: null };
       await auditLogManager.postLog({
         guildId: sound.guildId,
         category: "server",
@@ -122,9 +124,60 @@ export class LoggingSoundboardEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("guildSoundboardSoundDelete log failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  @On({ event: "voiceChannelEffectSend" })
+  async onEffectSend([
+    effect,
+  ]: ArgsOf<"voiceChannelEffectSend">): Promise<void> {
+    try {
+      // Only log soundboard usage, not every VC emoji animation
+      if (effect.soundId == null) {
+        return;
+      }
+      const guild = effect.guild;
+      const sound =
+        effect.soundboardSound ??
+        guild.soundboardSounds.cache.get(String(effect.soundId)) ??
+        null;
+      const user = await guild.client.users
+        .fetch(effect.userId)
+        .catch(() => null);
+      await auditLogManager.postLog({
+        guildId: guild.id,
+        category: "voice",
+        title: "Soundboard Used",
+        severity: "info",
+        fields: [
+          {
+            name: "User",
+            value: await auditLogManager.formatUser(
+              effect.userId,
+              user?.username ?? null,
+            ),
+          },
+          {
+            name: "Channel",
+            value: auditLogManager.formatChannel(effect.channelId),
+          },
+          {
+            name: "Sound",
+            value: sound
+              ? `${sound.name} (\`${effect.soundId}\`)`
+              : `\`${effect.soundId}\``,
+          },
+        ],
+        sourceChannelId: effect.channelId,
+      });
+    } catch (error) {
+      loggers.bot.debug("voiceChannelEffectSend log failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     }

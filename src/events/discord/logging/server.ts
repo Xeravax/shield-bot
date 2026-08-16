@@ -6,8 +6,6 @@ import {
 import { loggers } from "../../../utility/logger.js";
 import { auditExecutorFields } from "../../../managers/logging/index.js";
 
-const webhookDebounce = new Map<string, NodeJS.Timeout>();
-
 @Discord()
 export class LoggingServerEvents {
   @On({ event: "guildUpdate" })
@@ -23,6 +21,12 @@ export class LoggingServerEvents {
       if (oldGuild.banner !== newGuild.banner) {
         changes.push("Banner changed");
       }
+      if (oldGuild.splash !== newGuild.splash) {
+        changes.push("Splash changed");
+      }
+      if (oldGuild.discoverySplash !== newGuild.discoverySplash) {
+        changes.push("Discovery splash changed");
+      }
       if (oldGuild.vanityURLCode !== newGuild.vanityURLCode) {
         changes.push(
           `Vanity: \`${oldGuild.vanityURLCode ?? "none"}\` → \`${newGuild.vanityURLCode ?? "none"}\``,
@@ -36,11 +40,89 @@ export class LoggingServerEvents {
       if (oldGuild.description !== newGuild.description) {
         changes.push("Description changed");
       }
+      if (oldGuild.ownerId !== newGuild.ownerId) {
+        changes.push(
+          `Owner: <@${oldGuild.ownerId}> → <@${newGuild.ownerId}>`,
+        );
+      }
+      if (oldGuild.afkChannelId !== newGuild.afkChannelId) {
+        changes.push(
+          `AFK channel: ${oldGuild.afkChannelId ? auditLogManager.formatChannel(oldGuild.afkChannelId) : "*none*"} → ${newGuild.afkChannelId ? auditLogManager.formatChannel(newGuild.afkChannelId) : "*none*"}`,
+        );
+      }
+      if (oldGuild.afkTimeout !== newGuild.afkTimeout) {
+        changes.push(
+          `AFK timeout: ${oldGuild.afkTimeout}s → ${newGuild.afkTimeout}s`,
+        );
+      }
+      if (oldGuild.systemChannelId !== newGuild.systemChannelId) {
+        changes.push(
+          `System channel: ${oldGuild.systemChannelId ? auditLogManager.formatChannel(oldGuild.systemChannelId) : "*none*"} → ${newGuild.systemChannelId ? auditLogManager.formatChannel(newGuild.systemChannelId) : "*none*"}`,
+        );
+      }
+      if (oldGuild.rulesChannelId !== newGuild.rulesChannelId) {
+        changes.push(
+          `Rules channel: ${oldGuild.rulesChannelId ? auditLogManager.formatChannel(oldGuild.rulesChannelId) : "*none*"} → ${newGuild.rulesChannelId ? auditLogManager.formatChannel(newGuild.rulesChannelId) : "*none*"}`,
+        );
+      }
+      if (oldGuild.publicUpdatesChannelId !== newGuild.publicUpdatesChannelId) {
+        changes.push(
+          `Public updates: ${oldGuild.publicUpdatesChannelId ? auditLogManager.formatChannel(oldGuild.publicUpdatesChannelId) : "*none*"} → ${newGuild.publicUpdatesChannelId ? auditLogManager.formatChannel(newGuild.publicUpdatesChannelId) : "*none*"}`,
+        );
+      }
+      if (oldGuild.preferredLocale !== newGuild.preferredLocale) {
+        changes.push(
+          `Locale: \`${oldGuild.preferredLocale}\` → \`${newGuild.preferredLocale}\``,
+        );
+      }
+      if (oldGuild.defaultMessageNotifications !== newGuild.defaultMessageNotifications) {
+        changes.push(
+          `Notifications: ${oldGuild.defaultMessageNotifications} → ${newGuild.defaultMessageNotifications}`,
+        );
+      }
+      if (oldGuild.explicitContentFilter !== newGuild.explicitContentFilter) {
+        changes.push(
+          `Content filter: ${oldGuild.explicitContentFilter} → ${newGuild.explicitContentFilter}`,
+        );
+      }
+      if (oldGuild.mfaLevel !== newGuild.mfaLevel) {
+        changes.push(`MFA level: ${oldGuild.mfaLevel} → ${newGuild.mfaLevel}`);
+      }
+      if (oldGuild.nsfwLevel !== newGuild.nsfwLevel) {
+        changes.push(`NSFW level: ${oldGuild.nsfwLevel} → ${newGuild.nsfwLevel}`);
+      }
+      if (oldGuild.premiumProgressBarEnabled !== newGuild.premiumProgressBarEnabled) {
+        changes.push(
+          `Boost progress bar: ${oldGuild.premiumProgressBarEnabled} → ${newGuild.premiumProgressBarEnabled}`,
+        );
+      }
+      if (oldGuild.widgetEnabled !== newGuild.widgetEnabled) {
+        changes.push(
+          `Widget enabled: ${oldGuild.widgetEnabled} → ${newGuild.widgetEnabled}`,
+        );
+      }
+      if (oldGuild.widgetChannelId !== newGuild.widgetChannelId) {
+        changes.push(
+          `Widget channel: ${oldGuild.widgetChannelId ? auditLogManager.formatChannel(oldGuild.widgetChannelId) : "*none*"} → ${newGuild.widgetChannelId ? auditLogManager.formatChannel(newGuild.widgetChannelId) : "*none*"}`,
+        );
+      }
+
+      const oldFeatures = new Set(oldGuild.features);
+      const newFeatures = new Set(newGuild.features);
+      const addedFeatures = [...newFeatures].filter((f) => !oldFeatures.has(f));
+      const removedFeatures = [...oldFeatures].filter((f) => !newFeatures.has(f));
+      if (addedFeatures.length) {
+        changes.push(`Features added: ${addedFeatures.join(", ")}`);
+      }
+      if (removedFeatures.length) {
+        changes.push(`Features removed: ${removedFeatures.join(", ")}`);
+      }
+
       if (changes.length === 0) {
         return;
       }
 
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         newGuild,
         AuditLogEvent.GuildUpdate,
       );
@@ -54,6 +136,13 @@ export class LoggingServerEvents {
           ...extra,
         ],
         components,
+        imageUrl:
+          oldGuild.splash !== newGuild.splash
+            ? newGuild.splashURL({ size: 512 })
+            : oldGuild.banner !== newGuild.banner
+              ? newGuild.bannerURL({ size: 512 })
+              : null,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("guildUpdate log failed", {
@@ -266,42 +355,6 @@ export class LoggingServerEvents {
       });
     } catch (error) {
       loggers.bot.debug("inviteDelete log failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  @On({ event: "webhooksUpdate" })
-  async onWebhooksUpdate([channel]: ArgsOf<"webhooksUpdate">): Promise<void> {
-    try {
-      if (!channel.guild) {
-        return;
-      }
-      const key = `${channel.guild.id}:${channel.id}`;
-      const existing = webhookDebounce.get(key);
-      if (existing) {
-        clearTimeout(existing);
-      }
-      const timer = setTimeout(() => {
-        webhookDebounce.delete(key);
-        void auditLogManager.postLog({
-          guildId: channel.guild.id,
-          category: "server",
-          title: "Webhooks Updated",
-          severity: "info",
-          fields: [
-            {
-              name: "Channel",
-              value: auditLogManager.formatChannel(channel.id),
-            },
-          ],
-          sourceChannelId: channel.id,
-        });
-      }, 5_000);
-      timer.unref();
-      webhookDebounce.set(key, timer);
-    } catch (error) {
-      loggers.bot.debug("webhooksUpdate log failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     }

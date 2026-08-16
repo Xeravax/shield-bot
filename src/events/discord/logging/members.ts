@@ -3,6 +3,7 @@ import {
   AuditLogEvent,
   EmbedBuilder,
   GuildMember,
+  GuildMemberFlags,
 } from "discord.js";
 import {
   auditLogManager,
@@ -173,6 +174,7 @@ export class LoggingMemberEvents {
           executorId: audit.executor!.id,
           reason: audit.reason,
           executorIsBot: false,
+          auditEntryId: audit.entryId,
         });
       } else {
         await auditLogManager.postLog({
@@ -186,6 +188,7 @@ export class LoggingMemberEvents {
           severity: audit.executor ? "danger" : "warn",
           fields,
           thumbnailUrl: member.user?.displayAvatarURL(),
+          auditEntryId: audit.entryId,
         });
       }
 
@@ -221,6 +224,7 @@ export class LoggingMemberEvents {
         await this.logRoleDiff(oldMember, newMember);
         await this.logProfileDiff(oldMember, newMember);
         await this.logBoostDiff(oldMember, newMember);
+        await this.logMembershipFlagsDiff(oldMember, newMember);
       }
       await this.logTimeoutDiff(oldMember, newMember);
     } catch (error) {
@@ -233,36 +237,26 @@ export class LoggingMemberEvents {
   @On({ event: "userUpdate" })
   async onUserUpdate([oldUser, newUser]: ArgsOf<"userUpdate">): Promise<void> {
     try {
-      if (
-        oldUser.avatar === newUser.avatar &&
-        oldUser.banner === newUser.banner &&
-        oldUser.username === newUser.username &&
-        oldUser.globalName === newUser.globalName
-      ) {
+      // Avatar/banner-only updates are extremely noisy; only log identity changes.
+      const usernameChanged = oldUser.username !== newUser.username;
+      const globalNameChanged = oldUser.globalName !== newUser.globalName;
+      if (!usernameChanged && !globalNameChanged) {
         return;
+      }
+
+      const changes: string[] = [];
+      if (usernameChanged) {
+        changes.push(`Username: \`${oldUser.username}\` → \`${newUser.username}\``);
+      }
+      if (globalNameChanged) {
+        changes.push(
+          `Display name: \`${oldUser.globalName ?? "none"}\` → \`${newUser.globalName ?? "none"}\``,
+        );
       }
 
       for (const guild of newUser.client.guilds.cache.values()) {
         const member = guild.members.cache.get(newUser.id);
         if (!member) {
-          continue;
-        }
-        const changes: string[] = [];
-        if (oldUser.username !== newUser.username) {
-          changes.push(`Username: \`${oldUser.username}\` → \`${newUser.username}\``);
-        }
-        if (oldUser.globalName !== newUser.globalName) {
-          changes.push(
-            `Display name: \`${oldUser.globalName ?? "none"}\` → \`${newUser.globalName ?? "none"}\``,
-          );
-        }
-        if (oldUser.avatar !== newUser.avatar) {
-          changes.push("Avatar changed");
-        }
-        if (oldUser.banner !== newUser.banner) {
-          changes.push("Banner changed");
-        }
-        if (changes.length === 0) {
           continue;
         }
         await auditLogManager.postLog({
@@ -353,6 +347,7 @@ export class LoggingMemberEvents {
         executorIsBot,
         skipReasonPrompt: executorIsBot || !executorId,
         claimIfUnresolved: !audit.executor,
+        auditEntryId: audit.entryId,
       });
     } catch (error) {
       loggers.bot.debug("flushRoleDiff logging failed", {
@@ -365,18 +360,13 @@ export class LoggingMemberEvents {
     oldMember: GuildMember | import("discord.js").PartialGuildMember,
     newMember: GuildMember,
   ): Promise<void> {
-    const changes: string[] = [];
-    if (oldMember.nickname !== newMember.nickname) {
-      changes.push(
-        `Nickname: \`${oldMember.nickname ?? "none"}\` → \`${newMember.nickname ?? "none"}\``,
-      );
-    }
-    if (oldMember.avatar !== newMember.avatar) {
-      changes.push("Server avatar changed");
-    }
-    if (changes.length === 0) {
+    // Skip server-avatar-only noise; nickname changes are still logged.
+    if (oldMember.nickname === newMember.nickname) {
       return;
     }
+    const changes: string[] = [
+      `Nickname: \`${oldMember.nickname ?? "none"}\` → \`${newMember.nickname ?? "none"}\``,
+    ];
 
     const audit = await discordAuditResolver.resolve(
       newMember.guild,
@@ -409,6 +399,7 @@ export class LoggingMemberEvents {
       ],
       components: claimComponentsIfUnresolved(!!audit.executor),
       thumbnailUrl: newMember.displayAvatarURL(),
+      auditEntryId: audit.entryId,
     });
   }
 
@@ -435,6 +426,106 @@ export class LoggingMemberEvents {
       ],
       thumbnailUrl: newMember.displayAvatarURL(),
     });
+  }
+
+  private async logMembershipFlagsDiff(
+    oldMember: GuildMember | import("discord.js").PartialGuildMember,
+    newMember: GuildMember,
+  ): Promise<void> {
+    const memberLine = await auditLogManager.formatUser(
+      newMember.id,
+      newMember.user.username,
+    );
+
+    // Membership screening: pending true → false without bypass flag change
+    if (oldMember.pending && !newMember.pending) {
+      const bypassedNow = newMember.flags.has(GuildMemberFlags.BypassesVerification);
+      const bypassedBefore =
+        "flags" in oldMember && oldMember.flags
+          ? oldMember.flags.has(GuildMemberFlags.BypassesVerification)
+          : false;
+      if (!bypassedNow || bypassedBefore) {
+        await auditLogManager.postLog({
+          guildId: newMember.guild.id,
+          category: "members",
+          title: "Membership Screening Completed",
+          severity: "success",
+          fields: [{ name: "Member", value: memberLine }],
+          thumbnailUrl: newMember.displayAvatarURL(),
+        });
+      }
+    }
+
+    const oldFlags =
+      "flags" in oldMember && oldMember.flags ? oldMember.flags : null;
+    if (!oldFlags) {
+      return;
+    }
+
+    const gainedBypass =
+      !oldFlags.has(GuildMemberFlags.BypassesVerification) &&
+      newMember.flags.has(GuildMemberFlags.BypassesVerification);
+    if (gainedBypass) {
+      const audit = await discordAuditResolver.resolve(
+        newMember.guild,
+        AuditLogEvent.MemberUpdate,
+        { targetId: newMember.id },
+      );
+      const fields = [
+        { name: "Member", value: memberLine },
+        ...(audit.executor
+          ? [
+              {
+                name: "Executor",
+                value: await auditLogManager.formatUser(
+                  audit.executor.id,
+                  audit.executor.username,
+                ),
+              },
+            ]
+          : [unknownExecutorField()]),
+      ];
+      await postStaffActionLog(auditLogManager, {
+        guildId: newMember.guild.id,
+        category: "members",
+        title: "Verification Bypassed",
+        severity: "warn",
+        fields,
+        executorId: audit.executor?.id,
+        reason: audit.reason,
+        executorIsBot: !!audit.executor?.bot,
+        claimIfUnresolved: !audit.executor,
+        auditEntryId: audit.entryId,
+      });
+    }
+
+    const startedOnboarding =
+      !oldFlags.has(GuildMemberFlags.StartedOnboarding) &&
+      newMember.flags.has(GuildMemberFlags.StartedOnboarding);
+    if (startedOnboarding) {
+      await auditLogManager.postLog({
+        guildId: newMember.guild.id,
+        category: "members",
+        title: "Onboarding Started",
+        severity: "info",
+        fields: [{ name: "Member", value: memberLine }],
+        thumbnailUrl: newMember.displayAvatarURL(),
+      });
+    }
+
+    const completedOnboarding =
+      !oldFlags.has(GuildMemberFlags.CompletedOnboarding) &&
+      newMember.flags.has(GuildMemberFlags.CompletedOnboarding);
+    if (completedOnboarding) {
+      await auditLogManager.postLog({
+        guildId: newMember.guild.id,
+        category: "members",
+        title: "Onboarding Completed",
+        severity: "success",
+        fields: [{ name: "Member", value: memberLine }],
+        thumbnailUrl: newMember.displayAvatarURL(),
+      });
+    }
   }
 
   private async logTimeoutDiff(
@@ -501,6 +592,7 @@ export class LoggingMemberEvents {
         reason: audit.reason,
         executorIsBot: !!audit.executor?.bot,
         claimIfUnresolved: !audit.executor,
+        auditEntryId: audit.entryId,
       });
 
       await modCaseManager.createCase({
@@ -541,6 +633,7 @@ export class LoggingMemberEvents {
         reason: audit.reason,
         executorIsBot: !!audit.executor?.bot,
         claimIfUnresolved: !audit.executor,
+        auditEntryId: audit.entryId,
       });
 
       await modCaseManager.createCase({

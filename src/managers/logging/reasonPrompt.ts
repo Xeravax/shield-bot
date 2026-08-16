@@ -12,6 +12,7 @@ import {
   type MessageEditOptions,
 } from "discord.js";
 import type { AuditLogManager } from "./auditLogManager.js";
+import { auditLogSeen } from "./auditLogSeen.js";
 import {
   LOGGING_COLORS,
   type LoggingSeverity,
@@ -207,6 +208,11 @@ export type StaffActionLogOptions = {
   /** Show Claim when executor is unknown. */
   claimIfUnresolved?: boolean;
   sourceChannelId?: string | null;
+  /**
+   * When set, mark this Discord audit entry consumed only after a successful
+   * send so the safety-net fallback remains available on soft-fail/early return.
+   */
+  auditEntryId?: string | null;
 };
 
 /**
@@ -239,7 +245,7 @@ export async function postStaffActionLog(
       }
     }
 
-    return auditLog.postRawToCategory(
+    const message = await auditLog.postRawToCategory(
       options.guildId,
       options.category,
       buildMissingReasonModLogV2({
@@ -253,6 +259,10 @@ export async function postStaffActionLog(
         includeClaimButton: false,
       }),
     );
+    if (message && options.auditEntryId) {
+      auditLogSeen.consume(options.guildId, options.auditEntryId);
+    }
+    return message;
   }
 
   const fields = [...options.fields];
@@ -296,6 +306,7 @@ export async function postStaffActionLog(
           ]
         : undefined,
     sourceChannelId: options.sourceChannelId,
+    auditEntryId: options.auditEntryId,
   });
 }
 

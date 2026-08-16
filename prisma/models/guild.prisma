@@ -81,6 +81,7 @@ model GuildSettings {
   inviteFilterEnabled          Boolean @default(false)
   inviteFilterAction           String? // log | delete | delete_timeout
   modCaseCounter               Int     @default(0) // Last allocated ModCase.caseNumber for this guild
+  loggingLastAuditEntryId      String? // Cursor for guildAuditLogEntryCreate catch-up (snowflake)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 }

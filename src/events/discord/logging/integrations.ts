@@ -114,6 +114,7 @@ export class LoggingIntegrationEvents {
             ? fields
             : [{ name: "Detail", value: "Integration list changed" }],
         components: claimComponentsIfUnresolved(!!audit?.executor),
+        auditEntryId: audit?.entryId,
       });
     } catch (error) {
       loggers.bot.debug("postIntegrationChange failed", {
@@ -138,12 +139,14 @@ export class LoggingIntegrationEvents {
       let executorFields: { name: string; value: string; inline?: boolean }[] =
         [];
       let components;
+      let auditEntryId: string | null = null;
       if (guild) {
         const audit = await discordAuditResolver.resolve(
           guild,
           AuditLogEvent.ApplicationCommandPermissionUpdate,
           { maxAgeMs: 12_000 },
         );
+        auditEntryId = audit.entryId;
         if (audit.executor) {
           executorFields = [
             {
@@ -180,6 +183,7 @@ export class LoggingIntegrationEvents {
           ...executorFields,
         ],
         components,
+        auditEntryId,
       });
     } catch (error) {
       loggers.bot.debug("applicationCommandPermissionsUpdate log failed", {

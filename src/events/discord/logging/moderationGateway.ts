@@ -61,6 +61,7 @@ export class LoggingModerationGatewayEvents {
         reason,
         executorIsBot: !!audit.executor?.bot,
         claimIfUnresolved: !audit.executor,
+        auditEntryId: audit.entryId,
       });
 
       await modCaseManager.createCase({
@@ -125,6 +126,7 @@ export class LoggingModerationGatewayEvents {
         reason,
         executorIsBot: !!audit.executor?.bot,
         claimIfUnresolved: !audit.executor,
+        auditEntryId: audit.entryId,
       });
 
       await modCaseManager.createCase({

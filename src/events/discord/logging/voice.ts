@@ -45,7 +45,7 @@ export class LoggingVoiceEvents {
 
       // Leave
       if (oldState.channelId && !newState.channelId) {
-        const { audit, fields: extra, components } = await resolveAuditExecutor(
+        const { audit, fields: extra, components, entryId } = await resolveAuditExecutor(
           guild,
           AuditLogEvent.MemberDisconnect,
           { targetId: member.id, maxAgeMs: 8_000 },
@@ -65,6 +65,7 @@ export class LoggingVoiceEvents {
           ],
           components,
           sourceChannelId: oldState.channelId,
+          auditEntryId: entryId,
         });
         return;
       }
@@ -75,7 +76,7 @@ export class LoggingVoiceEvents {
         newState.channelId &&
         oldState.channelId !== newState.channelId
       ) {
-        const { fields: extra, components } = await resolveAuditExecutor(
+        const { fields: extra, components, entryId } = await resolveAuditExecutor(
           guild,
           AuditLogEvent.MemberMove,
           { targetId: member.id, maxAgeMs: 8_000 },
@@ -99,6 +100,7 @@ export class LoggingVoiceEvents {
           ],
           components,
           sourceChannelId: newState.channelId,
+          auditEntryId: entryId,
         });
       }
 
@@ -261,6 +263,7 @@ export class LoggingVoiceEvents {
       skipReasonPrompt: executorIsBot || !executorId,
       claimIfUnresolved: !audit.executor,
       sourceChannelId,
+      auditEntryId: audit.entryId,
     });
   }
 }

@@ -14,6 +14,8 @@ export type AuditExecutorResult = {
   fields: { name: string; value: string; inline?: boolean }[];
   /** Claim button when Discord audit log could not resolve an executor. */
   components?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
+  /** Resolved audit entry id for consume-after-post; null when unresolved. */
+  entryId: string | null;
 };
 
 export type AuditExecutorOptions = {
@@ -43,10 +45,11 @@ async function executorFields(
   executor: { id: string; username?: string | null; tag?: string | null } | null,
   reason: string | null,
   claimIfUnresolved: boolean,
+  entryId: string | null,
 ): Promise<AuditExecutorResult> {
   if (!executor) {
     if (!claimIfUnresolved) {
-      return { fields: [] };
+      return { fields: [], entryId };
     }
     return {
       fields: [
@@ -57,6 +60,7 @@ async function executorFields(
         },
       ],
       components: unresolvedClaimRow(),
+      entryId,
     };
   }
 
@@ -77,7 +81,7 @@ async function executorFields(
       inline: false,
     });
   }
-  return { fields };
+  return { fields, entryId };
 }
 
 /** Shared executor fields for admin-style events; claimable when unresolved. */
@@ -101,6 +105,7 @@ export async function auditExecutorFields(
       : null,
     audit.reason,
     true,
+    audit.entryId,
   );
 }
 
@@ -125,6 +130,7 @@ export async function resolveAuditExecutor(
       : null,
     audit.reason,
     options?.claimIfUnresolved === true,
+    audit.entryId,
   );
   return { audit, ...result };
 }

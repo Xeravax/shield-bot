@@ -9,7 +9,7 @@ export class LoggingRoleEvents {
   @On({ event: "roleCreate" })
   async onCreate([role]: ArgsOf<"roleCreate">): Promise<void> {
     try {
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         role.guild,
         AuditLogEvent.RoleCreate,
         role.id,
@@ -27,6 +27,7 @@ export class LoggingRoleEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("roleCreate log failed", {
@@ -38,7 +39,7 @@ export class LoggingRoleEvents {
   @On({ event: "roleDelete" })
   async onDelete([role]: ArgsOf<"roleDelete">): Promise<void> {
     try {
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         role.guild,
         AuditLogEvent.RoleDelete,
         role.id,
@@ -56,6 +57,7 @@ export class LoggingRoleEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("roleDelete log failed", {
@@ -94,11 +96,19 @@ export class LoggingRoleEvents {
           changes.push(`Perms removed: ${removed.join(", ")}`);
         }
       }
+      if (oldRole.icon !== newRole.icon) {
+        changes.push("Role icon changed");
+      }
+      if (oldRole.unicodeEmoji !== newRole.unicodeEmoji) {
+        changes.push(
+          `Emoji: \`${oldRole.unicodeEmoji ?? "none"}\` → \`${newRole.unicodeEmoji ?? "none"}\``,
+        );
+      }
       if (changes.length === 0) {
         return;
       }
 
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         newRole.guild,
         AuditLogEvent.RoleUpdate,
         newRole.id,
@@ -117,6 +127,7 @@ export class LoggingRoleEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("roleUpdate log failed", {

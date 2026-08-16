@@ -123,7 +123,7 @@ export class LoggingChannelEvents {
       if (await auditLogManager.shouldIgnoreChannel(channel.guild.id, channel.id)) {
         return;
       }
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         channel.guild,
         AuditLogEvent.ChannelCreate,
         channel.id,
@@ -138,6 +138,7 @@ export class LoggingChannelEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("channelCreate log failed", {
@@ -155,7 +156,7 @@ export class LoggingChannelEvents {
       if (await auditLogManager.shouldIgnoreChannel(channel.guild.id, channel.id)) {
         return;
       }
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         channel.guild,
         AuditLogEvent.ChannelDelete,
         channel.id,
@@ -170,6 +171,7 @@ export class LoggingChannelEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("channelDelete log failed", {
@@ -253,6 +255,115 @@ export class LoggingChannelEvents {
           `Category: ${oldChannel.parentId ?? "none"} → ${newChannel.parentId ?? "none"}`,
         );
       }
+      if (
+        "rtcRegion" in oldChannel &&
+        "rtcRegion" in newChannel &&
+        oldChannel.rtcRegion !== newChannel.rtcRegion
+      ) {
+        changes.push(
+          `RTC region: \`${oldChannel.rtcRegion ?? "automatic"}\` → \`${newChannel.rtcRegion ?? "automatic"}\``,
+        );
+      }
+      if (
+        "videoQualityMode" in oldChannel &&
+        "videoQualityMode" in newChannel &&
+        oldChannel.videoQualityMode !== newChannel.videoQualityMode
+      ) {
+        changes.push(
+          `Video quality: ${oldChannel.videoQualityMode} → ${newChannel.videoQualityMode}`,
+        );
+      }
+      if (
+        "status" in oldChannel &&
+        "status" in newChannel &&
+        oldChannel.status !== newChannel.status
+      ) {
+        changes.push(
+          `Voice status: \`${oldChannel.status ?? "none"}\` → \`${newChannel.status ?? "none"}\``,
+        );
+      }
+      if (
+        "availableTags" in oldChannel &&
+        "availableTags" in newChannel
+      ) {
+        const serializeTag = (t: {
+          id: string;
+          name: string;
+          moderated: boolean;
+          emoji: { id: string | null; name: string | null } | null;
+        }) => ({
+          id: t.id,
+          name: t.name,
+          moderated: t.moderated,
+          emoji: t.emoji
+            ? { id: t.emoji.id, name: t.emoji.name }
+            : null,
+        });
+        const formatTag = (t: {
+          id: string;
+          name: string;
+          moderated: boolean;
+          emoji: { id: string | null; name: string | null } | null;
+        }) => {
+          const emojiPart = t.emoji
+            ? ` emoji=${t.emoji.name ?? "none"}/${t.emoji.id ?? "none"}`
+            : "";
+          return `${t.name} (${t.id}${t.moderated ? ", moderated" : ""}${emojiPart})`;
+        };
+        const oldTags = JSON.stringify(
+          (oldChannel.availableTags ?? []).map(serializeTag),
+        );
+        const newTags = JSON.stringify(
+          (newChannel.availableTags ?? []).map(serializeTag),
+        );
+        if (oldTags !== newTags) {
+          const oldNames = (oldChannel.availableTags ?? [])
+            .map(formatTag)
+            .join(", ");
+          const newNames = (newChannel.availableTags ?? [])
+            .map(formatTag)
+            .join(", ");
+          changes.push(
+            `Forum tags: \`${oldNames || "none"}\` → \`${newNames || "none"}\``,
+          );
+        }
+      }
+      if (
+        "defaultForumLayout" in oldChannel &&
+        "defaultForumLayout" in newChannel &&
+        oldChannel.defaultForumLayout !== newChannel.defaultForumLayout
+      ) {
+        changes.push(
+          `Forum layout: ${oldChannel.defaultForumLayout} → ${newChannel.defaultForumLayout}`,
+        );
+      }
+      if (
+        "defaultSortOrder" in oldChannel &&
+        "defaultSortOrder" in newChannel &&
+        oldChannel.defaultSortOrder !== newChannel.defaultSortOrder
+      ) {
+        changes.push(
+          `Forum sort: ${oldChannel.defaultSortOrder} → ${newChannel.defaultSortOrder}`,
+        );
+      }
+      if (
+        "defaultReactionEmoji" in oldChannel &&
+        "defaultReactionEmoji" in newChannel
+      ) {
+        const oldEmoji =
+          oldChannel.defaultReactionEmoji?.id ??
+          oldChannel.defaultReactionEmoji?.name ??
+          null;
+        const newEmoji =
+          newChannel.defaultReactionEmoji?.id ??
+          newChannel.defaultReactionEmoji?.name ??
+          null;
+        if (oldEmoji !== newEmoji) {
+          changes.push(
+            `Default reaction: \`${oldEmoji ?? "none"}\` → \`${newEmoji ?? "none"}\``,
+          );
+        }
+      }
 
       const overwriteChanges = diffPermissionOverwrites(
         oldChannel as GuildChannel,
@@ -270,7 +381,7 @@ export class LoggingChannelEvents {
           ? "Channel Permissions Updated"
           : "Channel Updated";
 
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         newChannel.guild,
         overwriteChanges.length > 0
           ? AuditLogEvent.ChannelOverwriteUpdate
@@ -289,6 +400,7 @@ export class LoggingChannelEvents {
         ],
         components,
         sourceChannelId: newChannel.id,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("channelUpdate log failed", {
@@ -531,7 +643,7 @@ export class LoggingChannelEvents {
       if (changes.length === 0) {
         return;
       }
-      const { fields: extra, components } = await auditExecutorFields(
+      const { fields: extra, components, entryId } = await auditExecutorFields(
         newStage.guild,
         AuditLogEvent.StageInstanceUpdate,
         newStage.id,
@@ -550,6 +662,7 @@ export class LoggingChannelEvents {
           ...extra,
         ],
         components,
+        auditEntryId: entryId,
       });
     } catch (error) {
       loggers.bot.debug("stageInstanceUpdate log failed", {
