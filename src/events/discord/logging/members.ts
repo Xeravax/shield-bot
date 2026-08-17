@@ -185,7 +185,7 @@ export class LoggingMemberEvents {
             : audit.executor
               ? "Member Kicked"
               : "Member Left",
-          severity: audit.executor ? "danger" : "warn",
+          severity: member.user?.bot ? "warn" : "danger",
           fields,
           thumbnailUrl: member.user?.displayAvatarURL(),
           auditEntryId: audit.entryId,
