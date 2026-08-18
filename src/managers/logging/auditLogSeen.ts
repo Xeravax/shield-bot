@@ -46,6 +46,18 @@ export class AuditLogSeen {
     });
   }
 
+  /** Consume several ids; skips null, undefined, and empty strings. */
+  consumeMany(
+    guildId: string,
+    ids: Iterable<string | null | undefined>,
+  ): void {
+    for (const id of ids) {
+      if (id) {
+        this.consume(guildId, id);
+      }
+    }
+  }
+
   wasConsumed(guildId: string, entryId: string): boolean {
     this.prune();
     const entry = this.consumed.get(this.key(guildId, entryId));

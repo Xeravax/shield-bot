@@ -7,6 +7,7 @@ import {
 } from "discord.js";
 import {
   auditLogManager,
+  auditLogSeen,
   discordAuditResolver,
   modCaseManager,
   prisma,
@@ -291,8 +292,8 @@ export class LoggingMemberEvents {
       return;
     }
 
-    queueMemberRoleChange(oldMember, newMember, (guildId, member, baseline) =>
-      this.flushRoleDiff(guildId, member, baseline),
+    queueMemberRoleChange(oldMember, newMember, (guildId, member, baseline, auditEntryIds) =>
+      this.flushRoleDiff(guildId, member, baseline, auditEntryIds),
     );
   }
 
@@ -300,10 +301,12 @@ export class LoggingMemberEvents {
     guildId: string,
     member: GuildMember,
     baselineRoleIds: Set<string>,
+    auditEntryIds: string[],
   ): Promise<void> {
     try {
       const diff = diffRolesFromBaseline(member, baselineRoleIds);
       if (!diff.changed) {
+        auditLogSeen.consumeMany(guildId, auditEntryIds);
         return;
       }
 
@@ -336,7 +339,7 @@ export class LoggingMemberEvents {
         fields.push(unknownExecutorField());
       }
 
-      await postStaffActionLog(auditLogManager, {
+      const message = await postStaffActionLog(auditLogManager, {
         guildId,
         category: "roles",
         title: "Member Roles Updated",
@@ -349,6 +352,9 @@ export class LoggingMemberEvents {
         claimIfUnresolved: !audit.executor,
         auditEntryId: audit.entryId,
       });
+      if (message) {
+        auditLogSeen.consumeMany(guildId, [...auditEntryIds, audit.entryId]);
+      }
     } catch (error) {
       loggers.bot.debug("flushRoleDiff logging failed", {
         error: error instanceof Error ? error.message : String(error),

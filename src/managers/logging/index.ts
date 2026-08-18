@@ -69,6 +69,9 @@ export type { StaffActionLogOptions } from "./reasonPrompt.js";
 export {
   ROLE_CHANGE_COALESCE_MS,
   queueMemberRoleChange,
+  hasPendingMemberRoleChange,
+  attachMemberRoleAuditEntry,
+  stashOrphanMemberRoleAuditEntry,
   diffRolesFromBaseline,
   formatRoleDiffLines,
   formatRoleList,

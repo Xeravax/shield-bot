@@ -16,9 +16,13 @@ import {
   postStaffActionLog,
   unknownExecutorField,
   type LoggingThreadKey,
+  hasPendingMemberRoleChange,
+  attachMemberRoleAuditEntry,
+  stashOrphanMemberRoleAuditEntry,
 } from "../../../managers/logging/index.js";
 
 const FALLBACK_DELAY_MS = 3_000;
+const ROLE_FALLBACK_RETRY_MS = 750;
 const CATCHUP_LIMIT = 100;
 
 const SECRET_KEY_RE = /token|url|secret|password|avatar/i;
@@ -518,6 +522,22 @@ export async function processAuditLogEntry(
   }
 
   // Live: wait for rich gateway handler, then fallback if still unconsumed
+  if (entry.action === AuditLogEvent.MemberRoleUpdate && entry.targetId) {
+    if (
+      !attachMemberRoleAuditEntry(guild.id, entry.targetId, entry.id)
+    ) {
+      stashOrphanMemberRoleAuditEntry(guild.id, entry.targetId, entry.id);
+    }
+  }
+  scheduleFallback(guild, entry, FALLBACK_DELAY_MS);
+  return true;
+}
+
+function scheduleFallback(
+  guild: Guild,
+  entry: GuildAuditLogsEntry,
+  delayMs: number,
+): void {
   const guildId = guild.id;
   const entryId = entry.id;
   setTimeout(() => {
@@ -526,6 +546,18 @@ export async function processAuditLogEntry(
         await auditLogSeen.advanceCursor(guildId, entryId);
         return;
       }
+
+      const targetId = entry.targetId;
+      if (
+        entry.action === AuditLogEvent.MemberRoleUpdate &&
+        targetId &&
+        hasPendingMemberRoleChange(guildId, targetId)
+      ) {
+        attachMemberRoleAuditEntry(guildId, targetId, entryId);
+        scheduleFallback(guild, entry, ROLE_FALLBACK_RETRY_MS);
+        return;
+      }
+
       if (!auditLogSeen.tryConsume(guildId, entryId)) {
         await auditLogSeen.advanceCursor(guildId, entryId);
         return;
@@ -553,8 +585,7 @@ export async function processAuditLogEntry(
         error: error instanceof Error ? error.message : String(error),
       });
     });
-  }, FALLBACK_DELAY_MS).unref();
-  return true;
+  }, delayMs).unref();
 }
 
 const catchupInFlight = new Set<string>();

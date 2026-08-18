@@ -1,11 +1,13 @@
 import type { GuildMember, PartialGuildMember, Role } from "discord.js";
 
 export const ROLE_CHANGE_COALESCE_MS = 5_000;
+const ORPHAN_TTL_MS = 10_000;
 
 type FlushHandler = (
   guildId: string,
   member: GuildMember,
   baselineRoleIds: Set<string>,
+  auditEntryIds: string[],
 ) => Promise<void>;
 
 type PendingRoleChange = {
@@ -13,12 +15,29 @@ type PendingRoleChange = {
   baselineRoleIds: Set<string>;
   latestMember: GuildMember;
   timer: NodeJS.Timeout;
+  auditEntryIds: Set<string>;
+  flushing: boolean;
+  onFlush: FlushHandler;
+};
+
+type OrphanBucket = {
+  entryIds: Set<string>;
+  expiresAt: number;
 };
 
 const pending = new Map<string, PendingRoleChange>();
+const orphans = new Map<string, OrphanBucket>();
 
 function keyFor(guildId: string, userId: string): string {
   return `${guildId}:${userId}`;
+}
+
+function pruneOrphans(now = Date.now()): void {
+  for (const [key, bucket] of orphans) {
+    if (bucket.expiresAt <= now) {
+      orphans.delete(key);
+    }
+  }
 }
 
 function roleIdSet(
@@ -33,6 +52,94 @@ function sortRoles(roles: Role[]): Role[] {
 
 function formatRoleLabel(role: Role): string {
   return `${role.name} (\`${role.id}\`)`;
+}
+
+/** True while a role-change flush is queued or in flight. */
+export function hasPendingMemberRoleChange(
+  guildId: string,
+  userId: string,
+): boolean {
+  return pending.has(keyFor(guildId, userId));
+}
+
+/**
+ * Attach an audit entry id to an in-flight coalesce. Returns true when a
+ * pending bucket existed and the id was recorded.
+ */
+export function attachMemberRoleAuditEntry(
+  guildId: string,
+  userId: string,
+  entryId: string,
+): boolean {
+  const existing = pending.get(keyFor(guildId, userId));
+  if (!existing) {
+    return false;
+  }
+  existing.auditEntryIds.add(entryId);
+  return true;
+}
+
+/**
+ * Remember a MemberRoleUpdate audit id until guildMemberUpdate starts coalesce.
+ */
+export function stashOrphanMemberRoleAuditEntry(
+  guildId: string,
+  userId: string,
+  entryId: string,
+): void {
+  pruneOrphans();
+  const key = keyFor(guildId, userId);
+  const existing = orphans.get(key);
+  const expiresAt = Date.now() + ORPHAN_TTL_MS;
+  if (existing && existing.expiresAt > Date.now()) {
+    existing.entryIds.add(entryId);
+    existing.expiresAt = expiresAt;
+    return;
+  }
+  orphans.set(key, {
+    entryIds: new Set([entryId]),
+    expiresAt,
+  });
+}
+
+function claimOrphanMemberRoleAuditEntries(
+  guildId: string,
+  userId: string,
+): Set<string> {
+  pruneOrphans();
+  const key = keyFor(guildId, userId);
+  const bucket = orphans.get(key);
+  orphans.delete(key);
+  if (!bucket || bucket.expiresAt <= Date.now()) {
+    return new Set();
+  }
+  return bucket.entryIds;
+}
+
+async function runFlush(
+  key: string,
+  entry: PendingRoleChange,
+): Promise<void> {
+  if (entry.flushing) {
+    return;
+  }
+  entry.flushing = true;
+  try {
+    await entry.onFlush(
+      entry.guildId,
+      entry.latestMember,
+      entry.baselineRoleIds,
+      [...entry.auditEntryIds],
+    );
+  } finally {
+    pending.delete(key);
+  }
+}
+
+function scheduleFlush(key: string, entry: PendingRoleChange): NodeJS.Timeout {
+  return setTimeout(() => {
+    void runFlush(key, entry);
+  }, ROLE_CHANGE_COALESCE_MS);
 }
 
 /**
@@ -50,25 +157,25 @@ export function queueMemberRoleChange(
   const existing = pending.get(key);
 
   if (existing) {
+    if (existing.flushing) {
+      return;
+    }
     clearTimeout(existing.timer);
     existing.latestMember = newMember;
-    existing.timer = setTimeout(() => {
-      pending.delete(key);
-      void onFlush(guildId, existing.latestMember, existing.baselineRoleIds);
-    }, ROLE_CHANGE_COALESCE_MS);
+    existing.onFlush = onFlush;
+    existing.timer = scheduleFlush(key, existing);
     return;
   }
 
-  const baselineRoleIds = roleIdSet(oldMember);
-  const entry: PendingRoleChange = {
+  const entry = {
     guildId,
-    baselineRoleIds,
+    baselineRoleIds: roleIdSet(oldMember),
     latestMember: newMember,
-    timer: setTimeout(() => {
-      pending.delete(key);
-      void onFlush(guildId, entry.latestMember, entry.baselineRoleIds);
-    }, ROLE_CHANGE_COALESCE_MS),
-  };
+    auditEntryIds: claimOrphanMemberRoleAuditEntries(guildId, userId),
+    flushing: false,
+    onFlush,
+  } as PendingRoleChange;
+  entry.timer = scheduleFlush(key, entry);
   pending.set(key, entry);
 }
 
