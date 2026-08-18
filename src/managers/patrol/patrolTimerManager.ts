@@ -1594,7 +1594,7 @@ export class PatrolTimerManager {
       const payload = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
-        allowedMentions: { users: [userId] },
+        allowedMentions: { parse: [] },
       } as MessageCreateOptions;
 
       for (const textChannel of destinations) {

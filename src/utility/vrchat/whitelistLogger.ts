@@ -43,6 +43,7 @@ export async function sendWhitelistLog(
       const payload = {
         components: [container],
         flags: MessageFlags.IsComponentsV2,
+        allowedMentions: { parse: [] },
       } as MessageCreateOptions;
 
       await auditLogManager.fanOutWhitelistLog(guildId, payload, [

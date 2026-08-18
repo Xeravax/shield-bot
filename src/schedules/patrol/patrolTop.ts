@@ -117,7 +117,10 @@ export async function postPatrolTop(client: Client): Promise<void> {
         const content = header + lines.join("\n");
 
         // Post the message
-        await channel.send(content);
+        await channel.send({
+          content,
+          allowedMentions: { parse: [] },
+        });
         loggers.schedules.info(`Posted patrol top to channel ${settings.patrolTopChannelId} in guild ${settings.guildId}`);
       } catch (error) {
         loggers.schedules.error(

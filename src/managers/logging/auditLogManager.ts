@@ -413,7 +413,12 @@ export class AuditLogManager {
     options: MessageCreateOptions,
     extraChannelIds: Array<string | null | undefined> = [],
   ): Promise<void> {
-    await this.fanOutCategoryLog(guildId, "whitelist", options, extraChannelIds);
+    await this.fanOutCategoryLog(
+      guildId,
+      "whitelist",
+      { ...options, allowedMentions: { parse: [] } },
+      extraChannelIds,
+    );
   }
 
   /**
