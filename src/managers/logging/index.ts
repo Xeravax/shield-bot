@@ -80,6 +80,9 @@ export {
 export {
   CHANNEL_POSITION_COALESCE_MS,
   queueChannelPositionChange,
+  hasPendingChannelReorder,
+  attachChannelPositionAuditEntry,
+  stashOrphanChannelPositionAuditEntry,
 } from "./channelPositionCoalesce.js";
 
 export {

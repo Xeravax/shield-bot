@@ -7,12 +7,28 @@ import {
   PermissionOverwrites,
   ThreadChannel,
 } from "discord.js";
-import { auditLogManager } from "../../../main.js";
+import { auditLogManager, auditLogSeen } from "../../../main.js";
 import { loggers } from "../../../utility/logger.js";
 import {
   auditExecutorFields,
   queueChannelPositionChange,
 } from "../../../managers/logging/index.js";
+
+function overwriteAuditEvents(
+  overwriteChanges: string[],
+): AuditLogEvent[] {
+  const events: AuditLogEvent[] = [];
+  if (overwriteChanges.some((line) => line.startsWith("Added "))) {
+    events.push(AuditLogEvent.ChannelOverwriteCreate);
+  }
+  if (overwriteChanges.some((line) => line.startsWith("Updated "))) {
+    events.push(AuditLogEvent.ChannelOverwriteUpdate);
+  }
+  if (overwriteChanges.some((line) => line.startsWith("Removed "))) {
+    events.push(AuditLogEvent.ChannelOverwriteDelete);
+  }
+  return events;
+}
 
 function channelLabel(channel: { id: string; name?: string; type: ChannelType }): string {
   const name = "name" in channel && channel.name ? `#${channel.name}` : channel.id;
@@ -138,6 +154,7 @@ export class LoggingChannelEvents {
           ...extra,
         ],
         components,
+        sourceChannelId: channel.id,
         auditEntryId: entryId,
       });
     } catch (error) {
@@ -171,6 +188,7 @@ export class LoggingChannelEvents {
           ...extra,
         ],
         components,
+        sourceChannelId: channel.id,
         auditEntryId: entryId,
       });
     } catch (error) {
@@ -187,6 +205,10 @@ export class LoggingChannelEvents {
         return;
       }
 
+      if (await auditLogManager.shouldIgnoreChannel(newChannel.guild.id, newChannel.id)) {
+        return;
+      }
+
       const positionChanged =
         "rawPosition" in oldChannel &&
         "rawPosition" in newChannel &&
@@ -195,12 +217,9 @@ export class LoggingChannelEvents {
         queueChannelPositionChange(
           newChannel.guild.id,
           newChannel.id,
-          (guildId, channelIds) => this.flushChannelReorder(guildId, channelIds),
+          (guildId, channelIds, auditEntryIds) =>
+            this.flushChannelReorder(guildId, channelIds, auditEntryIds),
         );
-      }
-
-      if (await auditLogManager.shouldIgnoreChannel(newChannel.guild.id, newChannel.id)) {
-        return;
       }
 
       const changes: string[] = [];
@@ -364,6 +383,35 @@ export class LoggingChannelEvents {
           );
         }
       }
+      if (
+        "defaultAutoArchiveDuration" in oldChannel &&
+        "defaultAutoArchiveDuration" in newChannel &&
+        oldChannel.defaultAutoArchiveDuration !==
+          newChannel.defaultAutoArchiveDuration
+      ) {
+        changes.push(
+          `Auto-archive: ${oldChannel.defaultAutoArchiveDuration ?? "none"} → ${newChannel.defaultAutoArchiveDuration ?? "none"}`,
+        );
+      }
+      if (
+        "defaultThreadRateLimitPerUser" in oldChannel &&
+        "defaultThreadRateLimitPerUser" in newChannel &&
+        oldChannel.defaultThreadRateLimitPerUser !==
+          newChannel.defaultThreadRateLimitPerUser
+      ) {
+        changes.push(
+          `Default thread slowmode: ${oldChannel.defaultThreadRateLimitPerUser}s → ${newChannel.defaultThreadRateLimitPerUser}s`,
+        );
+      }
+      if (
+        "flags" in oldChannel &&
+        "flags" in newChannel &&
+        oldChannel.flags?.bitfield !== newChannel.flags?.bitfield
+      ) {
+        const oldFlags = oldChannel.flags?.toArray().join(", ") || "none";
+        const newFlags = newChannel.flags?.toArray().join(", ") || "none";
+        changes.push(`Flags: ${oldFlags} → ${newFlags}`);
+      }
 
       const overwriteChanges = diffPermissionOverwrites(
         oldChannel as GuildChannel,
@@ -381,14 +429,40 @@ export class LoggingChannelEvents {
           ? "Channel Permissions Updated"
           : "Channel Updated";
 
-      const { fields: extra, components, entryId } = await auditExecutorFields(
-        newChannel.guild,
-        overwriteChanges.length > 0
-          ? AuditLogEvent.ChannelOverwriteUpdate
-          : AuditLogEvent.ChannelUpdate,
-        newChannel.id,
-      );
-      await auditLogManager.postLog({
+      const overwriteEvents = overwriteAuditEvents(overwriteChanges);
+      const extraIds: string[] = [];
+      let extra: { name: string; value: string; inline?: boolean }[] = [];
+      let components;
+      let entryId: string | null = null;
+
+      if (overwriteEvents.length > 0) {
+        for (const type of overwriteEvents) {
+          const resolved = await auditExecutorFields(
+            newChannel.guild,
+            type,
+            newChannel.id,
+          );
+          if (resolved.entryId) {
+            extraIds.push(resolved.entryId);
+          }
+          if (!entryId) {
+            extra = resolved.fields;
+            components = resolved.components;
+            entryId = resolved.entryId;
+          }
+        }
+      } else {
+        const resolved = await auditExecutorFields(
+          newChannel.guild,
+          AuditLogEvent.ChannelUpdate,
+          newChannel.id,
+        );
+        extra = resolved.fields;
+        components = resolved.components;
+        entryId = resolved.entryId;
+      }
+
+      const posted = await auditLogManager.postLog({
         guildId: newChannel.guild.id,
         category: "channels",
         title,
@@ -402,6 +476,9 @@ export class LoggingChannelEvents {
         sourceChannelId: newChannel.id,
         auditEntryId: entryId,
       });
+      if (posted) {
+        auditLogSeen.consumeMany(newChannel.guild.id, extraIds);
+      }
     } catch (error) {
       loggers.bot.debug("channelUpdate log failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -412,13 +489,20 @@ export class LoggingChannelEvents {
   private async flushChannelReorder(
     guildId: string,
     channelIds: string[],
+    auditEntryIds: string[],
   ): Promise<void> {
     try {
-      const count = channelIds.length;
-      if (count === 0) {
+      const visible: string[] = [];
+      for (const channelId of channelIds) {
+        if (!(await auditLogManager.shouldIgnoreChannel(guildId, channelId))) {
+          visible.push(channelId);
+        }
+      }
+      if (visible.length === 0) {
+        auditLogSeen.consumeMany(guildId, auditEntryIds);
         return;
       }
-      await auditLogManager.postLog({
+      const posted = await auditLogManager.postLog({
         guildId,
         category: "channels",
         title: "Channels Reordered",
@@ -427,12 +511,15 @@ export class LoggingChannelEvents {
           {
             name: "Channels",
             value:
-              count === 1
+              visible.length === 1
                 ? "1 channel was reordered."
-                : `${count} channels were reordered.`,
+                : `${visible.length} channels were reordered.`,
           },
         ],
       });
+      if (posted) {
+        auditLogSeen.consumeMany(guildId, auditEntryIds);
+      }
     } catch (error) {
       loggers.bot.debug("channel reorder log failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -445,6 +532,9 @@ export class LoggingChannelEvents {
     try {
       const settings = await auditLogManager.getSettings(thread.guild.id);
       if (settings?.loggingForumChannelId === thread.parentId) {
+        return;
+      }
+      if (await auditLogManager.shouldIgnoreChannel(thread.guild.id, thread.id)) {
         return;
       }
       await auditLogManager.postLog({
@@ -461,6 +551,7 @@ export class LoggingChannelEvents {
               : "*none*",
           },
         ],
+        sourceChannelId: thread.id,
       });
     } catch (error) {
       loggers.bot.debug("threadCreate log failed", {
@@ -482,12 +573,16 @@ export class LoggingChannelEvents {
       ) {
         return;
       }
+      if (await auditLogManager.shouldIgnoreChannel(thread.guild.id, thread.id)) {
+        return;
+      }
       await auditLogManager.postLog({
         guildId: thread.guild.id,
         category: "channels",
         title: "Thread Deleted",
         severity: "danger",
         fields: [{ name: "Thread", value: channelLabel(thread as ThreadChannel) }],
+        sourceChannelId: thread.id,
       });
     } catch (error) {
       loggers.bot.debug("threadDelete log failed", {
@@ -501,6 +596,14 @@ export class LoggingChannelEvents {
     try {
       const settings = await auditLogManager.getSettings(newThread.guild.id);
       if (settings?.loggingForumChannelId === newThread.parentId) {
+        return;
+      }
+      if (
+        await auditLogManager.shouldIgnoreChannel(
+          newThread.guild.id,
+          newThread.id,
+        )
+      ) {
         return;
       }
       const changes: string[] = [];
@@ -537,6 +640,7 @@ export class LoggingChannelEvents {
           { name: "Thread", value: channelLabel(newThread) },
           { name: "Changes", value: changes.join("\n") },
         ],
+        sourceChannelId: newThread.id,
       });
     } catch (error) {
       loggers.bot.debug("threadUpdate log failed", {
@@ -554,6 +658,9 @@ export class LoggingChannelEvents {
     try {
       const settings = await auditLogManager.getSettings(thread.guild.id);
       if (settings?.loggingForumChannelId === thread.parentId) {
+        return;
+      }
+      if (await auditLogManager.shouldIgnoreChannel(thread.guild.id, thread.id)) {
         return;
       }
       if (added.size === 0 && removed.size === 0) {
@@ -586,6 +693,7 @@ export class LoggingChannelEvents {
         title: "Thread Members Updated",
         severity: "info",
         fields,
+        sourceChannelId: thread.id,
       });
     } catch (error) {
       loggers.bot.debug("threadMembersUpdate log failed", {
@@ -600,6 +708,9 @@ export class LoggingChannelEvents {
       if (!stage.guild) {
         return;
       }
+      if (await auditLogManager.shouldIgnoreChannel(stage.guild.id, stage.channelId)) {
+        return;
+      }
       await auditLogManager.postLog({
         guildId: stage.guild.id,
         category: "channels",
@@ -612,6 +723,7 @@ export class LoggingChannelEvents {
             value: auditLogManager.formatChannel(stage.channelId),
           },
         ],
+        sourceChannelId: stage.channelId,
       });
     } catch (error) {
       loggers.bot.debug("stageInstanceCreate log failed", {
@@ -627,6 +739,14 @@ export class LoggingChannelEvents {
   ]: ArgsOf<"stageInstanceUpdate">): Promise<void> {
     try {
       if (!newStage.guild || !oldStage) {
+        return;
+      }
+      if (
+        await auditLogManager.shouldIgnoreChannel(
+          newStage.guild.id,
+          newStage.channelId,
+        )
+      ) {
         return;
       }
       const changes: string[] = [];
@@ -662,6 +782,7 @@ export class LoggingChannelEvents {
           ...extra,
         ],
         components,
+        sourceChannelId: newStage.channelId,
         auditEntryId: entryId,
       });
     } catch (error) {
@@ -677,6 +798,9 @@ export class LoggingChannelEvents {
       if (!stage.guild) {
         return;
       }
+      if (await auditLogManager.shouldIgnoreChannel(stage.guild.id, stage.channelId)) {
+        return;
+      }
       await auditLogManager.postLog({
         guildId: stage.guild.id,
         category: "channels",
@@ -689,6 +813,7 @@ export class LoggingChannelEvents {
             value: auditLogManager.formatChannel(stage.channelId),
           },
         ],
+        sourceChannelId: stage.channelId,
       });
     } catch (error) {
       loggers.bot.debug("stageInstanceDelete log failed", {

@@ -19,6 +19,9 @@ import {
   hasPendingMemberRoleChange,
   attachMemberRoleAuditEntry,
   stashOrphanMemberRoleAuditEntry,
+  hasPendingChannelReorder,
+  attachChannelPositionAuditEntry,
+  stashOrphanChannelPositionAuditEntry,
 } from "../../../managers/logging/index.js";
 
 const FALLBACK_DELAY_MS = 3_000;
@@ -199,6 +202,99 @@ function targetLabel(entry: GuildAuditLogsEntry): string {
     return `<@${target.id}> (\`${target.id}\`)`;
   }
   return "*unknown*";
+}
+
+/**
+ * Channel ids this audit entry is about. Used so fallback still honors
+ * ignored channels / categories when the rich gateway handler never consumed.
+ */
+function channelIdsFromAuditEntry(entry: GuildAuditLogsEntry): string[] {
+  const ids = new Set<string>();
+
+  const extra = entry.extra as
+    | {
+        channel?: { id?: string } | string | null;
+        channelId?: string;
+        channel_id?: string;
+      }
+    | null
+    | undefined;
+
+  if (extra && typeof extra === "object") {
+    if (typeof extra.channelId === "string") {
+      ids.add(extra.channelId);
+    }
+    if (typeof extra.channel_id === "string") {
+      ids.add(extra.channel_id);
+    }
+    if (typeof extra.channel === "string") {
+      ids.add(extra.channel);
+    } else if (
+      extra.channel &&
+      typeof extra.channel === "object" &&
+      typeof extra.channel.id === "string"
+    ) {
+      ids.add(extra.channel.id);
+    }
+  }
+
+  for (const change of entry.changes) {
+    if (change.key !== "channel_id" && change.key !== "parent_id") {
+      continue;
+    }
+    for (const value of [change.new, change.old]) {
+      if (typeof value === "string") {
+        ids.add(value);
+      }
+    }
+  }
+
+  const target = entry.target as {
+    id?: string;
+    channelId?: string;
+    parentId?: string;
+  } | null;
+  if (typeof target?.channelId === "string") {
+    ids.add(target.channelId);
+  }
+  if (typeof target?.parentId === "string") {
+    ids.add(target.parentId);
+  }
+
+  switch (entry.action) {
+    case AuditLogEvent.ChannelCreate:
+    case AuditLogEvent.ChannelUpdate:
+    case AuditLogEvent.ChannelDelete:
+    case AuditLogEvent.ChannelOverwriteCreate:
+    case AuditLogEvent.ChannelOverwriteUpdate:
+    case AuditLogEvent.ChannelOverwriteDelete:
+    case AuditLogEvent.ThreadCreate:
+    case AuditLogEvent.ThreadUpdate:
+    case AuditLogEvent.ThreadDelete:
+    case AuditLogEvent.MessageBulkDelete:
+    case AuditLogEvent.VoiceChannelStatusCreate:
+    case AuditLogEvent.VoiceChannelStatusDelete:
+      if (entry.targetId) {
+        ids.add(entry.targetId);
+      }
+      break;
+    default:
+      break;
+  }
+
+  return [...ids];
+}
+
+async function isIgnoredAuditChannel(
+  guild: Guild,
+  entry: GuildAuditLogsEntry,
+): Promise<boolean> {
+  for (const channelId of channelIdsFromAuditEntry(entry)) {
+    if (await auditLogManager.shouldIgnoreChannel(guild.id, channelId)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function webhookSafeFields(entry: GuildAuditLogsEntry): {
@@ -410,6 +506,13 @@ async function postFallback(
   guild: Guild,
   entry: GuildAuditLogsEntry,
 ): Promise<void> {
+  const sourceChannelIds = channelIdsFromAuditEntry(entry);
+  for (const channelId of sourceChannelIds) {
+    if (await auditLogManager.shouldIgnoreChannel(guild.id, channelId)) {
+      return;
+    }
+  }
+
   const executor = executorUser(entry);
   const fields: { name: string; value: string; inline?: boolean }[] = [
     { name: "Target", value: targetLabel(entry) },
@@ -436,6 +539,7 @@ async function postFallback(
     fields,
     components: claimComponentsIfUnresolved(!!executor),
     footer: `Audit entry ${entry.id}`,
+    sourceChannelId: sourceChannelIds[0] ?? null,
   });
 }
 
@@ -503,6 +607,16 @@ export async function processAuditLogEntry(
     return true;
   }
 
+  // Rich handlers skip ignored channels without consuming. Do the same here
+  // so fallback / catch-up cannot leak those events into the forum.
+  if (await isIgnoredAuditChannel(guild, entry)) {
+    auditLogSeen.consume(guild.id, entry.id);
+    if (!fromCatchup) {
+      await auditLogSeen.advanceCursor(guild.id, entry.id);
+    }
+    return true;
+  }
+
   // Catch-up: gateway event already missed — post fallback immediately
   if (fromCatchup) {
     if (!auditLogSeen.tryConsume(guild.id, entry.id)) {
@@ -527,6 +641,13 @@ export async function processAuditLogEntry(
       !attachMemberRoleAuditEntry(guild.id, entry.targetId, entry.id)
     ) {
       stashOrphanMemberRoleAuditEntry(guild.id, entry.targetId, entry.id);
+    }
+  }
+  if (entry.action === AuditLogEvent.ChannelUpdate) {
+    if (!attachChannelPositionAuditEntry(guild.id, entry.id)) {
+      if (entry.targetId) {
+        stashOrphanChannelPositionAuditEntry(guild.id, entry.targetId, entry.id);
+      }
     }
   }
   scheduleFallback(guild, entry, FALLBACK_DELAY_MS);
@@ -554,6 +675,15 @@ function scheduleFallback(
         hasPendingMemberRoleChange(guildId, targetId)
       ) {
         attachMemberRoleAuditEntry(guildId, targetId, entryId);
+        scheduleFallback(guild, entry, ROLE_FALLBACK_RETRY_MS);
+        return;
+      }
+
+      if (
+        entry.action === AuditLogEvent.ChannelUpdate &&
+        hasPendingChannelReorder(guildId)
+      ) {
+        attachChannelPositionAuditEntry(guildId, entryId);
         scheduleFallback(guild, entry, ROLE_FALLBACK_RETRY_MS);
         return;
       }

@@ -100,6 +100,9 @@ export class DiscordAuditResolver {
           if (!options?.targetId) {
             return true;
           }
+          if (e.targetId === options.targetId) {
+            return true;
+          }
           const target = e.target as { id?: string } | null;
           return target?.id === options.targetId;
         }) ?? null;
