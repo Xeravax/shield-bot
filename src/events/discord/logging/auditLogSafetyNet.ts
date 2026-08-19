@@ -239,7 +239,8 @@ function channelIdsFromAuditEntry(entry: GuildAuditLogsEntry): string[] {
   }
 
   for (const change of entry.changes) {
-    if (change.key !== "channel_id" && change.key !== "parent_id") {
+    const key = String(change.key);
+    if (key !== "channel_id" && key !== "parent_id") {
       continue;
     }
     for (const value of [change.new, change.old]) {
