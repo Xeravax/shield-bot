@@ -56,7 +56,7 @@
 - `/vrchat request <type>` - Request backup or log dispatch (backup/dispatch, world link required for dispatch)
 
 ## Settings Commands (Staff)
-- `/settings patrol log-channel/top-channel/setup-category/alone-exclude` - Patrol channel and category settings
+- `/settings patrol top-channel/setup-category/alone-exclude` - Patrol channel and category settings
 - `/settings patrol set-channel/set-to-promote-channel/view/disable/add-rule/remove-rule/edit-rule/list-rules` - Promotion notification configuration
 - `/settings attendance add-channel/remove-channel` - Manage enrolled attendance channels
 - `/settings attendance aoc-voice-channel` - AoC voice channel for live phantom-compiler panel

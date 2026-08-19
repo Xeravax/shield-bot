@@ -269,7 +269,6 @@ export class PatrolTimerManager {
       promotionChannelId?: string | null;
       toPromoteChannelId?: string | null;
       promotionRules?: PromotionRule[] | null;
-      patrolLogChannelId?: string | null;
       loaNotificationChannelId?: string | null;
       staffRoleIds?: unknown;
       patrolAloneExcludeChannelIds?: unknown;
@@ -1432,8 +1431,7 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Destinations for patrol hour / alone alerts: forum Patrol Hours thread
-   * (when logging is set up) plus optional legacy patrolLogChannelId.
+   * Destinations for patrol hour / alone alerts: the forum Patrol Hours thread.
    */
   private async resolvePatrolLogChannels(guildId: string): Promise<
     {
@@ -1444,29 +1442,6 @@ export class PatrolTimerManager {
       ) => Promise<unknown>;
     }[]
   > {
-    const destinations: {
-      id: string;
-      guild: Guild;
-      send: (
-        options: string | MessageCreateOptions,
-      ) => Promise<unknown>;
-    }[] = [];
-    const seen = new Set<string>();
-
-    const push = (channel: {
-      id: string;
-      guild: Guild;
-      send: (
-        options: string | MessageCreateOptions,
-      ) => Promise<unknown>;
-    }) => {
-      if (seen.has(channel.id)) {
-        return;
-      }
-      seen.add(channel.id);
-      destinations.push(channel);
-    };
-
     try {
       const guild = await this.client.guilds.fetch(guildId).catch(() => null);
       if (guild) {
@@ -1475,7 +1450,7 @@ export class PatrolTimerManager {
           "patrol",
         );
         if (thread) {
-          push(thread);
+          return [thread];
         }
       }
     } catch (error) {
@@ -1484,28 +1459,7 @@ export class PatrolTimerManager {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-
-    const settings = await this.getSettings(guildId);
-    if (settings.patrolLogChannelId) {
-      const channel = await this.client.channels
-        .fetch(settings.patrolLogChannelId)
-        .catch(() => null);
-      if (
-        channel &&
-        channel.isTextBased() &&
-        !channel.isDMBased() &&
-        "guild" in channel &&
-        channel.guild
-      ) {
-        push(channel as TextChannel);
-      } else {
-        loggers.patrol.warn(
-          `Invalid patrol log channel ${settings.patrolLogChannelId} in guild ${guildId}`,
-        );
-      }
-    }
-
-    return destinations;
+    return [];
   }
 
   /**

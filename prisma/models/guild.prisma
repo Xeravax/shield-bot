@@ -32,7 +32,6 @@ model GuildSettings {
   whitelistGitHubDecodedPath String? // Path for decoded whitelist file (default: whitelist.txt)
   whitelistXorKey            String? // XOR key for whitelist encoding
   // Patrol settings
-  patrolLogChannelId         String? // Optional legacy channel for patrol hour logs (forum is primary)
   patrolTopChannelId         String? // Channel ID for weekly patrol top posts
   patrolAloneExcludeChannelIds Json? // Voice channel IDs excluded from alone-in-VC staff alerts
   hostWeeklyEventReminderChannelId String? // Channel ID for weekly Thursday host / Jr. host event reminder (Europe/Amsterdam)
