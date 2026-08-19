@@ -15,6 +15,7 @@ import { PermissionNodeGuard } from "../../../utility/permissionNodes.js";
 import { patrolTimer, prisma } from "../../../main.js";
 import { groupRoleSyncManager } from "../../../managers/groupRoleSync/groupRoleSyncManager.js";
 import { loggers } from "../../../utility/logger.js";
+import { ensureGuildMembersFetched } from "../../../utility/guildMemberCache.js";
 
 @Discord()
 @SlashGroup({ name: "group", description: "VRChat group management" })
@@ -57,7 +58,7 @@ export class GroupBulkRoleSyncCommand {
       }
 
       // Fetch all members to ensure we have the full list
-      await guild.members.fetch();
+      await ensureGuildMembersFetched(guild);
 
       // Get all verified VRChat accounts for users in this guild
       const verifiedAccounts = await prisma.vRChatAccount.findMany({

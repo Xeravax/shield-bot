@@ -18,6 +18,7 @@ import {
 } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
 import { GuildGuard } from "../../utility/guards.js";
+import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
 import { getUserExportData } from "../../utility/userDataExport.js";
 import { patrolTimer } from "../../main.js";
 
@@ -227,7 +228,8 @@ export class UserCommands {
 
       // Fetch all guild members
       const guild = interaction.guild;
-      const allMembers = await guild.members.fetch();
+      await ensureGuildMembersFetched(guild);
+      const allMembers = guild.members.cache;
 
       // Filter members based on role parameter
       let filteredMembers: Array<[string, import("discord.js").GuildMember]>;
@@ -467,7 +469,8 @@ export class UserCommands {
         // Check if unroled flag is set or a user was provided
         if (unroled === true) {
           // Get all members without any roles (only @everyone)
-          const allMembers = await interaction.guild.members.fetch();
+          await ensureGuildMembersFetched(interaction.guild);
+          const allMembers = interaction.guild.members.cache;
           membersToAssign = Array.from(
             allMembers.filter(
               (member) =>

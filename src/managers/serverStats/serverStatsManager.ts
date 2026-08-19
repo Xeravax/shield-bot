@@ -8,6 +8,7 @@ import {
 import { prisma } from "../../main.js";
 import { getRoleIdsWithNode } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
+import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
 
 export type ServerStatsKind = "goal" | "members" | "deputies" | "boosts";
 
@@ -243,16 +244,13 @@ export class ServerStatsManager {
       return 0;
     }
 
-    // Ensure member cache is reasonably complete for role.members
-    if (guild.members.cache.size < guild.memberCount * 0.9) {
-      try {
-        await guild.members.fetch();
-      } catch (error) {
-        loggers.bot.warn(
-          `Server stats: could not fetch members for deputy count in ${guild.id}`,
-          error,
-        );
-      }
+    try {
+      await ensureGuildMembersFetched(guild);
+    } catch (error) {
+      loggers.bot.warn(
+        `Server stats: could not fetch members for deputy count in ${guild.id}`,
+        error,
+      );
     }
 
     const unique = new Set<string>();

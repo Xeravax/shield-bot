@@ -10,6 +10,7 @@ import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
 import { parseDurationToMs, isValidDuration, msToDurationString } from "../../utility/roleTracking/durationParser.js";
 import { patrolTimer } from "../../main.js";
+import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
 
 export type ConditionType = "PATROL" | "TIME";
 
@@ -1204,6 +1205,15 @@ export class RoleTrackingManager {
       if (!guild) {
         loggers.bot.debug(`[RoleTracking] Guild ${guildId} not found in cache`);
         return;
+      }
+
+      try {
+        await ensureGuildMembersFetched(guild);
+      } catch (error) {
+        loggers.bot.warn(
+          `[RoleTracking] Could not fetch members for guild ${guildId}`,
+          error,
+        );
       }
 
       // First, cleanup warnings for users who have left

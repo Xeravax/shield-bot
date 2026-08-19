@@ -19,7 +19,7 @@ export interface WhitelistLogData {
 }
 
 /**
- * Send a whitelist log message using componentsv2 to Bot Log (+ legacy channel).
+ * Send a whitelist log message using componentsv2 to the forum whitelist thread.
  * Fire-and-forget so callers are not blocked waiting on Discord.
  */
 export async function sendWhitelistLog(
@@ -29,11 +29,6 @@ export async function sendWhitelistLog(
 ): Promise<void> {
   void (async () => {
     try {
-      const guildSettings = await prisma.guildSettings.findUnique({
-        where: { guildId },
-        select: { whitelistLogChannelId: true },
-      });
-
       const content = buildLogContent(data);
       const textDisplay = new TextDisplayBuilder().setContent(content);
       const container = new ContainerBuilder()
@@ -46,9 +41,7 @@ export async function sendWhitelistLog(
         allowedMentions: { parse: [] },
       } as MessageCreateOptions;
 
-      await auditLogManager.fanOutWhitelistLog(guildId, payload, [
-        guildSettings?.whitelistLogChannelId,
-      ]);
+      await auditLogManager.fanOutWhitelistLog(guildId, payload);
 
       loggers.bot.info(
         `Logged ${data.action} action for ${data.displayName} in guild ${guildId}`,

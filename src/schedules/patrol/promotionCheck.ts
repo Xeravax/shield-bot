@@ -2,6 +2,7 @@ import { Client, GuildMember } from "discord.js";
 import * as cron from "node-cron";
 import { loggers } from "../../utility/logger.js";
 import { prisma, patrolTimer } from "../../main.js";
+import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
 
 /**
  * Run promotion check for all eligible members in all configured guilds.
@@ -41,8 +42,8 @@ export async function checkPromotions(client: Client): Promise<void> {
           continue;
         }
 
-        // role.members only reflects the cache; populate it before scanning ranks.
-        await guild.members.fetch();
+        // role.members only reflects the cache; share one guild-wide fetch.
+        await ensureGuildMembersFetched(guild);
 
         const currentRankIds = [...new Set(rules.map((r) => r.currentRankRoleId))];
         const membersToCheck = new Map<string, GuildMember>();

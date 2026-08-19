@@ -13,6 +13,7 @@ import { whitelistManager } from "../../managers/whitelist/whitelistManager.js";
 import { searchUsers } from "../../utility/vrchat/user.js";
 import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
+import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
 
 @Discord()
 @SlashGroup({
@@ -125,7 +126,8 @@ export class WhitelistCommands {
           // Trigger a resync for all members who had this role
           const guild = interaction.guild;
           if (guild) {
-            const allMembers = await guild.members.fetch();
+            await ensureGuildMembersFetched(guild);
+            const allMembers = guild.members.cache;
             const membersWithRole = allMembers.filter((member) =>
               member.roles.cache.has(discordRole.id),
             );
@@ -288,7 +290,8 @@ export class WhitelistCommands {
       // Trigger a resync for all members with this role
       const guild = interaction.guild;
       if (guild) {
-        const allMembers = await guild.members.fetch();
+        await ensureGuildMembersFetched(guild);
+        const allMembers = guild.members.cache;
         const membersWithRole = allMembers.filter((member) =>
           member.roles.cache.has(discordRole.id),
         );
@@ -1062,7 +1065,8 @@ export class WhitelistCommands {
         await interaction.editReply({ embeds: [embed] });
       } else {
         // Validate all members
-        const members = await guild.members.fetch();
+        await ensureGuildMembersFetched(guild);
+        const members = guild.members.cache;
         let validated = 0;
         let accessGranted = 0;
         let accessRevoked = 0;

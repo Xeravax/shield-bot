@@ -24,7 +24,6 @@ model GuildSettings {
   trainerRoleIds             Json? // Array of role IDs for trainers
   devGuardRoleIds            Json? // Array of role IDs for dev guards
   // Whitelist settings
-  whitelistLogChannelId      String? // Channel ID for whitelist verification and modification logs
   whitelistGitHubToken       String? // GitHub token for whitelist repository updates
   whitelistGitHubOwner       String? // GitHub repository owner
   whitelistGitHubRepo        String? // GitHub repository name
@@ -33,7 +32,7 @@ model GuildSettings {
   whitelistGitHubDecodedPath String? // Path for decoded whitelist file (default: whitelist.txt)
   whitelistXorKey            String? // XOR key for whitelist encoding
   // Patrol settings
-  patrolLogChannelId         String? // Channel ID for patrol hours and command usage logs
+  patrolLogChannelId         String? // Optional legacy channel for patrol hour logs (forum is primary)
   patrolTopChannelId         String? // Channel ID for weekly patrol top posts
   patrolAloneExcludeChannelIds Json? // Voice channel IDs excluded from alone-in-VC staff alerts
   hostWeeklyEventReminderChannelId String? // Channel ID for weekly Thursday host / Jr. host event reminder (Europe/Amsterdam)

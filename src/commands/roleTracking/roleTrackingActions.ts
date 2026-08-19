@@ -20,6 +20,7 @@ import { Pagination } from "@discordx/pagination";
 import { patrolTimer, prisma, roleTrackingManager } from "../../main.js";
 import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
+import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
 import type { RoleTrackingConfigMap } from "../../managers/roleTracking/roleTrackingManager.js";
 import { msToDurationString, parseDurationToMs } from "../../utility/roleTracking/durationParser.js";
 
@@ -393,7 +394,7 @@ export class RoleTrackingActionsCommands {
       await cmdInteraction.editReply({
         content: `⏳ Fetching guild members... This may take a moment for large servers.`,
       });
-      await guild.members.fetch();
+      await ensureGuildMembersFetched(guild);
 
       const role = guild.roles.cache.get(roleId);
       if (!role) {

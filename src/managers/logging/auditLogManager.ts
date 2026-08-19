@@ -394,8 +394,7 @@ export class AuditLogManager {
   }
 
   /**
-   * Fan out a bot-action log to the Bot Log forum thread, plus any legacy
-   * staff log channel IDs.
+   * Fan out a bot-action log to the Bot Log forum thread.
    */
   async fanOutBotLog(
     guildId: string,

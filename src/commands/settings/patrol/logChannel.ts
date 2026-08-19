@@ -16,7 +16,7 @@ import { loggers } from "../../../utility/logger.js";
 export class SettingsPatrolLogChannelCommand {
   @Slash({
     name: "log-channel",
-    description: "Set the channel for patrol hours and command usage logs",
+    description: "Set the channel for patrol hours logs",
   })
   async logChannel(
     @SlashOption({

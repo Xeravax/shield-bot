@@ -1612,7 +1612,7 @@ export class PatrolTimerManager {
   }
 
   /**
-   * Log command / staff bot usage to Bot Log (+ legacy patrol log channel).
+   * Log command / staff bot usage to the Bot Log forum thread.
    * Fire-and-forget so callers are not blocked waiting on Discord.
    */
   async logCommandUsage(
@@ -1624,8 +1624,6 @@ export class PatrolTimerManager {
   ) {
     void (async () => {
       try {
-        const settings = await this.getSettings(guildId);
-
         const actionDisplay = action
           .split("-")
           .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -1649,11 +1647,10 @@ export class PatrolTimerManager {
           embed.addFields({ name: "Details", value: details, inline: false });
         }
 
-        await auditLogManager.fanOutBotLog(
-          guildId,
-          { embeds: [embed], allowedMentions: { users: [] } },
-          [settings.patrolLogChannelId],
-        );
+        await auditLogManager.fanOutBotLog(guildId, {
+          embeds: [embed],
+          allowedMentions: { users: [] },
+        });
         loggers.patrol.debug(`Logged command usage: ${action} by ${executorId} in guild ${guildId}`);
       } catch (err) {
         loggers.patrol.error("logCommandUsage error", err);

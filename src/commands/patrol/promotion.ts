@@ -12,6 +12,7 @@ import type { RuleEligibilityEntry, PromotionEligibilityReport } from "../../man
 import type { PromotionRule } from "../../managers/patrol/patrolTimerManager.js";
 import { PermissionNodeGuard } from "../../utility/guards.js";
 import { loggers } from "../../utility/logger.js";
+import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
 
 /** Strip to only A-z and . so role names can't inject formatting. */
 function scrubRoleDisplay(name: string): string {
@@ -295,7 +296,7 @@ export class PatrolPromotionCommands {
       }
 
       const currentRankIds = [...new Set(rules.map((r) => r.currentRankRoleId))];
-      await interaction.guild.members.fetch();
+      await ensureGuildMembersFetched(interaction.guild);
       const membersToCheck = new Map<string, GuildMember>();
       for (const roleId of currentRankIds) {
         const role = await interaction.guild.roles.fetch(roleId);
