@@ -286,8 +286,8 @@ export class VerifyCommand {
 #### Guards
 Custom guards protect commands with permission checks:
 - `VRChatLoginGuard`: Ensures VRChat API is authenticated
-- `StaffGuard`: Requires staff role
-- `DevGuardAndStaffGuard`: Requires dev guard or staff role
+- `PermissionNodeGuard`: Requires a role permission node (via `/permissions grant`)
+- `BotOwnerGuard`: Restricted to `BOT_OWNER_ID`
 - `GuildGuard`: Ensures command is run in a guild
 
 #### Managers
@@ -351,7 +351,7 @@ Key models include:
 - `/vrchat avatar-invite` - Send avatar world invite message (Staff)
 
 ### Settings Commands (Staff)
-- `/settings roles add/remove/status` - Manage Discord role to permission mappings
+- `/permissions grant/revoke/list` - Grant permission nodes to Discord roles
 - `/settings group set-group-id/view-group-id/clear-group-id` - VRChat group ID management
 - `/settings group set-promotion-logs/view-promotion-logs` - Promotion log channels
 - `/settings group role map/unmap/list` - Map Discord roles to VRChat group roles
@@ -431,12 +431,12 @@ yarn test:coverage
 ```typescript
 import { Discord, Slash, SlashOption, Guard } from "discordx";
 import { CommandInteraction } from "discord.js";
-import { StaffGuard } from "../../utility/guards.js";
+import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
 
 @Discord()
 export class MyCommand {
   @Slash({ description: "My command description" })
-  @Guard(StaffGuard)
+  @Guard(PermissionNodeGuard("settings.command.patrol"))
   async mycommand(interaction: CommandInteraction) {
     await interaction.reply("Hello!");
   }
@@ -456,7 +456,7 @@ export class MyCommand {
 - **Environment Variables**: Never commit `.env` file
 - **API Keys**: Store VRChat credentials securely
 - **PGP Signing**: Optional commit signing for whitelist changes
-- **Permission System**: Hierarchical role-based access control
+- **Permission System**: Role permission nodes via `/permissions grant`
 - **Input Validation**: All user inputs are validated
 - **XOR Encryption**: Whitelist data is encrypted before storage
 

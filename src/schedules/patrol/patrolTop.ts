@@ -116,10 +116,10 @@ export async function postPatrolTop(client: Client): Promise<void> {
         const header = `**Weekly Patrol Top (${MONTH_NAMES[currentMonth - 1]} ${currentYear}, ${weekLabel}):**\n`;
         const content = header + lines.join("\n");
 
-        // Post the message
+        // Post the message and ping everyone on the weekly hours list
         await channel.send({
           content,
-          allowedMentions: { parse: [] },
+          allowedMentions: { users: rows.map((r) => r.userId) },
         });
         loggers.schedules.info(`Posted patrol top to channel ${settings.patrolTopChannelId} in guild ${settings.guildId}`);
       } catch (error) {

@@ -68,6 +68,11 @@
 - `/settings loa` - LOA settings
 - `/settings logging` - Audit forum, welcome channel, retention, invite filter
 
+## Permissions
+- `/permissions grant <role> <node>` - Grant a permission node (or wildcard) to a role
+- `/permissions revoke <role> <node>` - Revoke a permission node from a role
+- `/permissions list [role]` - List permission node grants
+
 ## Phantom Compiler
 - `/phantomcompiler panel` - Staff: post self-service enrollment panel (Enroll/Update opens a reason modal; Unenroll removes you)
 - `/phantomcompiler enroll <reason>` - Enroll your MAIN account (use `\n` in reason for line breaks)
