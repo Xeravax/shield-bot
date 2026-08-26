@@ -10,350 +10,521 @@
       content="View your SHIELD bot data export in the browser."
     />
     <title>SHIELD · Your data export</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Montserrat:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
-        --bg: #070707;
-        --bg-elev: #12100c;
-        --bg-card: #1a1711;
+        --bg: #080806;
+        --bg-2: #100e0a;
+        --bg-3: #17140f;
         --gold: #dfbd6b;
-        --gold-dim: #a88945;
-        --text: #f3ead6;
-        --muted: #b6a888;
-        --line: #3a3224;
+        --gold-2: #c9a24e;
+        --gold-dim: #8a7340;
+        --text: #f4ead4;
+        --muted: #b7a582;
+        --line: #3d3424;
         --danger: #e07a6a;
-        --ok: #8fbf8a;
+        --ok: #9dcc8f;
+        --nav: 280px;
+        --header: 64px;
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; }
 
-      html,
-      body {
+      html, body {
         margin: 0;
-        padding: 0;
+        height: 100%;
         background: var(--bg);
         color: var(--text);
-        font-family: "Segoe UI", system-ui, sans-serif;
+        font-family: Montserrat, "Segoe UI", sans-serif;
+        font-size: 15px;
         line-height: 1.45;
       }
 
-      a {
-        color: var(--gold);
+      a { color: var(--gold); }
+
+      code, .mono {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 0.86em;
       }
 
-      header {
-        border-bottom: 1px solid var(--line);
-        padding: 1.25rem 1.5rem;
-        background: var(--bg-elev);
-        position: sticky;
-        top: 0;
-        z-index: 5;
-      }
-
-      header .row {
-        max-width: 1100px;
-        margin: 0 auto;
+      .app {
+        height: 100%;
         display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem 1.25rem;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      .app > header {
+        flex: 0 0 var(--header);
+        display: flex;
         align-items: center;
-        justify-content: space-between;
+        gap: 1rem;
+        padding: 0 1.25rem;
+        border-bottom: 1px solid var(--line);
+        background: linear-gradient(180deg, #16120c 0%, var(--bg-2) 100%);
+        min-width: 0;
+      }
+
+      .brand {
+        display: flex;
+        align-items: baseline;
+        gap: 0.7rem;
+        min-width: 0;
+        flex: 1;
       }
 
       h1 {
         margin: 0;
-        font-size: 1.15rem;
-        letter-spacing: 0.08em;
+        font-size: 0.78rem;
+        letter-spacing: 0.22em;
         color: var(--gold);
         font-weight: 700;
+        text-transform: uppercase;
+        white-space: nowrap;
       }
 
-      .muted {
+      #meta {
         color: var(--muted);
-        font-size: 0.9rem;
+        font-size: 0.82rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
       }
 
       .actions {
         display: flex;
+        align-items: center;
+        gap: 0.45rem;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        justify-content: flex-end;
       }
 
-      button,
-      .btn {
+      button, .btn {
         appearance: none;
         border: 1px solid var(--gold-dim);
         background: transparent;
         color: var(--gold);
-        padding: 0.4rem 0.75rem;
+        padding: 0.38rem 0.7rem;
         border-radius: 6px;
         cursor: pointer;
         font: inherit;
-        font-size: 0.85rem;
+        font-size: 0.78rem;
+        font-weight: 600;
       }
 
-      button:hover,
-      .btn:hover {
-        background: #2a2316;
-      }
+      button:hover { background: #2a2316; }
 
       button.primary {
         background: var(--gold);
         color: #1a1408;
         border-color: var(--gold);
-        font-weight: 600;
       }
 
-      button.primary:hover {
-        filter: brightness(1.05);
-      }
-
-      main {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 1.5rem;
-      }
-
-      .panel {
-        background: var(--bg-elev);
+      input[type="search"] {
+        width: 16rem;
+        max-width: 42vw;
+        background: #0d0c09;
         border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 1.25rem;
+        color: var(--text);
+        padding: 0.38rem 0.6rem;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 0.82rem;
       }
 
-      .drop {
-        border: 1px dashed var(--gold-dim);
-        border-radius: 10px;
-        padding: 2.5rem 1.25rem;
-        text-align: center;
-        background: var(--bg-card);
+      .shell {
+        flex: 1;
+        display: flex;
+        min-height: 0;
       }
 
-      .drop.dragover {
-        border-color: var(--gold);
-        background: #241e12;
+      nav {
+        flex: 0 0 var(--nav);
+        border-right: 1px solid var(--line);
+        background: var(--bg-2);
+        overflow: auto;
+        padding: 0.85rem 0.7rem 1.5rem;
       }
 
-      .error {
-        color: var(--danger);
-        margin: 1rem 0 0;
+      nav a {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        align-items: baseline;
+        text-decoration: none;
+        color: var(--text);
+        padding: 0.42rem 0.55rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 500;
       }
 
-      .summary {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-        gap: 0.75rem;
-        margin: 0 0 1.25rem;
-      }
-
-      .stat {
-        background: var(--bg-card);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 0.75rem;
-      }
-
-      .stat .n {
-        font-size: 1.35rem;
+      nav a:hover { background: var(--bg-3); color: var(--gold); }
+      nav a.empty { color: var(--muted); }
+      nav .n {
         color: var(--gold);
-        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        font-size: 0.75rem;
+      }
+      nav a.empty .n { color: var(--gold-dim); }
+
+      .content {
+        flex: 1;
+        min-width: 0;
+        overflow: auto;
+        padding: 1.25rem 1.4rem 3rem;
       }
 
-      .stat .l {
-        font-size: 0.78rem;
-        color: var(--muted);
+      .intro {
+        background: var(--bg-2);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 1rem 1.15rem;
+        margin-bottom: 1.1rem;
       }
 
-      details.section {
-        background: var(--bg-elev);
+      .intro h2 {
+        margin: 0 0 0.35rem;
+        font-size: 1.05rem;
+        color: var(--gold);
+      }
+
+      .intro p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.88rem; }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.55rem;
+        margin: 0.9rem 0 0;
+      }
+
+      .kpi {
+        background: var(--bg-3);
         border: 1px solid var(--line);
         border-radius: 8px;
-        margin: 0.6rem 0;
+        padding: 0.7rem 0.8rem;
+        text-decoration: none;
+        color: inherit;
+        display: block;
       }
 
-      details.section > summary {
-        cursor: pointer;
-        padding: 0.8rem 1rem;
-        font-weight: 600;
-        list-style: none;
+      .kpi:hover { border-color: var(--gold-dim); }
+      .kpi .n { font-size: 1.35rem; color: var(--gold); font-weight: 700; line-height: 1.1; }
+      .kpi .l { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
+
+      .section {
+        scroll-margin-top: 0.75rem;
+        margin: 0 0 1.15rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--bg-2);
+        overflow: hidden;
+      }
+
+      .section > header.sec-h {
+        padding: 0.85rem 1.05rem 0.75rem;
+        border-bottom: 1px solid var(--line);
+        background: #14110c;
+      }
+
+      .section h2 {
+        margin: 0;
+        font-size: 1rem;
+        color: var(--gold);
         display: flex;
         justify-content: space-between;
         gap: 1rem;
-        align-items: center;
+        align-items: baseline;
       }
 
-      details.section > summary::-webkit-details-marker {
-        display: none;
+      .why {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem 1.25rem;
+        margin-top: 0.65rem;
       }
 
-      details.section > summary::before {
-        content: "▸";
-        color: var(--gold);
-        margin-right: 0.5rem;
+      .why h3 {
+        margin: 0 0 0.2rem;
+        font-size: 0.68rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--gold-2);
       }
 
-      details.section[open] > summary::before {
-        content: "▾";
+      .why p { margin: 0; font-size: 0.84rem; color: var(--muted); }
+
+      .body { padding: 0.85rem 1.05rem 1.05rem; }
+
+      .block { margin: 0 0 1.1rem; }
+      .block:last-child { margin-bottom: 0; }
+
+      .block h3 {
+        margin: 0 0 0.25rem;
+        font-size: 0.92rem;
       }
 
-      .count {
-        font-weight: 500;
+      .hint {
+        margin: 0 0 0.65rem;
         color: var(--muted);
         font-size: 0.82rem;
       }
 
-      .body {
-        padding: 0 1rem 1rem;
-        overflow-x: auto;
+      .fields {
+        margin: 0 0 0.7rem;
+        padding: 0.55rem 0.7rem;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-size: 0.78rem;
+        color: var(--muted);
       }
+
+      .fields summary {
+        cursor: pointer;
+        color: var(--gold-2);
+        font-weight: 600;
+      }
+
+      .fields dl {
+        display: grid;
+        grid-template-columns: minmax(8rem, 13rem) 1fr;
+        gap: 0.28rem 0.9rem;
+        margin: 0.55rem 0 0;
+      }
+
+      .fields dt { color: var(--text); font-weight: 600; }
+      .fields dd { margin: 0; }
 
       table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
       }
 
-      th,
-      td {
+      th, td {
         text-align: left;
         vertical-align: top;
-        padding: 0.45rem 0.5rem;
+        padding: 0.42rem 0.5rem;
         border-bottom: 1px solid var(--line);
         word-break: break-word;
       }
 
       th {
-        color: var(--gold-dim);
+        color: var(--gold-2);
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        background: #1c1811;
+        z-index: 1;
+      }
+
+      tbody tr:hover { background: #1c1812; }
+
+      .table-wrap { overflow: auto; max-width: 100%; }
+
+      dl.kv {
+        display: grid;
+        grid-template-columns: minmax(10rem, 16rem) 1fr;
+        gap: 0.45rem 1rem;
+        margin: 0;
+      }
+
+      dl.kv dt { color: var(--muted); font-size: 0.82rem; }
+      dl.kv dd { margin: 0; }
+
+      .pref {
+        display: grid;
+        grid-template-columns: minmax(12rem, 18rem) 6.5rem 1fr;
+        gap: 0.55rem 1rem;
+        padding: 0.65rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .pref:last-child { border-bottom: 0; }
+      .pref .name { font-weight: 600; }
+      .pref .mean { color: var(--muted); font-size: 0.82rem; }
+
+      .pill {
+        display: inline-block;
+        padding: 0.08rem 0.45rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--bg-3);
+        font-size: 0.72rem;
         font-weight: 600;
         white-space: nowrap;
       }
 
-      dl {
-        display: grid;
-        grid-template-columns: minmax(8rem, 14rem) 1fr;
-        gap: 0.35rem 1rem;
-        margin: 0;
-      }
-
-      dt {
-        color: var(--muted);
-      }
-
-      dd {
-        margin: 0;
-      }
+      .pill.on { color: var(--ok); border-color: #3d5c38; }
+      .pill.off { color: var(--danger); border-color: #6a3d36; }
+      .pill.gold { color: var(--gold); border-color: var(--gold-dim); }
 
       pre {
         margin: 0;
         white-space: pre-wrap;
         word-break: break-word;
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         background: #0d0c09;
-        padding: 0.6rem;
+        padding: 0.55rem;
         border-radius: 6px;
-        max-height: 20rem;
+        max-height: 16rem;
         overflow: auto;
       }
 
       .empty {
         color: var(--muted);
         font-style: italic;
+        margin: 0;
       }
 
-      .more {
-        margin-top: 0.6rem;
+      .drop {
+        min-height: calc(100vh - var(--header) - 2.5rem);
+        border: 1px dashed var(--gold-dim);
+        border-radius: 14px;
+        padding: 3rem 1.5rem;
+        text-align: center;
+        background:
+          radial-gradient(ellipse at top, #2a2010 0%, transparent 55%),
+          var(--bg-2);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
       }
 
-      input[type="search"] {
-        width: min(100%, 22rem);
-        background: #0d0c09;
-        border: 1px solid var(--line);
-        color: var(--text);
-        padding: 0.4rem 0.6rem;
-        border-radius: 6px;
-        font: inherit;
-      }
+      .drop.dragover { border-color: var(--gold); background: #241e12; }
+      .drop h2 { margin: 0; color: var(--gold); font-size: 1.6rem; }
+      .drop p { margin: 0; max-width: 38rem; color: var(--muted); }
 
-      .hidden {
-        display: none !important;
-      }
+      .error { color: var(--danger); }
+      .hidden { display: none !important; }
+      .nav-hidden { display: none !important; }
 
-      footer {
-        max-width: 1100px;
-        margin: 0 auto 2rem;
-        padding: 0 1.5rem;
-        color: var(--muted);
-        font-size: 0.8rem;
+      @media (max-width: 900px) {
+        :root { --nav: 0px; }
+        .shell { flex-direction: column; }
+        nav {
+          flex: 0 0 auto;
+          display: flex;
+          gap: 0.25rem;
+          overflow: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+          padding: 0.5rem;
+        }
+        nav a { white-space: nowrap; }
+        .why, .pref { grid-template-columns: 1fr; }
+        input[type="search"] { width: 100%; max-width: none; }
+        .app > header { flex-wrap: wrap; height: auto; padding: 0.7rem 1rem; }
       }
     </style>
   </head>
   <body>
-    <header>
-      <div class="row">
-        <div>
-          <h1>SHIELD data export</h1>
-          <div id="meta" class="muted">Load a signed link or a JSON file from /user export.</div>
+    <div class="app">
+      <header>
+        <div class="brand">
+          <h1>SHIELD export</h1>
+          <div id="meta">A readable copy of the personal data this bot stores about you.</div>
         </div>
         <div class="actions">
+          <input id="filter" type="search" class="hidden" placeholder="Filter this page…" />
           <input id="file" type="file" accept=".json,.gz,application/json" hidden />
-          <button type="button" id="openFile">Open JSON file</button>
+          <button type="button" id="openFile">Open JSON</button>
           <button type="button" id="download" class="hidden">Download JSON</button>
         </div>
+      </header>
+      <div class="shell">
+        <nav id="nav" class="nav-hidden"></nav>
+        <div class="content">
+          <section id="landing">
+            <div id="drop" class="drop">
+              <h2>Your SHIELD data</h2>
+              <p>
+                This page is the human-readable version of <strong>/user export</strong>.
+                It shows what SHIELD stored, why it exists, and what features use it.
+              </p>
+              <p>
+                Open the view link from Discord, or drop
+                <code>my-shield-bot-data.json</code> here. The file never leaves this browser.
+              </p>
+              <button type="button" class="primary" id="openFileLanding">Choose file</button>
+              <p id="status" class="hidden"></p>
+            </div>
+          </section>
+          <section id="viewer" class="hidden">
+            <div id="overview" class="intro"></div>
+            <div id="sections"></div>
+          </section>
+        </div>
       </div>
-    </header>
-    <main>
-      <section id="landing" class="panel">
-        <div id="drop" class="drop">
-          <p>
-            Drop <code>my-shield-bot-data.json</code> here, or use
-            <strong>/user export</strong> and open the view link Discord gives you.
-          </p>
-          <p class="muted">The file stays in this browser. A view link expires after one hour.</p>
-          <button type="button" class="primary" id="openFileLanding">Choose file</button>
-        </div>
-        <p id="status" class="muted hidden"></p>
-      </section>
-      <section id="viewer" class="hidden">
-        <div class="actions" style="margin-bottom: 1rem">
-          <input id="filter" type="search" placeholder="Filter keys and values…" />
-        </div>
-        <div id="summary" class="summary"></div>
-        <div id="sections"></div>
-      </section>
-    </main>
-    <footer>
-      This page shows the same personal data as <code>/user export</code>. Do not share a view link.
-    </footer>
+    </div>
     <script>
       const landing = document.getElementById("landing");
       const viewer = document.getElementById("viewer");
       const sectionsEl = document.getElementById("sections");
-      const summaryEl = document.getElementById("summary");
+      const overviewEl = document.getElementById("overview");
+      const navEl = document.getElementById("nav");
       const metaEl = document.getElementById("meta");
       const statusEl = document.getElementById("status");
       const downloadBtn = document.getElementById("download");
       const filterInput = document.getElementById("filter");
       const fileInput = document.getElementById("file");
       const drop = document.getElementById("drop");
-      const PAGE = 50;
+      const PAGE = 75;
       let currentPayload = null;
 
       const GROUPS = [
         {
+          id: "identity",
+          title: "Who this export is for",
+          about:
+            "SHIELD identifies you by Discord snowflake. An internal database user row is created when you verify or otherwise get stored as a member.",
+          usedFor:
+            "Every other section hangs off this identity: verification, patrol, events, logging, and lookups.",
+          keys: ["_identity"],
+        },
+        {
+          id: "vrchat",
           title: "VRChat accounts",
+          about:
+            "VRChat accounts linked to your Discord user. MAIN is the verified primary account; other types are alts or staff-managed accounts.",
+          usedFor:
+            "Verification, group invites, in-game whitelist, member cards, friend status, and Phantom Compiler enrollment.",
           keys: ["vrchatAccounts"],
         },
         {
-          title: "Preferences",
+          id: "prefs",
+          title: "Profile preferences",
+          about:
+            "Settings you control in profile settings. Stored as disable-flags plus timezone.",
+          usedFor:
+            "Whether the bot DMs you, how it parses times you type, whether others see your member card, and whether you are pinged for missing mod reasons.",
           keys: ["userPreferences"],
         },
         {
-          title: "Whitelist",
+          id: "whitelist",
+          title: "In-game whitelist",
+          about:
+            "Per-server whitelist membership used by SHIELD VRChat worlds. Nested role assignments are the in-world roles mapped from Discord.",
+          usedFor:
+            "World access, rooftop permissions, and keeping Discord ranks in sync with the game.",
           keys: ["whitelistEntries"],
         },
         {
-          title: "Patrol",
+          id: "patrol",
+          title: "Voice patrol",
+          about:
+            "Time spent in configured patrol voice channels, plus promotion state. Totals are lifetime; monthly rows power leaderboards; an active session is time still ticking.",
+          usedFor:
+            "/patrol, monthly top lists, rank promotions and cooldowns, member-card hours, and DMs when a session ends.",
           keys: [
             "voicePatrolTimes",
             "voicePatrolMonthlyTimes",
@@ -364,31 +535,66 @@
           ],
         },
         {
+          id: "loa",
           title: "Leave of absence",
+          about:
+            "LOA requests you filed: dates, reason, approval, and any announcement the bot posted.",
+          usedFor:
+            "Pausing promotion cooldowns, showing on-leave on member cards (dates only, never the reason), and skipping some reminders while you are away.",
           keys: ["leaveOfAbsences"],
         },
         {
-          title: "Role tracking",
+          id: "roles",
+          title: "Tracked Discord roles",
+          about:
+            "When a watched Discord role was added to you, and warning messages sent if you still have a temporary / trial role past a threshold.",
+          usedFor:
+            "Role-tracking settings: automatic reminders, expiry warnings, and staff follow-up.",
           keys: ["roleAssignmentTracking", "roleTrackingWarnings"],
         },
         {
-          title: "Attendance",
+          id: "attendance",
+          title: "Event attendance",
+          about:
+            "AOC / ops attendance history: events you hosted, co-hosted, staffed, or ran as a squad member. Active event is the one currently open for you.",
+          usedFor:
+            "Attendance commands, autofill of leads/squads, and historical event reports.",
           keys: ["attendance"],
         },
         {
+          id: "events",
           title: "Planned events",
+          about:
+            "Calendar drafts you are attached to as host, co-host, reviewer, or pending co-host. Includes Discord scheduled-event ids when published.",
+          usedFor:
+            "/event planning, approvals, calendar ICS feeds, and status DMs.",
           keys: ["plannedEvents"],
         },
         {
+          id: "messages",
           title: "Cached messages",
+          about:
+            "Short-lived copies of messages you sent in logged channels. Content is kept only so edit/delete logs can show what changed, then it expires.",
+          usedFor:
+            "Moderation logs (edited / deleted messages). This is not a permanent archive of everything you have ever said.",
           keys: ["cachedMessages"],
         },
         {
-          title: "Moderation",
+          id: "mod",
+          title: "Moderation cases & notes",
+          about:
+            "Cases where you were the target, the acting moderator, or the staff member who claimed the case. Notes are staff comments about a member, including ones you wrote.",
+          usedFor:
+            "/mod logging, claims, temp-ban expiry, and staff context on a user.",
           keys: ["modCases", "modUserNotes"],
         },
         {
-          title: "Other",
+          id: "other",
+          title: "Other content you created",
+          about:
+            "Rooftop announcements, spin-the-bottle lines, and metadata about message purges you ran. Purge archives store counts and log pointers, not the deleted text.",
+          usedFor:
+            "In-world announcement boards, rooftop minigames, and /mod purge audit trails.",
           keys: [
             "announcements",
             "spinTheBottleResponses",
@@ -397,35 +603,248 @@
         },
       ];
 
-      const LABELS = {
-        vrchatAccounts: "Accounts",
-        userPreferences: "Preferences",
-        whitelistEntries: "Entries",
-        voicePatrolTimes: "Total time",
-        voicePatrolMonthlyTimes: "Monthly time",
-        activeVoicePatrolSessions: "Active sessions",
-        voicePatrolPromotionNotifications: "Promotion notifications",
-        voicePatrolRoleObtainedAt: "Roles obtained",
-        voicePatrolPromotionBlocks: "Promotion blocks",
-        leaveOfAbsences: "LOAs",
-        roleAssignmentTracking: "Role assignments",
-        roleTrackingWarnings: "Warnings",
-        attendance: "Attendance",
-        plannedEvents: "Events",
-        cachedMessages: "Messages",
-        modCases: "Cases",
-        modUserNotes: "Notes",
-        announcements: "Announcements",
-        spinTheBottleResponses: "Spin the bottle",
-        messagePurgeArchives: "Purge archives",
+      const KEY_META = {
+        vrchatAccounts: {
+          title: "Linked accounts",
+          hint: "Each row is one VRChat account bound to your Discord user.",
+        },
+        userPreferences: {
+          title: "Stored flags",
+          hint: "Disable-flags are stored inverted: Yes on a *Disabled field means that feature is off.",
+        },
+        whitelistEntries: {
+          title: "Guild whitelist rows",
+          hint: "One row per Discord server. Open role assignments to see in-world roles.",
+        },
+        voicePatrolTimes: {
+          title: "Lifetime patrol time",
+          hint: "Running total in each server. Used for overall hours and some promotion checks.",
+        },
+        voicePatrolMonthlyTimes: {
+          title: "Monthly patrol time",
+          hint: "Reset each calendar month. Powers monthly top channels and member-card hours.",
+        },
+        activeVoicePatrolSessions: {
+          title: "Sessions in progress",
+          hint: "You are in a patrol voice channel right now (or were when this export was taken).",
+        },
+        voicePatrolPromotionNotifications: {
+          title: "Promotion pings",
+          hint: "Records of when the bot told you that you qualified for the next patrol rank.",
+        },
+        voicePatrolRoleObtainedAt: {
+          title: "When patrol ranks were earned",
+          hint: "Starts promotion cooldowns. Pause fields accumulate while you are on LOA.",
+        },
+        voicePatrolPromotionBlocks: {
+          title: "Promotion blocks",
+          hint: "Staff can freeze promotions. A row here means you cannot be auto-promoted until it is removed.",
+        },
+        leaveOfAbsences: {
+          title: "LOA records",
+          hint: "Includes denied and ended requests, not only the current one.",
+        },
+        roleAssignmentTracking: {
+          title: "Role assignments",
+          hint: "Watched Discord roles and when they were applied.",
+        },
+        roleTrackingWarnings: {
+          title: "Role warnings",
+          hint: "DMs or channel notices that a tracked role is still on you.",
+        },
+        attendance: {
+          title: "Attendance breakdown",
+          hint: "The same event can appear in more than one list if you held multiple jobs.",
+        },
+        plannedEvents: {
+          title: "Events",
+          hint: "roles lists why this event is in your export (host, coHost, reviewer, pendingCoHost).",
+        },
+        cachedMessages: {
+          title: "Message cache",
+          hint: "expiresAt is when this copy will be deleted. Click a message id to open it in Discord if it still exists.",
+        },
+        modCases: {
+          title: "Cases",
+          hint: "roles tells you whether you were target, moderator, and/or claimer.",
+        },
+        modUserNotes: {
+          title: "Staff notes",
+          hint: "Notes about you (target) and notes you wrote (author).",
+        },
+        announcements: {
+          title: "Announcements",
+          hint: "Text you submitted for rooftop / world announcement boards.",
+        },
+        spinTheBottleResponses: {
+          title: "Spin-the-bottle lines",
+          hint: "Custom prompts or responses you added to the rooftop game.",
+        },
+        messagePurgeArchives: {
+          title: "Purge actions",
+          hint: "Metadata only: how many messages, where, and the log thread. Message bodies are not kept here.",
+        },
       };
+
+      const FIELD_HELP = {
+        exportedAt: "When this snapshot was generated.",
+        userId: "Internal SHIELD database id. Empty if we only have Discord-id records and no User row.",
+        discordId: "Your Discord snowflake. Primary key for almost all bot data.",
+        vrcUserId: "VRChat user id (usr_…). Used for API calls, whitelist, and profile links.",
+        accountType: "MAIN is the verified primary account. Other values are alts or staff accounts.",
+        vrchatUsername: "Cached VRChat display name. Refreshed periodically, not live.",
+        usernameUpdatedAt: "Last time the cached VRChat name was refreshed.",
+        verificationCode: "Short-lived code used during verification. Ignore if you are already verified.",
+        verificationGuildId: "Discord server where verification was started.",
+        phantomCompilerReason: "Why you were enrolled in Phantom Compiler, if at all.",
+        phantomCompilerEnrolledAt: "When Phantom Compiler enrollment started.",
+        patrolDmDisabled: "If true, you opted out of DMs when a patrol session ends.",
+        patrolNoShieldMemberDmDisabled: "If true, you opted out of DMs reminding you to get Shield Member when joining patrol.",
+        eventStatusDmDisabled: "If true, you opted out of DMs when your events are submitted, approved, denied, or cancelled.",
+        modReasonPingDisabled: "If true, you will not be pinged in mod logs for a missing reason — you must supply reasons yourself.",
+        memberCardPublic: "If true, other members can see MAIN VRChat, monthly patrol hours, and leave dates on /user lookup.",
+        timezone: "Used to parse times you type (e.g. Saturday 8pm). Scheduling rules still use EST.",
+        guildId: "Discord server this row belongs to.",
+        createdAt: "When this row was first written.",
+        updatedAt: "When this row last changed.",
+        roleAssignments: "In-world whitelist roles mapped from Discord, with optional expiry.",
+        roleId: "Internal or Discord role id, depending on the table.",
+        assignedAt: "When the role was applied.",
+        assignedBy: "Discord user who assigned it, if known.",
+        expiresAt: "When this record or role stops being valid / is purged.",
+        discordRoleId: "Discord role this whitelist role maps to.",
+        permissions: "In-world permission string for rooftop / whitelist.",
+        totalMs: "Duration in milliseconds, shown as hours and minutes.",
+        channelId: "Discord channel involved.",
+        year: "Calendar year for monthly patrol totals.",
+        month: "Calendar month (1–12) for monthly patrol totals.",
+        startedAt: "When the current patrol session began.",
+        nextRankRoleId: "Discord role you were notified you could receive.",
+        totalHoursAtNotify: "Lifetime patrol hours at the moment of the promotion ping.",
+        notifiedAt: "When the promotion message was sent.",
+        messageId: "Discord message id for a log, DM, or panel.",
+        status: "Lifecycle state of this record.",
+        resolvedAt: "When a notification or case was resolved.",
+        resolvedBy: "Who resolved it.",
+        obtainedAt: "When this patrol rank role was earned.",
+        cooldownPausedAt: "If set, promotion cooldown is paused (usually during LOA).",
+        cooldownPauseAccumulatedMs: "How long cooldown has already been paused, across LOAs.",
+        reason: "Human-written reason supplied by you or staff.",
+        setBy: "Staff member who created this block or setting.",
+        requestedAt: "When the LOA was submitted.",
+        startDate: "LOA start.",
+        endDate: "Scheduled LOA end.",
+        type: "Kind of record (LOA type, case type, etc.).",
+        approvedBy: "Staff who approved the LOA.",
+        deniedBy: "Staff who denied the LOA.",
+        denialReason: "Why it was denied.",
+        endedEarlyAt: "If you returned before endDate.",
+        notificationsPaused: "Whether reminder DMs are suppressed for this LOA.",
+        cooldownEndDate: "When you may request another LOA.",
+        announcementChannelId: "Channel where the LOA announcement was posted.",
+        announcementMessageId: "Message id of that announcement.",
+        warningType: "Which reminder in the role-tracking sequence this was.",
+        warningIndex: "Nth warning for this assignment.",
+        sentAt: "When the warning was sent.",
+        roleAssignedAt: "When the tracked role was originally added.",
+        assignmentTrackingId: "Link back to the role-assignment row.",
+        deliveryFailed: "True if the warning DM/message could not be delivered.",
+        activeEventId: "Attendance event currently open for you, if any.",
+        eventId: "Internal attendance event id.",
+        date: "Event date.",
+        firstAutofillAt: "When attendance autofill first ran for this event.",
+        squadName: "Squad you were rostered on.",
+        isLead: "Whether you were squad lead.",
+        isLate: "Marked late.",
+        isSplit: "Squad was split from another.",
+        splitFrom: "Original squad name if split.",
+        hasLeft: "You left the squad / event.",
+        id: "Internal row id.",
+        title: "Event title as planned.",
+        startTime: "Scheduled start.",
+        hostId: "Discord id of the host.",
+        coHostId: "Discord id of the co-host, if filled.",
+        coHostOpen: "Whether co-host is still being requested from the pool.",
+        duty: "Duty / ops type for the event.",
+        eventType: "Optional event category.",
+        durationMinutes: "Planned length.",
+        denialReason: "Why planning staff denied the event.",
+        reviewedById: "Staff who approved or denied.",
+        planningMessageId: "Planning-channel message for this draft.",
+        pendingCoHostUserId: "User asked to co-host, not yet accepted.",
+        coHostRequestMessageId: "DM or message for the co-host ask.",
+        discordEventId: "Published Discord scheduled event id.",
+        forceOverride: "Staff overrode normal planning limits.",
+        editResumeStatus: "If an edit was interrupted, where to resume.",
+        editSnapshot: "Draft snapshot while an edit is in progress.",
+        editStartedAt: "When the in-progress edit began.",
+        roles: "Why this row is in your export.",
+        authorId: "Discord id of the message author.",
+        content: "Text body.",
+        attachments: "Attachment metadata captured with the message.",
+        embeds: "Embed metadata captured with the message.",
+        stickers: "Sticker metadata captured with the message.",
+        editedAt: "Last edit time of the cached message.",
+        caseNumber: "Per-guild case number shown in logs.",
+        targetId: "Member the action is about.",
+        moderatorId: "Staff who took the action.",
+        claimedBy: "Staff who claimed the case.",
+        claimedReason: "Note left when claiming.",
+        claimedAt: "When it was claimed.",
+        logMessageId: "Public/staff log message.",
+        logThreadId: "Thread under the log message.",
+        active: "Whether the case is still in effect (e.g. active timeout/ban).",
+        metadata: "Extra structured details for this case type.",
+        createdBy: "Discord id that created this content.",
+        messageCount: "How many messages the purge removed.",
+        caseId: "Linked moderation case, if any.",
+      };
+
+      const PREF_ROWS = [
+        {
+          key: "timezone",
+          label: "Timezone",
+          meaning:
+            "Used when you type natural-language times in event commands. Unix timestamps stay absolute. Weekly event rules still use EST.",
+        },
+        {
+          key: "patrolDmDisabled",
+          label: "Patrol completion DMs",
+          invert: true,
+          meaning: "A DM when you leave patrol voice and the session is saved.",
+        },
+        {
+          key: "patrolNoShieldMemberDmDisabled",
+          label: "Patrol join reminders",
+          invert: true,
+          meaning: "A DM if you join patrol without the Shield Member role.",
+        },
+        {
+          key: "eventStatusDmDisabled",
+          label: "Event status DMs",
+          invert: true,
+          meaning: "DMs when your planned events are submitted, approved, denied, or cancelled.",
+        },
+        {
+          key: "modReasonPingDisabled",
+          label: "Moderation reason pings",
+          invert: true,
+          meaning:
+            "Pings in mod logs when a reason is missing. If off, you are responsible for providing reasons yourself.",
+        },
+        {
+          key: "memberCardPublic",
+          label: "Public member card",
+          invert: false,
+          meaning:
+            "Other members can see your MAIN VRChat account, patrol hours this month, and leave dates (never the LOA reason).",
+        },
+      ];
 
       document.getElementById("openFile").addEventListener("click", () => fileInput.click());
       document.getElementById("openFileLanding").addEventListener("click", () => fileInput.click());
       fileInput.addEventListener("change", () => {
-        if (fileInput.files && fileInput.files[0]) {
-          void loadFile(fileInput.files[0]);
-        }
+        if (fileInput.files && fileInput.files[0]) void loadFile(fileInput.files[0]);
       });
       downloadBtn.addEventListener("click", downloadCurrent);
       filterInput.addEventListener("input", applyFilter);
@@ -447,17 +866,13 @@
         if (file) void loadFile(file);
       });
 
-      const params = new URLSearchParams(location.search);
-      const token = params.get("t");
-      if (token) {
-        void loadFromToken(token);
-      }
+      const token = new URLSearchParams(location.search).get("t");
+      if (token) void loadFromToken(token);
 
       function showStatus(message, isError) {
         statusEl.textContent = message;
         statusEl.classList.toggle("hidden", !message);
         statusEl.classList.toggle("error", Boolean(isError));
-        statusEl.classList.toggle("muted", !isError);
       }
 
       async function loadFromToken(t) {
@@ -480,11 +895,8 @@
       async function loadFile(file) {
         showStatus("Reading file…");
         try {
-          const text = await readExportFile(file);
-          const data = JSON.parse(text);
-          if (!data || typeof data !== "object") {
-            throw new Error("Not an object");
-          }
+          const data = JSON.parse(await readExportFile(file));
+          if (!data || typeof data !== "object") throw new Error("Not an object");
           renderPayload(data);
         } catch (_err) {
           showStatus("That file is not a valid SHIELD export JSON.", true);
@@ -496,78 +908,96 @@
           /\.gz$/i.test(file.name) ||
           file.type === "application/gzip" ||
           file.type === "application/x-gzip";
-        if (!gzip) {
-          return file.text();
-        }
-        if (typeof DecompressionStream !== "function") {
-          throw new Error("gzip not supported");
-        }
-        const stream = file.stream().pipeThrough(new DecompressionStream("gzip"));
-        return new Response(stream).text();
+        if (!gzip) return file.text();
+        if (typeof DecompressionStream !== "function") throw new Error("gzip not supported");
+        return new Response(file.stream().pipeThrough(new DecompressionStream("gzip"))).text();
       }
 
       function renderPayload(data) {
         currentPayload = data;
         landing.classList.add("hidden");
         viewer.classList.remove("hidden");
+        navEl.classList.remove("nav-hidden");
         downloadBtn.classList.remove("hidden");
+        filterInput.classList.remove("hidden");
         showStatus("");
 
-        const exportedAt = formatValue(data.exportedAt);
         const discordId = data.discordId != null ? String(data.discordId) : "unknown";
         metaEl.textContent =
-          "Discord " + discordId + (exportedAt !== "—" ? " · exported " + exportedAt : "");
+          "Discord " + discordId + " · snapshot " + formatValue(data.exportedAt);
 
-        summaryEl.replaceChildren();
-        const stats = [
-          ["Accounts", countOf(data.vrchatAccounts)],
-          ["Patrol rows", countOf(data.voicePatrolTimes)],
-          ["LOAs", countOf(data.leaveOfAbsences)],
-          ["Events", countOf(data.plannedEvents)],
-          ["Messages", countOf(data.cachedMessages)],
-          ["Cases", countOf(data.modCases)],
+        overviewEl.replaceChildren();
+        overviewEl.append(el("h2", "", "This is a copy of your SHIELD records"));
+        const lead = el(
+          "p",
+          "",
+          "SHIELD is a Discord / VRChat community bot. Anything below was stored so features can work: verification, patrol hours, events, whitelist, and moderation logs. Empty sections still explain what would appear if the bot later stored that kind of data.",
+        );
+        overviewEl.append(lead);
+
+        const kpis = el("div", "kpis");
+        const cards = [
+          ["vrchat", "VRChat accounts", countOf(data.vrchatAccounts)],
+          ["patrol", "Patrol totals", countOf(data.voicePatrolTimes)],
+          ["loa", "LOA records", countOf(data.leaveOfAbsences)],
+          ["attendance", "Attendance rows", countOf(data.attendance)],
+          ["events", "Planned events", countOf(data.plannedEvents)],
+          ["messages", "Cached messages", countOf(data.cachedMessages)],
+          ["mod", "Mod cases", countOf(data.modCases)],
         ];
-        for (const [label, n] of stats) {
-          const card = el("div", "stat");
-          card.append(el("div", "n", String(n)), el("div", "l", label));
-          summaryEl.append(card);
+        for (const [id, label, n] of cards) {
+          const a = el("a", "kpi");
+          a.href = "#" + id;
+          a.append(el("div", "n", String(n)), el("div", "l", label));
+          kpis.append(a);
         }
+        overviewEl.append(kpis);
 
+        navEl.replaceChildren();
         sectionsEl.replaceChildren();
-        for (const group of GROUPS) {
-          const wrap = document.createElement("details");
-          wrap.className = "section";
-          wrap.open = groupHasData(data, group.keys);
 
-          const summary = document.createElement("summary");
-          const title = document.createElement("span");
-          title.textContent = group.title;
-          const count = el("span", "count", groupCountLabel(data, group.keys));
-          summary.append(title, count);
-          wrap.append(summary);
+        for (const group of GROUPS) {
+          const count = groupCount(data, group);
+          const navA = el("a", count ? "" : "empty");
+          navA.href = "#" + group.id;
+          navA.append(el("span", "", group.title), el("span", "n", String(count)));
+          navEl.append(navA);
+
+          const sec = el("article", "section");
+          sec.id = group.id;
+          const head = el("header", "sec-h");
+          const h2 = el("h2", "");
+          h2.append(el("span", "", group.title), el("span", "pill gold", count + " records"));
+          head.append(h2);
+          const why = el("div", "why");
+          why.append(whyCol("What this is", group.about), whyCol("What SHIELD uses it for", group.usedFor));
+          head.append(why);
+          sec.append(head);
 
           const body = el("div", "body");
-          for (const key of group.keys) {
-            if (!(key in data)) continue;
-            if (group.keys.length > 1) {
-              body.append(el("h3", "", LABELS[key] || key));
+          if (group.id === "identity") {
+            body.append(renderIdentity(data));
+          } else {
+            for (const key of group.keys) {
+              if (!(key in data)) continue;
+              body.append(renderBlock(key, data[key]));
             }
-            body.append(renderValue(data[key], key));
           }
-          wrap.append(body);
-          sectionsEl.append(wrap);
+          sec.append(body);
+          sectionsEl.append(sec);
         }
-
         applyFilter();
       }
 
-      function groupHasData(data, keys) {
-        return keys.some((key) => countOf(data[key]) > 0);
+      function whyCol(title, text) {
+        const wrap = document.createElement("div");
+        wrap.append(el("h3", "", title), el("p", "", text));
+        return wrap;
       }
 
-      function groupCountLabel(data, keys) {
-        const total = keys.reduce((sum, key) => sum + countOf(data[key]), 0);
-        return total + (total === 1 ? " record" : " records");
+      function groupCount(data, group) {
+        if (group.id === "identity") return 1;
+        return group.keys.reduce((sum, key) => sum + countOf(data[key]), 0);
       }
 
       function countOf(value) {
@@ -587,78 +1017,162 @@
         return 1;
       }
 
-      function renderValue(value, key) {
-        if (value == null) {
-          return el("p", "empty", "None");
+      function renderIdentity(data) {
+        const wrap = document.createElement("div");
+        wrap.append(
+          renderObject(
+            {
+              discordId: data.discordId,
+              userId: data.userId,
+              exportedAt: data.exportedAt,
+            },
+            ["discordId", "userId", "exportedAt"],
+          ),
+        );
+        return wrap;
+      }
+
+      function renderBlock(key, value) {
+        const meta = KEY_META[key] || { title: prettyKey(key), hint: "" };
+        const block = el("div", "block");
+        block.append(el("h3", "", meta.title));
+        if (meta.hint) block.append(el("p", "hint", meta.hint));
+        const fields = collectFields(value);
+        if (fields.length) block.append(fieldGuide(fields));
+        if (key === "userPreferences") {
+          block.append(renderPreferences(value));
+        } else if (key === "attendance") {
+          block.append(renderAttendance(value));
+        } else {
+          block.append(renderValue(value, key));
         }
-        if (Array.isArray(value)) {
-          return renderArray(value);
-        }
-        if (typeof value === "object") {
-          if (key === "attendance") {
-            return renderAttendance(value);
+        return block;
+      }
+
+      function collectFields(value) {
+        if (Array.isArray(value) && value[0] && typeof value[0] === "object") {
+          const keys = [];
+          for (const item of value) {
+            for (const k of Object.keys(item)) {
+              if (!keys.includes(k)) keys.push(k);
+            }
           }
-          return renderObject(value);
+          return keys;
         }
-        return el("p", "", formatValue(value));
+        if (value && typeof value === "object" && !Array.isArray(value) && !("asHost" in value)) {
+          return Object.keys(value);
+        }
+        return [];
+      }
+
+      function fieldGuide(fields) {
+        const box = document.createElement("details");
+        box.className = "fields";
+        box.append(el("summary", "", "What each column means"));
+        const dl = document.createElement("dl");
+        for (const f of fields) {
+          dl.append(el("dt", "", prettyKey(f)), el("dd", "", FIELD_HELP[f] || "Stored field from this record."));
+        }
+        box.append(dl);
+        return box;
+      }
+
+      function renderPreferences(prefs) {
+        if (!prefs) {
+          return el(
+            "p",
+            "empty",
+            "No preference row yet. SHIELD will create one the first time you change profile settings.",
+          );
+        }
+        const wrap = document.createElement("div");
+        for (const row of PREF_ROWS) {
+          const line = el("div", "pref");
+          line.append(el("div", "name", row.label));
+          const raw = prefs[row.key];
+          let pill;
+          if (row.key === "timezone") {
+            pill = el("span", "pill gold", raw ? String(raw) : "Default (EST rules)");
+          } else if (typeof raw === "boolean") {
+            const enabled = row.invert ? !raw : raw;
+            pill = el("span", "pill " + (enabled ? "on" : "off"), enabled ? "On" : "Off");
+          } else {
+            pill = el("span", "pill", formatValue(raw, row.key));
+          }
+          line.append(pill, el("div", "mean", row.meaning));
+          wrap.append(line);
+        }
+        wrap.append(el("p", "hint", "Also stored: created " + formatValue(prefs.createdAt) + ", updated " + formatValue(prefs.updatedAt) + "."));
+        return wrap;
       }
 
       function renderAttendance(value) {
+        if (!value) return el("p", "empty", "No attendance history.");
         const wrap = document.createElement("div");
-        const parts = [
-          ["asHost", "As host"],
-          ["asCohost", "As co-host"],
-          ["asStaff", "As staff"],
-          ["asSquadMember", "As squad member"],
-        ];
         wrap.append(
-          el(
-            "p",
-            "muted",
-            "Active event id: " + formatValue(value.activeEventId),
-          ),
+          el("p", "hint", "Active event id: " + formatValue(value.activeEventId) + " — the event currently open for you, if any."),
         );
-        for (const [k, label] of parts) {
-          wrap.append(el("h4", "", label));
-          wrap.append(renderValue(value[k], k));
+        const parts = [
+          ["asHost", "As host", "You were marked host on these attendance events."],
+          ["asCohost", "As co-host", "You were marked co-host."],
+          ["asStaff", "As staff", "You were on the staff list (not necessarily hosting)."],
+          ["asSquadMember", "As squad member", "Roster line: squad name, lead, late, split, left."],
+        ];
+        for (const [k, label, hint] of parts) {
+          const block = el("div", "block");
+          block.append(el("h3", "", label), el("p", "hint", hint));
+          const fields = collectFields(value[k]);
+          if (fields.length) block.append(fieldGuide(fields));
+          block.append(renderValue(value[k], k));
+          wrap.append(block);
         }
         return wrap;
       }
 
-      function renderObject(obj) {
-        const dl = document.createElement("dl");
-        for (const [k, v] of Object.entries(obj)) {
-          dl.append(el("dt", "", prettyKey(k)));
+      function renderValue(value, key) {
+        if (value == null) return el("p", "empty", "None stored.");
+        if (Array.isArray(value)) return renderArray(value, key);
+        if (typeof value === "object") return renderObject(value);
+        return el("p", "", formatValue(value, key));
+      }
+
+      function renderObject(obj, order) {
+        const dl = el("dl", "kv");
+        const keys = order || Object.keys(obj);
+        for (const k of keys) {
+          const dt = el("dt", "");
+          dt.title = FIELD_HELP[k] || "";
+          dt.textContent = prettyKey(k);
           const dd = document.createElement("dd");
-          dd.append(cellContent(k, v));
-          dl.append(dd);
+          dd.append(cellContent(k, obj[k], obj));
+          dl.append(dt, dd);
         }
         return dl;
       }
 
-      function renderArray(items) {
+      function renderArray(items, key) {
         if (items.length === 0) {
-          return el("p", "empty", "None");
+          return el("p", "empty", "No records. SHIELD is not storing this for you right now.");
         }
         if (!items.every((item) => item && typeof item === "object" && !Array.isArray(item))) {
           const pre = document.createElement("pre");
           pre.textContent = JSON.stringify(items, null, 2);
           return pre;
         }
-
         const columns = [];
         for (const item of items) {
           for (const k of Object.keys(item)) {
             if (!columns.includes(k)) columns.push(k);
           }
         }
-
-        const wrap = document.createElement("div");
+        const wrap = el("div", "table-wrap");
         const table = document.createElement("table");
         const thead = document.createElement("thead");
         const hr = document.createElement("tr");
         for (const col of columns) {
-          hr.append(el("th", "", prettyKey(col)));
+          const th = el("th", "", prettyKey(col));
+          th.title = FIELD_HELP[col] || "";
+          hr.append(th);
         }
         thead.append(hr);
         const tbody = document.createElement("tbody");
@@ -666,52 +1180,48 @@
         wrap.append(table);
 
         let shown = 0;
+        const more = document.createElement("button");
+        more.type = "button";
+        more.addEventListener("click", () => addRows(PAGE));
+        wrap.append(more);
+
         const addRows = (count) => {
           const end = Math.min(items.length, shown + count);
           for (let i = shown; i < end; i++) {
             const tr = document.createElement("tr");
             for (const col of columns) {
               const td = document.createElement("td");
-              td.append(cellContent(col, items[i][col]));
+              td.append(cellContent(col, items[i][col], items[i]));
               tr.append(td);
             }
             tbody.append(tr);
           }
           shown = end;
           more.classList.toggle("hidden", shown >= items.length);
-          more.textContent =
-            "Show more (" + (items.length - shown) + " remaining)";
+          more.textContent = "Show more (" + (items.length - shown) + " remaining)";
         };
-
-        const more = document.createElement("button");
-        more.type = "button";
-        more.className = "more";
-        more.addEventListener("click", () => addRows(PAGE));
-        wrap.append(more);
         addRows(PAGE);
         return wrap;
       }
 
-      function cellContent(key, value) {
-        if (value == null || value === "") {
-          return document.createTextNode("—");
-        }
-        if (Array.isArray(value) || (typeof value === "object" && !isPlainShort(value))) {
-          if (Array.isArray(value) && value.every((v) => typeof v !== "object")) {
-            return document.createTextNode(value.join(", "));
+      function cellContent(key, value, row) {
+        if (value == null || value === "") return document.createTextNode("—");
+        if (Array.isArray(value)) {
+          if (value.every((v) => typeof v !== "object")) {
+            const span = document.createElement("span");
+            for (const [i, v] of value.entries()) {
+              if (i) span.append(document.createTextNode(" "));
+              span.append(el("span", "pill gold", String(v)));
+            }
+            return span;
           }
-          const details = document.createElement("details");
-          const summary = document.createElement("summary");
-          summary.textContent = Array.isArray(value)
-            ? value.length + " items"
-            : "object";
-          const pre = document.createElement("pre");
-          pre.textContent = JSON.stringify(value, null, 2);
-          details.append(summary, pre);
-          return details;
+          return renderArray(value, key);
         }
         if (typeof value === "object") {
-          return renderObject(value);
+          const details = document.createElement("details");
+          details.append(el("summary", "", "Details"));
+          details.append(renderObject(value));
+          return details;
         }
         if (key === "vrcUserId" && typeof value === "string" && /^usr_[\w-]+$/.test(value)) {
           const a = document.createElement("a");
@@ -721,17 +1231,37 @@
           a.textContent = value;
           return a;
         }
+        if (
+          key === "messageId" &&
+          row &&
+          snowflake(row.guildId) &&
+          snowflake(row.channelId) &&
+          snowflake(value)
+        ) {
+          const a = document.createElement("a");
+          a.href =
+            "https://discord.com/channels/" +
+            row.guildId +
+            "/" +
+            row.channelId +
+            "/" +
+            value;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = String(value);
+          return a;
+        }
+        if (typeof value === "boolean") {
+          return el("span", "pill " + (value ? "on" : "off"), value ? "Yes" : "No");
+        }
+        if (key === "status" || key === "type" || key === "accountType" || key === "duty" || key === "warningType") {
+          return el("span", "pill gold", String(value));
+        }
         return document.createTextNode(formatValue(value, key));
       }
 
-      function isPlainShort(value) {
-        return (
-          value &&
-          typeof value === "object" &&
-          !Array.isArray(value) &&
-          Object.keys(value).length <= 8 &&
-          Object.values(value).every((v) => v == null || typeof v !== "object")
-        );
+      function snowflake(v) {
+        return typeof v === "string" && /^\d{17,20}$/.test(v);
       }
 
       function formatValue(value, key) {
@@ -743,6 +1273,9 @@
         ) {
           const n = Number(value);
           if (Number.isFinite(n)) return formatDuration(n);
+        }
+        if (key === "durationMinutes" && typeof value === "number") {
+          return formatDuration(value * 60000);
         }
         if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
           const d = new Date(value);
@@ -758,6 +1291,8 @@
         const abs = Math.abs(ms);
         const hours = Math.floor(abs / 3600000);
         const minutes = Math.floor((abs % 3600000) / 60000);
+        const seconds = Math.floor((abs % 60000) / 1000);
+        if (hours === 0 && minutes === 0) return sign + seconds + "s";
         return sign + hours + "h " + minutes + "m";
       }
 
@@ -778,16 +1313,24 @@
 
       function applyFilter() {
         const q = filterInput.value.trim().toLowerCase();
-        const blocks = sectionsEl.querySelectorAll("details.section");
+        const blocks = sectionsEl.querySelectorAll("article.section");
+        const links = navEl.querySelectorAll("a");
         for (const block of blocks) {
           if (!q) {
             block.classList.remove("hidden");
             continue;
           }
-          const hay = block.textContent.toLowerCase();
-          const match = hay.includes(q);
+          const match = block.textContent.toLowerCase().includes(q);
           block.classList.toggle("hidden", !match);
-          if (match) block.open = true;
+        }
+        for (const link of links) {
+          if (!q) {
+            link.classList.remove("hidden");
+            continue;
+          }
+          const id = link.getAttribute("href").slice(1);
+          const sec = document.getElementById(id);
+          link.classList.toggle("hidden", !sec || sec.classList.contains("hidden"));
         }
       }
 
