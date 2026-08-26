@@ -225,6 +225,7 @@
         border-radius: 10px;
         background: var(--bg-2);
         overflow: hidden;
+        min-width: 0;
       }
 
       .section > header.sec-h {
@@ -240,8 +241,10 @@
         display: flex;
         justify-content: space-between;
         gap: 1rem;
-        align-items: baseline;
+        align-items: center;
       }
+
+      .section h2 > span:first-child { min-width: 0; }
 
       .why {
         display: grid;
@@ -260,9 +263,9 @@
 
       .why p { margin: 0; font-size: 0.84rem; color: var(--muted); }
 
-      .body { padding: 0.85rem 1.05rem 1.05rem; }
+      .body { padding: 0.85rem 1.05rem 1.05rem; min-width: 0; }
 
-      .block { margin: 0 0 1.1rem; }
+      .block { margin: 0 0 1.1rem; min-width: 0; }
       .block:last-child { margin-bottom: 0; }
 
       .block h3 {
@@ -286,34 +289,44 @@
         color: var(--muted);
       }
 
-      .fields summary {
+      .fields > summary {
         cursor: pointer;
         color: var(--gold-2);
         font-weight: 600;
+        list-style: none;
       }
 
-      .fields dl {
+      .fields > summary::-webkit-details-marker { display: none; }
+      .fields > summary::before { content: "▸ "; }
+      .fields[open] > summary::before { content: "▾ "; }
+
+      .guide {
         display: grid;
-        grid-template-columns: minmax(8rem, 13rem) 1fr;
-        gap: 0.28rem 0.9rem;
-        margin: 0.55rem 0 0;
+        grid-template-columns: minmax(9rem, 14rem) 1fr;
+        gap: 0.4rem 1rem;
+        margin: 0.65rem 0 0;
       }
 
-      .fields dt { color: var(--text); font-weight: 600; }
-      .fields dd { margin: 0; }
+      .guide-k {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .guide-v { min-width: 0; }
 
       table {
-        width: 100%;
+        width: max-content;
+        min-width: 100%;
         border-collapse: collapse;
         font-size: 0.8rem;
       }
 
       th, td {
         text-align: left;
-        vertical-align: top;
-        padding: 0.42rem 0.5rem;
+        vertical-align: middle;
+        padding: 0.4rem 0.65rem;
         border-bottom: 1px solid var(--line);
-        word-break: break-word;
+        white-space: nowrap;
       }
 
       th {
@@ -325,9 +338,33 @@
         z-index: 1;
       }
 
+      td.wrap {
+        white-space: normal;
+        max-width: 22rem;
+        overflow-wrap: anywhere;
+      }
+
       tbody tr:hover { background: #1c1812; }
 
-      .table-wrap { overflow: auto; max-width: 100%; }
+      .table-wrap {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+      }
+
+      .table-wrap > button {
+        margin: 0.55rem 0.65rem 0.7rem;
+      }
+
+      .table-wrap.nested {
+        margin: 0.15rem 0;
+        max-width: min(40rem, 70vw);
+      }
 
       dl.kv {
         display: grid;
@@ -336,35 +373,61 @@
         margin: 0;
       }
 
+      dl.kv > dt,
+      dl.kv > dd {
+        display: block;
+        margin: 0;
+        min-width: 0;
+      }
+
       dl.kv dt { color: var(--muted); font-size: 0.82rem; }
-      dl.kv dd { margin: 0; }
+
+      .prefs { display: flex; flex-direction: column; }
 
       .pref {
         display: grid;
-        grid-template-columns: minmax(12rem, 18rem) 6.5rem 1fr;
-        gap: 0.55rem 1rem;
-        padding: 0.65rem 0;
+        grid-template-columns: minmax(11rem, 16rem) max-content minmax(0, 1fr);
+        align-items: center;
+        gap: 0.65rem 1.1rem;
+        padding: 0.7rem 0;
         border-bottom: 1px solid var(--line);
       }
 
-      .pref:last-child { border-bottom: 0; }
+      .pref:last-of-type { border-bottom: 0; }
       .pref .name { font-weight: 600; }
-      .pref .mean { color: var(--muted); font-size: 0.82rem; }
+      .pref .value { justify-self: start; }
+      .pref .mean { color: var(--muted); font-size: 0.82rem; min-width: 0; }
 
       .pill {
-        display: inline-block;
-        padding: 0.08rem 0.45rem;
+        display: inline-flex;
+        align-items: center;
+        width: max-content;
+        max-width: 100%;
+        padding: 0.15rem 0.55rem;
         border-radius: 999px;
         border: 1px solid var(--line);
         background: var(--bg-3);
         font-size: 0.72rem;
         font-weight: 600;
+        line-height: 1.2;
         white-space: nowrap;
       }
 
       .pill.on { color: var(--ok); border-color: #3d5c38; }
       .pill.off { color: var(--danger); border-color: #6a3d36; }
       .pill.gold { color: var(--gold); border-color: var(--gold-dim); }
+
+      .cell-details {
+        display: inline-block;
+        max-width: 24rem;
+        white-space: normal;
+      }
+
+      .cell-details > summary {
+        cursor: pointer;
+        color: var(--gold);
+        font-weight: 600;
+      }
 
       pre {
         margin: 0;
@@ -421,7 +484,7 @@
           padding: 0.5rem;
         }
         nav a { white-space: nowrap; }
-        .why, .pref { grid-template-columns: 1fr; }
+        .why, .pref, .guide { grid-template-columns: 1fr; }
         input[type="search"] { width: 100%; max-width: none; }
         .app > header { flex-wrap: wrap; height: auto; padding: 0.7rem 1rem; }
       }
@@ -1069,11 +1132,14 @@
         const box = document.createElement("details");
         box.className = "fields";
         box.append(el("summary", "", "What each column means"));
-        const dl = document.createElement("dl");
+        const guide = el("div", "guide");
         for (const f of fields) {
-          dl.append(el("dt", "", prettyKey(f)), el("dd", "", FIELD_HELP[f] || "Stored field from this record."));
+          guide.append(
+            el("div", "guide-k", prettyKey(f)),
+            el("div", "guide-v", FIELD_HELP[f] || "Stored field from this record."),
+          );
         }
-        box.append(dl);
+        box.append(guide);
         return box;
       }
 
@@ -1085,11 +1151,12 @@
             "No preference row yet. SHIELD will create one the first time you change profile settings.",
           );
         }
-        const wrap = document.createElement("div");
+        const wrap = el("div", "prefs");
         for (const row of PREF_ROWS) {
           const line = el("div", "pref");
           line.append(el("div", "name", row.label));
           const raw = prefs[row.key];
+          const value = el("div", "value");
           let pill;
           if (row.key === "timezone") {
             pill = el("span", "pill gold", raw ? String(raw) : "Default (EST rules)");
@@ -1099,7 +1166,8 @@
           } else {
             pill = el("span", "pill", formatValue(raw, row.key));
           }
-          line.append(pill, el("div", "mean", row.meaning));
+          value.append(pill);
+          line.append(value, el("div", "mean", row.meaning));
           wrap.append(line);
         }
         wrap.append(el("p", "hint", "Also stored: created " + formatValue(prefs.createdAt) + ", updated " + formatValue(prefs.updatedAt) + "."));
@@ -1150,7 +1218,17 @@
         return dl;
       }
 
-      function renderArray(items, key) {
+      const WRAP_FIELDS = {
+        content: true,
+        reason: true,
+        denialReason: true,
+        claimedReason: true,
+        phantomCompilerReason: true,
+        permissions: true,
+        title: true,
+      };
+
+      function renderArray(items, key, nested) {
         if (items.length === 0) {
           return el("p", "empty", "No records. SHIELD is not storing this for you right now.");
         }
@@ -1165,7 +1243,7 @@
             if (!columns.includes(k)) columns.push(k);
           }
         }
-        const wrap = el("div", "table-wrap");
+        const wrap = el("div", nested ? "table-wrap nested" : "table-wrap");
         const table = document.createElement("table");
         const thead = document.createElement("thead");
         const hr = document.createElement("tr");
@@ -1183,7 +1261,6 @@
         const more = document.createElement("button");
         more.type = "button";
         more.addEventListener("click", () => addRows(PAGE));
-        wrap.append(more);
 
         const addRows = (count) => {
           const end = Math.min(items.length, shown + count);
@@ -1191,6 +1268,7 @@
             const tr = document.createElement("tr");
             for (const col of columns) {
               const td = document.createElement("td");
+              if (WRAP_FIELDS[col]) td.className = "wrap";
               td.append(cellContent(col, items[i][col], items[i]));
               tr.append(td);
             }
@@ -1201,6 +1279,7 @@
           more.textContent = "Show more (" + (items.length - shown) + " remaining)";
         };
         addRows(PAGE);
+        if (items.length > PAGE) wrap.append(more);
         return wrap;
       }
 
@@ -1215,10 +1294,11 @@
             }
             return span;
           }
-          return renderArray(value, key);
+          return renderArray(value, key, true);
         }
         if (typeof value === "object") {
           const details = document.createElement("details");
+          details.className = "cell-details";
           details.append(el("summary", "", "Details"));
           details.append(renderObject(value));
           return details;
