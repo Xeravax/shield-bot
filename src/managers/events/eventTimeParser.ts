@@ -43,19 +43,48 @@ function isAbsoluteTimestampInput(trimmed: string): boolean {
   return /^\d{10,13}$/.test(trimmed) || DISCORD_TS_RE.test(trimmed);
 }
 
-interface ParsedWallTime {
+interface ParsedCivilTime {
+  year: number;
+  month: number;
+  day: number;
   hour: number;
   minute: number;
   second: number;
+  /** Monday = 0 … Sunday = 6 */
+  weekday: number;
 }
 
-function wallTimeFromChrono(start: chrono.ParsedComponents, timezone: string): ParsedWallTime {
+/**
+ * Chrono uses JS weekday (0 = Sunday). Scheduling uses Monday = 0.
+ * `get("weekday")` is 0 for Sunday, so do not use truthiness checks.
+ */
+function chronoWeekdayToMondayBased(weekday: number): number {
+  return (weekday + 6) % 7;
+}
+
+/**
+ * Read the intended wall clock from chrono components in the host timezone.
+ * `start.date()` is in the process timezone and is wrong at midnight when the
+ * host TZ is east of the server (Sunday 12AM becomes Saturday).
+ */
+function civilTimeFromChrono(
+  start: chrono.ParsedComponents,
+  timezone: string,
+): ParsedCivilTime {
   const parsed = start.date();
   const fallback = getTimezoneDateParts(parsed, timezone);
+  const chronoWeekday = start.get("weekday");
   return {
+    year: start.get("year") ?? fallback.year,
+    month: start.get("month") ?? fallback.month,
+    day: start.get("day") ?? fallback.day,
     hour: start.get("hour") ?? fallback.hour,
     minute: start.get("minute") ?? fallback.minute,
     second: start.get("second") ?? fallback.second,
+    weekday:
+      typeof chronoWeekday === "number"
+        ? chronoWeekdayToMondayBased(chronoWeekday)
+        : fallback.weekday,
   };
 }
 
@@ -75,35 +104,37 @@ function isWithinWeek(
  * Force (`enforceWeek: false`) keeps the parsed date as-is.
  */
 function ensureForwardDate(
-  parsed: Date,
+  start: chrono.ParsedComponents,
   refDate: Date,
   timezone: string,
-  wallTime: ParsedWallTime,
   snapIntoWeek?: { start: Date; end: Date },
   enforceWeek = true,
 ): Date {
-  const parsedEst = getESTDateParts(parsed);
-  let { year, month, day } = parsedEst;
+  const civil = civilTimeFromChrono(start, timezone);
+  let { year, month, day } = civil;
 
-  if (enforceWeek && parsedEst.weekday !== 0) {
+  const asLocal = (): Date =>
+    timezoneLocalToUtc(
+      timezone,
+      year,
+      month,
+      day,
+      civil.hour,
+      civil.minute,
+      civil.second,
+    );
+
+  if (enforceWeek && civil.weekday !== 0) {
     const week = snapIntoWeek ?? getSchedulableEventWeekRange(refDate);
-    if (!isWithinWeek(parsed, week)) {
+    if (!isWithinWeek(asLocal(), week)) {
       const weekStartEst = getESTDateParts(week.start);
       year = weekStartEst.year;
       month = weekStartEst.month;
-      day = weekStartEst.day + (parsedEst.weekday - 1);
+      day = weekStartEst.day + (civil.weekday - 1);
     }
   }
 
-  return timezoneLocalToUtc(
-    timezone,
-    year,
-    month,
-    day,
-    wallTime.hour,
-    wallTime.minute,
-    wallTime.second,
-  );
+  return asLocal();
 }
 
 function parseNaturalLanguageTime(
@@ -123,12 +154,10 @@ function parseNaturalLanguageTime(
     return null;
   }
 
-  const start = results[0].start;
   return ensureForwardDate(
-    start.date(),
+    results[0].start,
     refDate,
     timezone,
-    wallTimeFromChrono(start, timezone),
     snapIntoWeek,
     enforceWeek,
   );
@@ -208,10 +237,9 @@ export function buildTimeAutocompleteChoices(
   );
   return results.slice(0, MAX_AUTOCOMPLETE).map((r) => {
     const d = ensureForwardDate(
-      r.start.date(),
+      r.start,
       refDate,
       tz,
-      wallTimeFromChrono(r.start, tz),
       snapIntoWeek,
       enforceWeek,
     );

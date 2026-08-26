@@ -30,7 +30,7 @@ function getTimezoneOffsetMs(timeZone: string, date: Date): number {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   });
   const parts = dtf.formatToParts(date);
   const map: Record<string, string> = {};
@@ -87,7 +87,7 @@ export function getTimezoneDateParts(date: Date, timeZone: string): ESTDateParts
     minute: "2-digit",
     second: "2-digit",
     weekday: "short",
-    hour12: false,
+    hourCycle: "h23",
   });
   const parts = dtf.formatToParts(date);
   const map: Record<string, string> = {};
@@ -97,14 +97,29 @@ export function getTimezoneDateParts(date: Date, timeZone: string): ESTDateParts
     }
   }
   const weekdayShort = map.weekday ?? "Mon";
+  const hourRaw = +map.hour;
+  if (hourRaw !== 24) {
+    return {
+      year: +map.year,
+      month: +map.month,
+      day: +map.day,
+      hour: hourRaw,
+      minute: +map.minute,
+      second: +map.second,
+      weekday: WEEKDAY_MAP[weekdayShort] ?? 0,
+    };
+  }
+
+  // h24 midnight: 24:00 on this calendar day is 00:00 the next day.
+  const next = new Date(Date.UTC(+map.year, +map.month - 1, +map.day + 1));
   return {
-    year: +map.year,
-    month: +map.month,
-    day: +map.day,
-    hour: +map.hour,
+    year: next.getUTCFullYear(),
+    month: next.getUTCMonth() + 1,
+    day: next.getUTCDate(),
+    hour: 0,
     minute: +map.minute,
     second: +map.second,
-    weekday: WEEKDAY_MAP[weekdayShort] ?? 0,
+    weekday: ((WEEKDAY_MAP[weekdayShort] ?? 0) + 1) % 7,
   };
 }
 
