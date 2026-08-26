@@ -1,7 +1,10 @@
 import { gzipSync } from "node:zlib";
 import { Discord, Slash, SlashGroup, SlashOption, Guard, SlashChoice } from "discordx";
 import {
+  ActionRowBuilder,
   ApplicationCommandOptionType,
+  ButtonBuilder,
+  ButtonStyle,
   CommandInteraction,
   MessageFlags,
   User,
@@ -20,6 +23,11 @@ import { loggers } from "../../utility/logger.js";
 import { GuildGuard } from "../../utility/guards.js";
 import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
 import { getUserExportData } from "../../utility/userDataExport.js";
+import {
+  USER_EXPORT_TOKEN_TTL_MS,
+  createUserExportToken,
+  getUserExportViewUrl,
+} from "../../utility/userExportToken.js";
 import { patrolTimer } from "../../main.js";
 
 /** Discord's typical bot upload cap; gzip if the JSON would exceed this. */
@@ -82,7 +90,7 @@ function buildPermissionListMessages(): string[] {
 export class UserCommands {
   @Slash({
     name: "export",
-    description: "Export your own data stored by the bot (JSON file).",
+    description: "Export your own data stored by the bot, with a browser view.",
   })
   async export(interaction: CommandInteraction): Promise<void> {
     try {
@@ -94,17 +102,37 @@ export class UserCommands {
         });
         return;
       }
+
+      const token = createUserExportToken(interaction.user.id);
+      const viewUrl = getUserExportViewUrl(token);
+      const expiresAt = Math.floor(
+        (Date.now() + USER_EXPORT_TOKEN_TTL_MS) / 1000,
+      );
+      const viewRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setLabel("View in browser")
+          .setStyle(ButtonStyle.Link)
+          .setURL(viewUrl),
+      );
+      const content =
+        "Here's a copy of the data SHIELD has stored for you.\n" +
+        `The view link expires <t:${expiresAt}:R>. Don't share it — anyone with the link can see your data.`;
+
       const jsonBuffer = Buffer.from(JSON.stringify(payload, null, 2), "utf-8");
       const useGzip = jsonBuffer.byteLength > DISCORD_UPLOAD_LIMIT_BYTES;
       const attachment = useGzip ? gzipSync(jsonBuffer) : jsonBuffer;
       if (attachment.byteLength > DISCORD_UPLOAD_LIMIT_BYTES) {
         await interaction.editReply({
           content:
-            "Your export is too large to send as a Discord attachment. Please contact an administrator.",
+            content +
+            "\n\nThe JSON file is too large to attach on Discord. Use the view link instead.",
+          components: [viewRow],
         });
         return;
       }
       await interaction.editReply({
+        content,
+        components: [viewRow],
         files: [
           {
             attachment,

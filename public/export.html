@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      name="description"
+      content="View your SHIELD bot data export in the browser."
+    />
+    <title>SHIELD · Your data export</title>
+    <style>
+      :root {
+        --bg: #070707;
+        --bg-elev: #12100c;
+        --bg-card: #1a1711;
+        --gold: #dfbd6b;
+        --gold-dim: #a88945;
+        --text: #f3ead6;
+        --muted: #b6a888;
+        --line: #3a3224;
+        --danger: #e07a6a;
+        --ok: #8fbf8a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", system-ui, sans-serif;
+        line-height: 1.45;
+      }
+
+      a {
+        color: var(--gold);
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        padding: 1.25rem 1.5rem;
+        background: var(--bg-elev);
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+
+      header .row {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.25rem;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 1.15rem;
+        letter-spacing: 0.08em;
+        color: var(--gold);
+        font-weight: 700;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      button,
+      .btn {
+        appearance: none;
+        border: 1px solid var(--gold-dim);
+        background: transparent;
+        color: var(--gold);
+        padding: 0.4rem 0.75rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.85rem;
+      }
+
+      button:hover,
+      .btn:hover {
+        background: #2a2316;
+      }
+
+      button.primary {
+        background: var(--gold);
+        color: #1a1408;
+        border-color: var(--gold);
+        font-weight: 600;
+      }
+
+      button.primary:hover {
+        filter: brightness(1.05);
+      }
+
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 1.5rem;
+      }
+
+      .panel {
+        background: var(--bg-elev);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 1.25rem;
+      }
+
+      .drop {
+        border: 1px dashed var(--gold-dim);
+        border-radius: 10px;
+        padding: 2.5rem 1.25rem;
+        text-align: center;
+        background: var(--bg-card);
+      }
+
+      .drop.dragover {
+        border-color: var(--gold);
+        background: #241e12;
+      }
+
+      .error {
+        color: var(--danger);
+        margin: 1rem 0 0;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 0.75rem;
+        margin: 0 0 1.25rem;
+      }
+
+      .stat {
+        background: var(--bg-card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0.75rem;
+      }
+
+      .stat .n {
+        font-size: 1.35rem;
+        color: var(--gold);
+        font-weight: 700;
+      }
+
+      .stat .l {
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+
+      details.section {
+        background: var(--bg-elev);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 0.6rem 0;
+      }
+
+      details.section > summary {
+        cursor: pointer;
+        padding: 0.8rem 1rem;
+        font-weight: 600;
+        list-style: none;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+      }
+
+      details.section > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      details.section > summary::before {
+        content: "▸";
+        color: var(--gold);
+        margin-right: 0.5rem;
+      }
+
+      details.section[open] > summary::before {
+        content: "▾";
+      }
+
+      .count {
+        font-weight: 500;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .body {
+        padding: 0 1rem 1rem;
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.45rem 0.5rem;
+        border-bottom: 1px solid var(--line);
+        word-break: break-word;
+      }
+
+      th {
+        color: var(--gold-dim);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      dl {
+        display: grid;
+        grid-template-columns: minmax(8rem, 14rem) 1fr;
+        gap: 0.35rem 1rem;
+        margin: 0;
+      }
+
+      dt {
+        color: var(--muted);
+      }
+
+      dd {
+        margin: 0;
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 0.8rem;
+        background: #0d0c09;
+        padding: 0.6rem;
+        border-radius: 6px;
+        max-height: 20rem;
+        overflow: auto;
+      }
+
+      .empty {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .more {
+        margin-top: 0.6rem;
+      }
+
+      input[type="search"] {
+        width: min(100%, 22rem);
+        background: #0d0c09;
+        border: 1px solid var(--line);
+        color: var(--text);
+        padding: 0.4rem 0.6rem;
+        border-radius: 6px;
+        font: inherit;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      footer {
+        max-width: 1100px;
+        margin: 0 auto 2rem;
+        padding: 0 1.5rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="row">
+        <div>
+          <h1>SHIELD data export</h1>
+          <div id="meta" class="muted">Load a signed link or a JSON file from /user export.</div>
+        </div>
+        <div class="actions">
+          <input id="file" type="file" accept=".json,.gz,application/json" hidden />
+          <button type="button" id="openFile">Open JSON file</button>
+          <button type="button" id="download" class="hidden">Download JSON</button>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section id="landing" class="panel">
+        <div id="drop" class="drop">
+          <p>
+            Drop <code>my-shield-bot-data.json</code> here, or use
+            <strong>/user export</strong> and open the view link Discord gives you.
+          </p>
+          <p class="muted">The file stays in this browser. A view link expires after one hour.</p>
+          <button type="button" class="primary" id="openFileLanding">Choose file</button>
+        </div>
+        <p id="status" class="muted hidden"></p>
+      </section>
+      <section id="viewer" class="hidden">
+        <div class="actions" style="margin-bottom: 1rem">
+          <input id="filter" type="search" placeholder="Filter keys and values…" />
+        </div>
+        <div id="summary" class="summary"></div>
+        <div id="sections"></div>
+      </section>
+    </main>
+    <footer>
+      This page shows the same personal data as <code>/user export</code>. Do not share a view link.
+    </footer>
+    <script>
+      const landing = document.getElementById("landing");
+      const viewer = document.getElementById("viewer");
+      const sectionsEl = document.getElementById("sections");
+      const summaryEl = document.getElementById("summary");
+      const metaEl = document.getElementById("meta");
+      const statusEl = document.getElementById("status");
+      const downloadBtn = document.getElementById("download");
+      const filterInput = document.getElementById("filter");
+      const fileInput = document.getElementById("file");
+      const drop = document.getElementById("drop");
+      const PAGE = 50;
+      let currentPayload = null;
+
+      const GROUPS = [
+        {
+          title: "VRChat accounts",
+          keys: ["vrchatAccounts"],
+        },
+        {
+          title: "Preferences",
+          keys: ["userPreferences"],
+        },
+        {
+          title: "Whitelist",
+          keys: ["whitelistEntries"],
+        },
+        {
+          title: "Patrol",
+          keys: [
+            "voicePatrolTimes",
+            "voicePatrolMonthlyTimes",
+            "activeVoicePatrolSessions",
+            "voicePatrolPromotionNotifications",
+            "voicePatrolRoleObtainedAt",
+            "voicePatrolPromotionBlocks",
+          ],
+        },
+        {
+          title: "Leave of absence",
+          keys: ["leaveOfAbsences"],
+        },
+        {
+          title: "Role tracking",
+          keys: ["roleAssignmentTracking", "roleTrackingWarnings"],
+        },
+        {
+          title: "Attendance",
+          keys: ["attendance"],
+        },
+        {
+          title: "Planned events",
+          keys: ["plannedEvents"],
+        },
+        {
+          title: "Cached messages",
+          keys: ["cachedMessages"],
+        },
+        {
+          title: "Moderation",
+          keys: ["modCases", "modUserNotes"],
+        },
+        {
+          title: "Other",
+          keys: [
+            "announcements",
+            "spinTheBottleResponses",
+            "messagePurgeArchives",
+          ],
+        },
+      ];
+
+      const LABELS = {
+        vrchatAccounts: "Accounts",
+        userPreferences: "Preferences",
+        whitelistEntries: "Entries",
+        voicePatrolTimes: "Total time",
+        voicePatrolMonthlyTimes: "Monthly time",
+        activeVoicePatrolSessions: "Active sessions",
+        voicePatrolPromotionNotifications: "Promotion notifications",
+        voicePatrolRoleObtainedAt: "Roles obtained",
+        voicePatrolPromotionBlocks: "Promotion blocks",
+        leaveOfAbsences: "LOAs",
+        roleAssignmentTracking: "Role assignments",
+        roleTrackingWarnings: "Warnings",
+        attendance: "Attendance",
+        plannedEvents: "Events",
+        cachedMessages: "Messages",
+        modCases: "Cases",
+        modUserNotes: "Notes",
+        announcements: "Announcements",
+        spinTheBottleResponses: "Spin the bottle",
+        messagePurgeArchives: "Purge archives",
+      };
+
+      document.getElementById("openFile").addEventListener("click", () => fileInput.click());
+      document.getElementById("openFileLanding").addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files && fileInput.files[0]) {
+          void loadFile(fileInput.files[0]);
+        }
+      });
+      downloadBtn.addEventListener("click", downloadCurrent);
+      filterInput.addEventListener("input", applyFilter);
+
+      ["dragenter", "dragover"].forEach((ev) => {
+        drop.addEventListener(ev, (e) => {
+          e.preventDefault();
+          drop.classList.add("dragover");
+        });
+      });
+      ["dragleave", "drop"].forEach((ev) => {
+        drop.addEventListener(ev, (e) => {
+          e.preventDefault();
+          drop.classList.remove("dragover");
+        });
+      });
+      drop.addEventListener("drop", (e) => {
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) void loadFile(file);
+      });
+
+      const params = new URLSearchParams(location.search);
+      const token = params.get("t");
+      if (token) {
+        void loadFromToken(token);
+      }
+
+      function showStatus(message, isError) {
+        statusEl.textContent = message;
+        statusEl.classList.toggle("hidden", !message);
+        statusEl.classList.toggle("error", Boolean(isError));
+        statusEl.classList.toggle("muted", !isError);
+      }
+
+      async function loadFromToken(t) {
+        showStatus("Loading your export…");
+        try {
+          const res = await fetch("/api/user/export?t=" + encodeURIComponent(t), {
+            cache: "no-store",
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showStatus(body.error || "Could not load this export link.", true);
+            return;
+          }
+          renderPayload(body);
+        } catch (_err) {
+          showStatus("Could not load this export link.", true);
+        }
+      }
+
+      async function loadFile(file) {
+        showStatus("Reading file…");
+        try {
+          const text = await readExportFile(file);
+          const data = JSON.parse(text);
+          if (!data || typeof data !== "object") {
+            throw new Error("Not an object");
+          }
+          renderPayload(data);
+        } catch (_err) {
+          showStatus("That file is not a valid SHIELD export JSON.", true);
+        }
+      }
+
+      async function readExportFile(file) {
+        const gzip =
+          /\.gz$/i.test(file.name) ||
+          file.type === "application/gzip" ||
+          file.type === "application/x-gzip";
+        if (!gzip) {
+          return file.text();
+        }
+        if (typeof DecompressionStream !== "function") {
+          throw new Error("gzip not supported");
+        }
+        const stream = file.stream().pipeThrough(new DecompressionStream("gzip"));
+        return new Response(stream).text();
+      }
+
+      function renderPayload(data) {
+        currentPayload = data;
+        landing.classList.add("hidden");
+        viewer.classList.remove("hidden");
+        downloadBtn.classList.remove("hidden");
+        showStatus("");
+
+        const exportedAt = formatValue(data.exportedAt);
+        const discordId = data.discordId != null ? String(data.discordId) : "unknown";
+        metaEl.textContent =
+          "Discord " + discordId + (exportedAt !== "—" ? " · exported " + exportedAt : "");
+
+        summaryEl.replaceChildren();
+        const stats = [
+          ["Accounts", countOf(data.vrchatAccounts)],
+          ["Patrol rows", countOf(data.voicePatrolTimes)],
+          ["LOAs", countOf(data.leaveOfAbsences)],
+          ["Events", countOf(data.plannedEvents)],
+          ["Messages", countOf(data.cachedMessages)],
+          ["Cases", countOf(data.modCases)],
+        ];
+        for (const [label, n] of stats) {
+          const card = el("div", "stat");
+          card.append(el("div", "n", String(n)), el("div", "l", label));
+          summaryEl.append(card);
+        }
+
+        sectionsEl.replaceChildren();
+        for (const group of GROUPS) {
+          const wrap = document.createElement("details");
+          wrap.className = "section";
+          wrap.open = groupHasData(data, group.keys);
+
+          const summary = document.createElement("summary");
+          const title = document.createElement("span");
+          title.textContent = group.title;
+          const count = el("span", "count", groupCountLabel(data, group.keys));
+          summary.append(title, count);
+          wrap.append(summary);
+
+          const body = el("div", "body");
+          for (const key of group.keys) {
+            if (!(key in data)) continue;
+            if (group.keys.length > 1) {
+              body.append(el("h3", "", LABELS[key] || key));
+            }
+            body.append(renderValue(data[key], key));
+          }
+          wrap.append(body);
+          sectionsEl.append(wrap);
+        }
+
+        applyFilter();
+      }
+
+      function groupHasData(data, keys) {
+        return keys.some((key) => countOf(data[key]) > 0);
+      }
+
+      function groupCountLabel(data, keys) {
+        const total = keys.reduce((sum, key) => sum + countOf(data[key]), 0);
+        return total + (total === 1 ? " record" : " records");
+      }
+
+      function countOf(value) {
+        if (value == null) return 0;
+        if (Array.isArray(value)) return value.length;
+        if (typeof value === "object") {
+          if ("asHost" in value) {
+            return (
+              countOf(value.asHost) +
+              countOf(value.asCohost) +
+              countOf(value.asStaff) +
+              countOf(value.asSquadMember)
+            );
+          }
+          return 1;
+        }
+        return 1;
+      }
+
+      function renderValue(value, key) {
+        if (value == null) {
+          return el("p", "empty", "None");
+        }
+        if (Array.isArray(value)) {
+          return renderArray(value);
+        }
+        if (typeof value === "object") {
+          if (key === "attendance") {
+            return renderAttendance(value);
+          }
+          return renderObject(value);
+        }
+        return el("p", "", formatValue(value));
+      }
+
+      function renderAttendance(value) {
+        const wrap = document.createElement("div");
+        const parts = [
+          ["asHost", "As host"],
+          ["asCohost", "As co-host"],
+          ["asStaff", "As staff"],
+          ["asSquadMember", "As squad member"],
+        ];
+        wrap.append(
+          el(
+            "p",
+            "muted",
+            "Active event id: " + formatValue(value.activeEventId),
+          ),
+        );
+        for (const [k, label] of parts) {
+          wrap.append(el("h4", "", label));
+          wrap.append(renderValue(value[k], k));
+        }
+        return wrap;
+      }
+
+      function renderObject(obj) {
+        const dl = document.createElement("dl");
+        for (const [k, v] of Object.entries(obj)) {
+          dl.append(el("dt", "", prettyKey(k)));
+          const dd = document.createElement("dd");
+          dd.append(cellContent(k, v));
+          dl.append(dd);
+        }
+        return dl;
+      }
+
+      function renderArray(items) {
+        if (items.length === 0) {
+          return el("p", "empty", "None");
+        }
+        if (!items.every((item) => item && typeof item === "object" && !Array.isArray(item))) {
+          const pre = document.createElement("pre");
+          pre.textContent = JSON.stringify(items, null, 2);
+          return pre;
+        }
+
+        const columns = [];
+        for (const item of items) {
+          for (const k of Object.keys(item)) {
+            if (!columns.includes(k)) columns.push(k);
+          }
+        }
+
+        const wrap = document.createElement("div");
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const hr = document.createElement("tr");
+        for (const col of columns) {
+          hr.append(el("th", "", prettyKey(col)));
+        }
+        thead.append(hr);
+        const tbody = document.createElement("tbody");
+        table.append(thead, tbody);
+        wrap.append(table);
+
+        let shown = 0;
+        const addRows = (count) => {
+          const end = Math.min(items.length, shown + count);
+          for (let i = shown; i < end; i++) {
+            const tr = document.createElement("tr");
+            for (const col of columns) {
+              const td = document.createElement("td");
+              td.append(cellContent(col, items[i][col]));
+              tr.append(td);
+            }
+            tbody.append(tr);
+          }
+          shown = end;
+          more.classList.toggle("hidden", shown >= items.length);
+          more.textContent =
+            "Show more (" + (items.length - shown) + " remaining)";
+        };
+
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "more";
+        more.addEventListener("click", () => addRows(PAGE));
+        wrap.append(more);
+        addRows(PAGE);
+        return wrap;
+      }
+
+      function cellContent(key, value) {
+        if (value == null || value === "") {
+          return document.createTextNode("—");
+        }
+        if (Array.isArray(value) || (typeof value === "object" && !isPlainShort(value))) {
+          if (Array.isArray(value) && value.every((v) => typeof v !== "object")) {
+            return document.createTextNode(value.join(", "));
+          }
+          const details = document.createElement("details");
+          const summary = document.createElement("summary");
+          summary.textContent = Array.isArray(value)
+            ? value.length + " items"
+            : "object";
+          const pre = document.createElement("pre");
+          pre.textContent = JSON.stringify(value, null, 2);
+          details.append(summary, pre);
+          return details;
+        }
+        if (typeof value === "object") {
+          return renderObject(value);
+        }
+        if (key === "vrcUserId" && typeof value === "string" && /^usr_[\w-]+$/.test(value)) {
+          const a = document.createElement("a");
+          a.href = "https://vrchat.com/home/user/" + encodeURIComponent(value);
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = value;
+          return a;
+        }
+        return document.createTextNode(formatValue(value, key));
+      }
+
+      function isPlainShort(value) {
+        return (
+          value &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          Object.keys(value).length <= 8 &&
+          Object.values(value).every((v) => v == null || typeof v !== "object")
+        );
+      }
+
+      function formatValue(value, key) {
+        if (value == null) return "—";
+        if (typeof value === "boolean") return value ? "Yes" : "No";
+        if (
+          (key === "totalMs" || key === "cooldownPauseAccumulatedMs") &&
+          (typeof value === "string" || typeof value === "number")
+        ) {
+          const n = Number(value);
+          if (Number.isFinite(n)) return formatDuration(n);
+        }
+        if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+          const d = new Date(value);
+          if (!Number.isNaN(d.getTime())) {
+            return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+          }
+        }
+        return String(value);
+      }
+
+      function formatDuration(ms) {
+        const sign = ms < 0 ? "-" : "";
+        const abs = Math.abs(ms);
+        const hours = Math.floor(abs / 3600000);
+        const minutes = Math.floor((abs % 3600000) / 60000);
+        return sign + hours + "h " + minutes + "m";
+      }
+
+      function prettyKey(key) {
+        return key
+          .replace(/([a-z])([A-Z])/g, "$1 $2")
+          .replace(/_/g, " ")
+          .replace(/\bId\b/g, "ID")
+          .replace(/^./, (c) => c.toUpperCase());
+      }
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text != null) node.textContent = text;
+        return node;
+      }
+
+      function applyFilter() {
+        const q = filterInput.value.trim().toLowerCase();
+        const blocks = sectionsEl.querySelectorAll("details.section");
+        for (const block of blocks) {
+          if (!q) {
+            block.classList.remove("hidden");
+            continue;
+          }
+          const hay = block.textContent.toLowerCase();
+          const match = hay.includes(q);
+          block.classList.toggle("hidden", !match);
+          if (match) block.open = true;
+        }
+      }
+
+      function downloadCurrent() {
+        if (!currentPayload) return;
+        const blob = new Blob([JSON.stringify(currentPayload, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "my-shield-bot-data.json";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    </script>
+  </body>
+</html>
