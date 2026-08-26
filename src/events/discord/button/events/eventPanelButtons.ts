@@ -26,6 +26,7 @@ import {
 import type { PlannedEvent } from "../../../../generated/prisma/client.js";
 import {
   defaultDurationMinutes,
+  isDurationAllowedForDuty,
   nextDurationMinutes,
   nextEventType,
 } from "../../../../managers/events/eventType.js";
@@ -196,13 +197,19 @@ export class EventPanelButtonHandlers {
 
     const newDuty =
       event.duty === EventDuty.ON_DUTY ? EventDuty.OFF_DUTY : EventDuty.ON_DUTY;
+    const durationMinutes = isDurationAllowedForDuty(
+      event.durationMinutes,
+      newDuty,
+    )
+      ? event.durationMinutes
+      : defaultDurationMinutes(newDuty);
 
     await interaction.deferUpdate();
     const updated = await prisma.plannedEvent.updateMany({
       where: editablePanelUpdateWhere(eventId),
       data: {
         duty: newDuty,
-        durationMinutes: defaultDurationMinutes(newDuty),
+        durationMinutes,
       },
     });
     if (updated.count === 0) {
@@ -267,6 +274,25 @@ export class EventPanelButtonHandlers {
     }
 
     if (!(await denyUnlessCanManageDraft(interaction, event))) {
+      return;
+    }
+
+    if (event.duty === EventDuty.OFF_DUTY) {
+      const input = new TextInputBuilder()
+        .setCustomId("duration")
+        .setLabel("Duration (hours, e.g. 2 or 1.5)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(20)
+        .setPlaceholder("e.g. 2, 3.5h, or 90m")
+        .setValue(String(event.durationMinutes / 60));
+
+      const modal = new ModalBuilder()
+        .setCustomId(`event-modal:duration:${eventId}`)
+        .setTitle("Edit off-duty duration")
+        .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+
+      await interaction.showModal(modal);
       return;
     }
 

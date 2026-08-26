@@ -4,11 +4,14 @@ export const EVENT_DURATION_OPTIONS = [60, 120, 180] as const;
 export type EventDurationMinutes = (typeof EVENT_DURATION_OPTIONS)[number];
 
 const ON_DUTY_DURATION_OPTIONS = [120, 180] as const;
-const OFF_DUTY_DURATION_OPTIONS = [60, 120] as const;
+/** Discord-style floor; off-duty has no hour-collection cap beyond this. */
+export const MIN_EVENT_DURATION_MINUTES = 15;
+/** Off-duty events must still fit in the event week (Tue–Mon). */
+export const MAX_OFF_DUTY_DURATION_MINUTES = 7 * 24 * 60;
 
 export function allowedDurationOptions(duty: EventDuty): readonly number[] {
   return duty === EventDuty.OFF_DUTY
-    ? OFF_DUTY_DURATION_OPTIONS
+    ? EVENT_DURATION_OPTIONS
     : ON_DUTY_DURATION_OPTIONS;
 }
 
@@ -16,7 +19,18 @@ export function isDurationAllowedForDuty(
   minutes: number,
   duty: EventDuty,
 ): boolean {
-  return allowedDurationOptions(duty).includes(minutes);
+  if (!Number.isInteger(minutes)) {
+    return false;
+  }
+  if (duty === EventDuty.ON_DUTY) {
+    return ON_DUTY_DURATION_OPTIONS.includes(
+      minutes as (typeof ON_DUTY_DURATION_OPTIONS)[number],
+    );
+  }
+  return (
+    minutes >= MIN_EVENT_DURATION_MINUTES &&
+    minutes <= MAX_OFF_DUTY_DURATION_MINUTES
+  );
 }
 
 export function defaultDurationMinutes(duty: EventDuty): number {
@@ -24,8 +38,13 @@ export function defaultDurationMinutes(duty: EventDuty): number {
 }
 
 export function formatDurationLabel(minutes: number): string {
-  const hours = minutes / 60;
-  return `${hours}h`;
+  if (minutes % 60 === 0) {
+    return `${minutes / 60}h`;
+  }
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 export function nextDurationMinutes(current: number, duty: EventDuty): number {
@@ -35,6 +54,31 @@ export function nextDurationMinutes(current: number, duty: EventDuty): number {
     return defaultDurationMinutes(duty);
   }
   return options[(idx + 1) % options.length];
+}
+
+/** Parse a duration typed as hours (`2`, `2h`, `1.5`) or minutes (`90m`). */
+export function parseDurationHoursInput(raw: string): number | null {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+
+  const minuteMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*(m|min|mins|minutes)$/);
+  if (minuteMatch) {
+    const minutes = Math.round(Number(minuteMatch[1]));
+    return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
+  }
+
+  const hourMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)?$/);
+  if (!hourMatch) {
+    return null;
+  }
+  const hours = Number(hourMatch[1]);
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return null;
+  }
+  const minutes = Math.round(hours * 60);
+  return minutes > 0 ? minutes : null;
 }
 
 const TYPE_CYCLE: (EventType | null)[] = [

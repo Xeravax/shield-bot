@@ -189,7 +189,7 @@ export class EventCommands {
     @SlashChoice({ name: "3 hours", value: 180 })
     @SlashOption({
       name: "duration",
-      description: "Event duration (on-duty: 2h/3h, off-duty: 1h/2h)",
+      description: "Event duration (on-duty: 2h/3h; off-duty: any length, or set on the draft panel)",
       type: ApplicationCommandOptionType.Number,
       required: false,
     })

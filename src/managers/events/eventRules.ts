@@ -15,7 +15,13 @@ import {
   getEventWeekRangeForDate,
   getSchedulableEventWeekRange,
 } from "./eventWeek.js";
-import { isDurationAllowedForDuty, defaultDurationMinutes } from "./eventType.js";
+import {
+  isDurationAllowedForDuty,
+  defaultDurationMinutes,
+  formatDurationLabel,
+  MAX_OFF_DUTY_DURATION_MINUTES,
+  MIN_EVENT_DURATION_MINUTES,
+} from "./eventType.js";
 
 export type RuleSeverity = "pass" | "fail" | "warning";
 
@@ -62,13 +68,40 @@ function formatQueuedEventLink(
 
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 const APPROVED_EVENT_COOLDOWN_MS = TWO_HOURS_MS;
-const MAX_EVENT_DURATION_MS = 180 * 60 * 1000;
 
 function eventDurationMs(durationMinutes: number): number {
   return durationMinutes * 60 * 1000;
 }
 
-/** True when new event overlaps approved runtime or its before/after cooldown buffers. */
+function eventEndMs(start: Date, durationMinutes: number): number {
+  return start.getTime() + eventDurationMs(durationMinutes);
+}
+
+function rangesOverlap(
+  aStartMs: number,
+  aEndMs: number,
+  bStartMs: number,
+  bEndMs: number,
+): boolean {
+  return aStartMs < bEndMs && aEndMs > bStartMs;
+}
+
+/** True when new event overlaps another event's runtime (no cooldown buffer). */
+function overlapsEventRuntime(
+  newStartMs: number,
+  newDurationMs: number,
+  otherStart: Date,
+  otherDurationMinutes: number,
+): boolean {
+  return rangesOverlap(
+    newStartMs,
+    newStartMs + newDurationMs,
+    otherStart.getTime(),
+    eventEndMs(otherStart, otherDurationMinutes),
+  );
+}
+
+/** True when new event overlaps approved on-duty runtime or its before/after cooldown buffers. */
 function conflictsWithApprovedCooldown(
   newStartMs: number,
   newDurationMs: number,
@@ -76,7 +109,7 @@ function conflictsWithApprovedCooldown(
   approvedDurationMinutes: number,
 ): boolean {
   const approvedStartMs = approvedStart.getTime();
-  const approvedEndMs = approvedStartMs + eventDurationMs(approvedDurationMinutes);
+  const approvedEndMs = eventEndMs(approvedStart, approvedDurationMinutes);
   const newEndMs = newStartMs + newDurationMs;
   return (
     newStartMs < approvedEndMs + APPROVED_EVENT_COOLDOWN_MS &&
@@ -305,10 +338,7 @@ export async function validateEventRules(
     where: {
       guildId,
       status: PlannedEventStatus.APPROVED,
-      startTime: {
-        gte: new Date(newStartMs - APPROVED_EVENT_COOLDOWN_MS - MAX_EVENT_DURATION_MS),
-        lte: new Date(newEndMs + APPROVED_EVENT_COOLDOWN_MS + MAX_EVENT_DURATION_MS),
-      },
+      startTime: { gte: week.start, lt: week.end },
       ...(eventId ? { id: { not: eventId } } : {}),
     },
     select: {
@@ -317,69 +347,155 @@ export async function validateEventRules(
       startTime: true,
       durationMinutes: true,
       planningMessageId: true,
+      duty: true,
     },
   });
 
-  const approvedWithinCooldown = approvedEvents.filter((other) =>
-    conflictsWithApprovedCooldown(
-      newStartMs,
-      newDurationMs,
-      other.startTime,
-      other.durationMinutes,
-    ),
+  const approvedOnDuty = approvedEvents.filter((e) => e.duty === EventDuty.ON_DUTY);
+  const approvedOffDuty = approvedEvents.filter(
+    (e) => e.duty === EventDuty.OFF_DUTY,
   );
 
-  if (approvedWithinCooldown.length > 0) {
-    const links = approvedWithinCooldown.map((e) =>
-      formatQueuedEventLink(e, guildId, planningChannelId),
+  if (duty === EventDuty.OFF_DUTY) {
+    const collidingEvents = approvedEvents.filter((other) =>
+      overlapsEventRuntime(
+        newStartMs,
+        newDurationMs,
+        other.startTime,
+        other.durationMinutes,
+      ),
     );
-    const basis =
-      links.length === 1
-        ? links[0]
-        : `${links.slice(0, -1).join(", ")} and ${links[links.length - 1]}`;
-    results.push({
-      id: "overlap",
-      label: "Event overlap",
-      severity: "fail",
-      message: `This event falls within the 2-hour cooldown after an approved event ends or before one starts: ${basis}.`,
-    });
+    if (collidingEvents.length > 0) {
+      const links = collidingEvents.map((e) =>
+        formatQueuedEventLink(e, guildId, planningChannelId),
+      );
+      const basis =
+        links.length === 1
+          ? links[0]
+          : `${links.slice(0, -1).join(", ")} and ${links[links.length - 1]}`;
+      const hitsOnDuty = collidingEvents.some((e) => e.duty === EventDuty.ON_DUTY);
+      const hitsOffDuty = collidingEvents.some((e) => e.duty === EventDuty.OFF_DUTY);
+      const target =
+        hitsOnDuty && hitsOffDuty
+          ? "official on-duty patrols or other off-duty events"
+          : hitsOnDuty
+            ? "official on-duty patrols"
+            : "other off-duty events";
+      results.push({
+        id: "overlap",
+        label: "Event overlap",
+        severity: "fail",
+        message: `Off-duty events cannot overlap ${target}: ${basis}.`,
+      });
+    } else {
+      results.push({
+        id: "overlap",
+        label: "Event overlap",
+        severity: "pass",
+        message:
+          "Does not overlap any other events. Off-duty events have no 2-hour cooldown.",
+      });
+    }
   } else {
-    results.push({
-      id: "overlap",
-      label: "Event overlap",
-      severity: "pass",
-      message: "No approved events within the 2-hour cooldown window.",
-    });
+    const approvedWithinCooldown = approvedOnDuty.filter((other) =>
+      conflictsWithApprovedCooldown(
+        newStartMs,
+        newDurationMs,
+        other.startTime,
+        other.durationMinutes,
+      ),
+    );
+    if (approvedWithinCooldown.length > 0) {
+      const links = approvedWithinCooldown.map((e) =>
+        formatQueuedEventLink(e, guildId, planningChannelId),
+      );
+      const basis =
+        links.length === 1
+          ? links[0]
+          : `${links.slice(0, -1).join(", ")} and ${links[links.length - 1]}`;
+      results.push({
+        id: "overlap",
+        label: "Event overlap",
+        severity: "fail",
+        message: `This event falls within the 2-hour cooldown after an approved on-duty event ends or before one starts: ${basis}.`,
+      });
+    } else {
+      results.push({
+        id: "overlap",
+        label: "Event overlap",
+        severity: "pass",
+        message: "No approved on-duty events within the 2-hour cooldown window.",
+      });
+    }
+
+    const collidingOffDuty = approvedOffDuty.filter((other) =>
+      overlapsEventRuntime(
+        newStartMs,
+        newDurationMs,
+        other.startTime,
+        other.durationMinutes,
+      ),
+    );
+    if (collidingOffDuty.length > 0) {
+      const links = collidingOffDuty.map((e) =>
+        formatQueuedEventLink(e, guildId, planningChannelId),
+      );
+      const basis =
+        links.length === 1
+          ? links[0]
+          : `${links.slice(0, -1).join(", ")} and ${links[links.length - 1]}`;
+      results.push({
+        id: "offduty-collision",
+        label: "Off-duty overlap",
+        severity: "fail",
+        message: `This on-duty event overlaps an off-duty event: ${basis}.`,
+      });
+    }
   }
 
   const pendingEvents = await prisma.plannedEvent.findMany({
     where: {
       guildId,
       status: PlannedEventStatus.PENDING,
-      startTime: {
-        gte: new Date(newStartMs - TWO_HOURS_MS),
-        lte: new Date(newEndMs + TWO_HOURS_MS),
-      },
+      startTime: { gte: week.start, lt: week.end },
       ...(eventId ? { id: { not: eventId } } : {}),
     },
     select: {
       id: true,
       title: true,
       startTime: true,
+      durationMinutes: true,
       planningMessageId: true,
       createdAt: true,
+      duty: true,
     },
   });
 
-  const pendingWithin2h = pendingEvents
+  const pendingConflicts = pendingEvents
     .filter((other) => {
-      const diff = Math.abs(other.startTime.getTime() - startTime.getTime());
-      return diff < TWO_HOURS_MS;
+      if (duty === EventDuty.OFF_DUTY) {
+        return overlapsEventRuntime(
+          newStartMs,
+          newDurationMs,
+          other.startTime,
+          other.durationMinutes,
+        );
+      }
+      if (other.duty === EventDuty.ON_DUTY) {
+        const diff = Math.abs(other.startTime.getTime() - startTime.getTime());
+        return diff < TWO_HOURS_MS;
+      }
+      return overlapsEventRuntime(
+        newStartMs,
+        newDurationMs,
+        other.startTime,
+        other.durationMinutes,
+      );
     })
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
-  if (pendingWithin2h.length > 0) {
-    const links = pendingWithin2h.map((e) =>
+  if (pendingConflicts.length > 0) {
+    const links = pendingConflicts.map((e) =>
       formatQueuedEventLink(e, guildId, planningChannelId),
     );
     const basis =
@@ -390,7 +506,7 @@ export async function validateEventRules(
       id: "fcfs-queue",
       label: "Approval queue (FCFS)",
       severity: "warning",
-      message: `Your event may be denied on the basis of ${basis}, which ${pendingWithin2h.length === 1 ? "is" : "are"} ahead in the approval queue.`,
+      message: `Your event may be denied on the basis of ${basis}, which ${pendingConflicts.length === 1 ? "is" : "are"} ahead in the approval queue.`,
     });
   }
 
@@ -444,7 +560,7 @@ export async function validateEventRules(
       const message =
         duty === EventDuty.ON_DUTY
           ? "On-duty events must be 2 or 3 hours - 1 hour is not allowed."
-          : "Off-duty events must be 1 or 2 hours - 3 hours is not allowed.";
+          : `Off-duty events must be between ${MIN_EVENT_DURATION_MINUTES} minutes and ${MAX_OFF_DUTY_DURATION_MINUTES / 60} hours.`;
       results.push({
         id: "duration-invalid",
         label: "Duration",
@@ -458,19 +574,15 @@ export async function validateEventRules(
         severity: "warning",
         message: "3-hour on-duty events require lead approval before export.",
       });
-    } else if (duty === EventDuty.OFF_DUTY && duration === 120) {
-      results.push({
-        id: "duration-2h-offduty",
-        label: "2-hour duration",
-        severity: "warning",
-        message: "2-hour off-duty events require lead approval before export.",
-      });
     } else {
       results.push({
         id: "duration",
         label: "Duration",
         severity: "pass",
-        message: `Event duration is ${duration / 60} hour(s).`,
+        message:
+          duty === EventDuty.OFF_DUTY
+            ? `Event duration is ${formatDurationLabel(duration)} (off-duty does not collect hours).`
+            : `Event duration is ${formatDurationLabel(duration)}.`,
       });
     }
   }
@@ -483,10 +595,10 @@ const POLICY_RULE_IDS = new Set([
   "scheduling-window",
   "host-weekly-limit",
   "overlap",
+  "offduty-collision",
   "fcfs-queue",
   "jr-host-cohost",
   "duration-3h",
-  "duration-2h-offduty",
 ]);
 
 export function applyForceOverride(

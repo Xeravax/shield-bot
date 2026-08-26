@@ -79,7 +79,8 @@ function buildReminderContainer(scheduleCommand: string): ContainerBuilder {
       "",
       "● **Mondays are planning-only** - do not schedule events on Mondays.",
       "● **Per-host limits** - at most **3 on-duty** and **3 off-duty** events.",
-      "● **No overlap** - keep at least **2 hours** between event start times.",
+      "● **On-duty spacing** - keep at least **2 hours** between on-duty events.",
+      "● **Off-duty** - any duration (they don't collect hours), but they **must not overlap** official on-duty patrols or other off-duty events.",
     ].join("\n"),
   );
 
