@@ -18,7 +18,10 @@ interface Props {
   preview?: boolean;
 }
 
+type AdminSection = "pulse" | "lookup" | "cases";
+
 export function AdminPanel({ token, preview = false }: Props) {
+  const [section, setSection] = useState<AdminSection>("pulse");
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(!preview);
   const [targetId, setTargetId] = useState("");
@@ -102,178 +105,224 @@ export function AdminPanel({ token, preview = false }: Props) {
   const isOverviewPreview = preview || overviewLoading;
   const displayOverview = isOverviewPreview ? mockAdminOverview() : overview;
 
+  const sections: Array<{ id: AdminSection; label: string; hint: string }> = [
+    { id: "pulse", label: "Server pulse", hint: "Membership & activity counts" },
+    { id: "lookup", label: "Member lookup", hint: "Hours & mod history" },
+    { id: "cases", label: "Recent cases", hint: "Latest moderation" },
+  ];
+
   return (
-    <div className="panel admin-grid">
-      <section className={`surface${isOverviewPreview ? " preview" : ""}`}>
-        <div className="surface-head">
-          <div>
-            <h2>Server pulse</h2>
-            <p>Live counts across membership, events, and patrols.</p>
-          </div>
-        </div>
-        {isOverviewPreview && <PreviewNotice />}
-        {displayOverview ? (
-          <div className="grid-2">
-            <Stat label="Recruit+" value={displayOverview.recruitPlus} />
-            <Stat label="Deputy+" value={displayOverview.deputyPlus} />
-            <Stat
-              label="Pending (week)"
-              value={displayOverview.pendingEventsThisWeek}
-            />
-            <Stat label="Draft events" value={displayOverview.draftEvents} />
-            <Stat label="Open LOAs" value={displayOverview.openLoas} />
-            <Stat
-              label="Active patrols"
-              value={displayOverview.activePatrolSessions}
-            />
-          </div>
-        ) : (
-          <p>Loading overview…</p>
-        )}
-        <div style={{ marginTop: "1rem" }}>
-          <ExternalLink href={HANDBOOK_LINKS.staffTraining}>
-            Staff Training Handbook
-          </ExternalLink>
-        </div>
-      </section>
-
-      <section className="surface">
-        <div className="surface-head">
-          <div>
-            <h2>Member lookup</h2>
-            <p>Hours and moderation history by Discord ID.</p>
-          </div>
-        </div>
-        {preview && (
-          <PreviewNotice message="Member lookup unavailable in sample mode." />
-        )}
-        <div className="form-row">
-          <label htmlFor="target-id">Discord user ID</label>
-          <input
-            id="target-id"
-            value={targetId}
-            onChange={(e) => setTargetId(e.target.value)}
-            placeholder="123456789012345678"
-            disabled={preview}
-          />
-        </div>
-        <div className="btn-row">
+    <div className="panel admin-shell">
+      <nav className="admin-rail" aria-label="Admin sections">
+        {sections.map((s) => (
           <button
+            key={s.id}
             type="button"
-            className="btn secondary"
-            disabled={preview}
-            onClick={() => void lookupMember()}
+            className={`admin-rail-item ${section === s.id ? "active" : ""}`}
+            onClick={() => setSection(s.id)}
           >
-            Look up
+            <span className="admin-rail-label">{s.label}</span>
+            <span className="admin-rail-hint">{s.hint}</span>
           </button>
-        </div>
+        ))}
+      </nav>
 
-        {hoursInfo && (
-          <div style={{ marginTop: "1rem" }}>
-            <p>
-              <strong>{hoursInfo.label}</strong>: {hoursInfo.hours.toFixed(1)}h
-              (all-time: {hoursInfo.allTimeHours.toFixed(1)}h)
-            </p>
-            <div className="form-row">
-              <label htmlFor="adjust">Adjust (e.g. +1h, -30m)</label>
-              <input
-                id="adjust"
-                value={adjustValue}
-                onChange={(e) => setAdjustValue(e.target.value)}
-              />
+      <div className="admin-stage">
+        {section === "pulse" && (
+          <section className={`surface${isOverviewPreview ? " preview" : ""}`}>
+            <div className="surface-head">
+              <div>
+                <h2>Server pulse</h2>
+                <p>Live counts across membership, events, and patrols.</p>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void adjustHours()}
-            >
-              Apply adjustment
-            </button>
-          </div>
+            {isOverviewPreview && <PreviewNotice />}
+            {displayOverview ? (
+              <div className="grid-2">
+                <Stat label="Recruit+" value={displayOverview.recruitPlus} />
+                <Stat label="Deputy+" value={displayOverview.deputyPlus} />
+                <Stat
+                  label="Pending (week)"
+                  value={displayOverview.pendingEventsThisWeek}
+                />
+                <Stat label="Draft events" value={displayOverview.draftEvents} />
+                <Stat label="Open LOAs" value={displayOverview.openLoas} />
+                <Stat
+                  label="Active patrols"
+                  value={displayOverview.activePatrolSessions}
+                />
+              </div>
+            ) : (
+              <p>Loading overview…</p>
+            )}
+            <div style={{ marginTop: "1rem" }}>
+              <ExternalLink href={HANDBOOK_LINKS.staffTraining}>
+                Staff Training Handbook
+              </ExternalLink>
+            </div>
+          </section>
         )}
 
-        {cases.length > 0 && (
-          <>
-            <h3 style={{ marginTop: "1.25rem" }}>Mod cases</h3>
-            <table className="case-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Type</th>
-                  <th>Reason</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cases.map((c) => (
-                  <tr key={c.id}>
-                    <td>{c.caseNumber}</td>
-                    <td>{c.type}</td>
-                    <td>{c.reason ?? "—"}</td>
-                    <td>{new Date(c.createdAt).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
+        {section === "lookup" && (
+          <section className="surface">
+            <div className="surface-head">
+              <div>
+                <h2>Member lookup</h2>
+                <p>Patrol hours and moderation history by Discord user ID.</p>
+              </div>
+            </div>
+            {preview && (
+              <PreviewNotice message="Member lookup unavailable in sample mode." />
+            )}
+            <div className="lookup-bar">
+              <div className="form-row" style={{ flex: 1, margin: 0 }}>
+                <label htmlFor="target-id">Discord user ID</label>
+                <input
+                  id="target-id"
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value)}
+                  placeholder="123456789012345678"
+                  disabled={preview}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn"
+                disabled={preview}
+                onClick={() => void lookupMember()}
+              >
+                Look up
+              </button>
+            </div>
 
-        {notes.length > 0 && (
-          <>
-            <h3 style={{ marginTop: "1.25rem" }}>Staff notes</h3>
-            <ul className="event-list">
-              {notes.map((n) => (
-                <li key={n.id} className="event-item">
-                  <span className="event-accent" />
-                  <div>
-                    <div className="event-meta">
-                      {new Date(n.createdAt).toLocaleString()}
-                    </div>
-                    <div>{n.content}</div>
+            {hoursInfo && (
+              <div className="lookup-results">
+                <div className="grid-2">
+                  <div className="stat">
+                    <div className="label">{hoursInfo.label}</div>
+                    <div className="value">{hoursInfo.hours.toFixed(1)}h</div>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </>
+                  <div className="stat">
+                    <div className="label">All-time</div>
+                    <div className="value">
+                      {hoursInfo.allTimeHours.toFixed(1)}h
+                    </div>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <label htmlFor="adjust">Adjust (e.g. +1h, -30m)</label>
+                  <div className="btn-row">
+                    <input
+                      id="adjust"
+                      value={adjustValue}
+                      onChange={(e) => setAdjustValue(e.target.value)}
+                      disabled={preview}
+                    />
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      disabled={preview}
+                      onClick={() => void adjustHours()}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {cases.length > 0 && (
+              <div className="lookup-block">
+                <h3>Mod cases</h3>
+                <table className="case-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Type</th>
+                      <th>Reason</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cases.map((c) => (
+                      <tr key={c.id}>
+                        <td>{c.caseNumber}</td>
+                        <td>{c.type}</td>
+                        <td>{c.reason ?? "—"}</td>
+                        <td>{new Date(c.createdAt).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {notes.length > 0 && (
+              <div className="lookup-block">
+                <h3>Staff notes</h3>
+                <ul className="event-list">
+                  {notes.map((n) => (
+                    <li key={n.id} className="event-item">
+                      <span className="event-accent" />
+                      <div>
+                        <div className="event-meta">
+                          {new Date(n.createdAt).toLocaleString()}
+                        </div>
+                        <div>{n.content}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
         )}
-      </section>
 
-      {displayOverview && displayOverview.recentCases.length > 0 && (
-        <section
-          className={`surface${isOverviewPreview ? " preview" : ""}`}
-          style={{ gridColumn: "1 / -1" }}
-        >
-          <div className="surface-head">
-            <div>
-              <h2>Recent cases</h2>
-              <p>Latest moderation activity across the guild.</p>
+        {section === "cases" && (
+          <section className={`surface${isOverviewPreview ? " preview" : ""}`}>
+            <div className="surface-head">
+              <div>
+                <h2>Recent cases</h2>
+                <p>Latest moderation activity across the guild.</p>
+              </div>
             </div>
-          </div>
-          <table className="case-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Type</th>
-                <th>Target</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayOverview.recentCases.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.caseNumber}</td>
-                  <td>{c.type}</td>
-                  <td>{c.targetId}</td>
-                  <td>{c.reason ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+            {isOverviewPreview && <PreviewNotice />}
+            {displayOverview && displayOverview.recentCases.length > 0 ? (
+              <table className="case-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Type</th>
+                    <th>Target</th>
+                    <th>Moderator</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayOverview.recentCases.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.caseNumber}</td>
+                      <td>{c.type}</td>
+                      <td>
+                        <code>{c.targetId}</code>
+                      </td>
+                      <td>
+                        <code>{c.moderatorId}</code>
+                      </td>
+                      <td>{c.reason ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p>No recent cases.</p>
+            )}
+          </section>
+        )}
 
-      {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
-      {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+        {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
+        {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+      </div>
     </div>
   );
 }

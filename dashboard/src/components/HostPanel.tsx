@@ -2,19 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import {
   createHostEvent,
   fetchEvents,
+  fetchHostEvents,
   HANDBOOK_LINKS,
   setTimezone,
+  updateHostEvent,
   validateHostEvent,
   type CalendarEvent,
   type DashboardUser,
   type EventRuleResult,
 } from "../api";
 import {
-  dayKey,
-  eventsByDay,
   formatClock,
   formatNaturalDayTime,
   startOfMonth,
+  zonedDate,
 } from "../calendarUtils";
 import { mockCalendarEvents } from "../mockData";
 import { ExternalLink } from "./HandbookSection";
@@ -28,6 +29,43 @@ interface Props {
   onTimezoneSaved: (timezone: string) => void;
 }
 
+function defaultDatetimeLocal(timezone: string): string {
+  const now = zonedDate(new Date().toISOString(), timezone);
+  now.setMinutes(0, 0, 0);
+  now.setHours(20);
+  if (now.getTime() < Date.now()) {
+    now.setDate(now.getDate() + 1);
+  }
+  return toDatetimeLocal(now);
+}
+
+function toDatetimeLocal(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
+function naturalFromDatetimeLocal(value: string): string {
+  const [datePart, timePart] = value.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = (timePart ?? "20:00").split(":").map(Number);
+  return formatNaturalDayTime(
+    new Date(y, m - 1, d),
+    Number.isFinite(hh) ? hh : 20,
+    Number.isFinite(mm) ? mm : 0,
+  );
+}
+
+function shiftDays(base: string, days: number, hour = 20): string {
+  const [datePart] = base.split("T");
+  const [y, m, d] = datePart.split("-").map(Number);
+  const date = new Date(y, m - 1, d + days, hour, 0, 0, 0);
+  return toDatetimeLocal(date);
+}
+
 export function HostPanel({
   token,
   user,
@@ -35,33 +73,57 @@ export function HostPanel({
   onTimezoneSaved,
 }: Props) {
   const [tzInput, setTzInput] = useState(user.timezone);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
-  const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
+  const [startsAt, setStartsAt] = useState(() =>
+    defaultDatetimeLocal(user.timezone),
+  );
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
-  const [clock, setClock] = useState("20:00");
   const [duty, setDuty] = useState<"ON_DUTY" | "OFF_DUTY">("ON_DUTY");
   const [duration, setDuration] = useState(120);
   const [eventType, setEventType] = useState("");
+  const [force, setForce] = useState(false);
   const [rules, setRules] = useState<EventRuleResult[]>([]);
   const [blocking, setBlocking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [published, setPublished] = useState<CalendarEvent[]>([]);
+  const [managed, setManaged] = useState<CalendarEvent[]>([]);
 
   const range = useMemo(() => {
     const from = new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1);
-    const to = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 2, 0, 23, 59, 59);
+    const to = new Date(
+      viewMonth.getFullYear(),
+      viewMonth.getMonth() + 2,
+      0,
+      23,
+      59,
+      59,
+    );
     return { from: from.toISOString(), to: to.toISOString() };
   }, [viewMonth]);
+
+  async function refreshManaged() {
+    if (preview || !token) {
+      return;
+    }
+    try {
+      const data = await fetchHostEvents(token);
+      setManaged(data.events);
+    } catch {
+      setManaged([]);
+    }
+  }
 
   useEffect(() => {
     if (preview || !token || !user.timezoneStored) {
       return;
     }
     fetchEvents(token, range.from, range.to)
-      .then((data) => setEvents(data.events))
-      .catch(() => setEvents([]));
+      .then((data) => setPublished(data.events))
+      .catch(() => setPublished([]));
+    void refreshManaged();
   }, [token, range.from, range.to, preview, user.timezoneStored]);
 
   async function saveTimezone() {
@@ -112,29 +174,42 @@ export function HostPanel({
     );
   }
 
-  const displayEvents = preview ? mockCalendarEvents() : events;
-  const dayEvents = eventsByDay(displayEvents, user.timezone).get(dayKey(selectedDay)) ?? [];
-
-  function buildTimeString(): string {
-    const [hourRaw, minuteRaw] = clock.split(":");
-    const hour = Number(hourRaw);
-    const minute = Number(minuteRaw);
-    return formatNaturalDayTime(
-      selectedDay,
-      Number.isFinite(hour) ? hour : 20,
-      Number.isFinite(minute) ? minute : 0,
-    );
-  }
+  const displayPublished = preview ? mockCalendarEvents() : published;
 
   function eventBody() {
     return {
       title,
-      time: buildTimeString(),
+      time: naturalFromDatetimeLocal(startsAt),
       duty,
       durationMinutes: duration,
       eventType: eventType || undefined,
-      force: false,
+      force: force && user.canForceSchedule,
     };
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setTitle("");
+    setStartsAt(defaultDatetimeLocal(user.timezone));
+    setDuty("ON_DUTY");
+    setDuration(120);
+    setEventType("");
+    setForce(false);
+    setRules([]);
+    setBlocking(false);
+  }
+
+  function loadEventIntoForm(event: CalendarEvent) {
+    const local = zonedDate(event.startTime, user.timezone);
+    setEditingId(event.id);
+    setTitle(event.title);
+    setStartsAt(toDatetimeLocal(local));
+    setDuty(event.duty === "OFF_DUTY" ? "OFF_DUTY" : "ON_DUTY");
+    setDuration(event.durationMinutes);
+    setEventType(event.eventType ?? "");
+    setMessage(null);
+    setError(null);
+    setRules([]);
   }
 
   async function checkCollision() {
@@ -170,14 +245,21 @@ export function HostPanel({
         setError("Fix blocking issues before submitting.");
         return;
       }
-      const result = await createHostEvent(token, eventBody());
-      setRules(result.validation.results);
-      setMessage(
-        `Draft event #${result.eventId} created. Submit it in Discord with /event submit when ready.`,
-      );
-      setTitle("");
+      if (editingId != null) {
+        const result = await updateHostEvent(token, editingId, eventBody());
+        setRules(result.validation.results);
+        setMessage(`Updated draft #${result.eventId}.`);
+      } else {
+        const result = await createHostEvent(token, eventBody());
+        setRules(result.validation.results);
+        setMessage(
+          `Draft event #${result.eventId} created. Submit it in Discord with /event submit when ready.`,
+        );
+      }
+      resetForm();
+      await refreshManaged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create event");
+      setError(e instanceof Error ? e.message : "Failed to save event");
     } finally {
       setBusy(false);
     }
@@ -188,78 +270,18 @@ export function HostPanel({
       <section className={`surface${preview ? " preview" : ""}`}>
         <div className="surface-head">
           <div>
-            <h2>Schedule event</h2>
+            <h2>{editingId != null ? "Edit event" : "Schedule event"}</h2>
             <p>
-              Pick a day on the calendar, then set the local time (
-              <strong>{user.timezone}</strong>).
+              Pick a start date &amp; time in <strong>{user.timezone}</strong>.
+              {user.hostLead
+                ? " Team lead: you can edit any pending draft."
+                : " You can edit your own drafts and pending events."}
             </p>
           </div>
         </div>
         {preview && (
           <PreviewNotice message="Event scheduling unavailable in sample mode." />
         )}
-
-        <MonthCalendar
-          viewMonth={viewMonth}
-          onViewMonthChange={setViewMonth}
-          events={displayEvents}
-          timezone={user.timezone}
-          selectedDay={selectedDay}
-          onSelectDay={(day) => {
-            setSelectedDay(day);
-            setViewMonth(startOfMonth(day));
-          }}
-          selectable
-        />
-
-        <div className="day-detail" style={{ marginTop: "1rem" }}>
-          <h3>
-            {selectedDay.toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-            })}
-          </h3>
-          {dayEvents.length > 0 ? (
-            <ul className="event-list">
-              {dayEvents.map((event) => (
-                <li
-                  key={event.id}
-                  className={`event-item ${event.duty === "OFF_DUTY" ? "offduty" : ""}`}
-                >
-                  <span className="event-accent" />
-                  <div>
-                    <div className="event-title">{event.title}</div>
-                    <div className="event-meta">
-                      {formatClock(event.startTime, user.timezone)} –{" "}
-                      {formatClock(event.endTime, user.timezone)} · published
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No published events on this day.</p>
-          )}
-        </div>
-      </section>
-
-      <section className={`surface${preview ? " preview" : ""}`}>
-        <div className="surface-head">
-          <div>
-            <h2>Event details</h2>
-            <p>
-              Starts{" "}
-              <strong>
-                {selectedDay.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}{" "}
-                at {clock}
-              </strong>
-            </p>
-          </div>
-        </div>
 
         <div className="form-row">
           <label htmlFor="title">Title</label>
@@ -271,16 +293,51 @@ export function HostPanel({
             disabled={preview}
           />
         </div>
+
         <div className="form-row">
-          <label htmlFor="clock">Start time (local)</label>
+          <label htmlFor="starts">Starts at (local)</label>
           <input
-            id="clock"
-            type="time"
-            value={clock}
-            onChange={(e) => setClock(e.target.value)}
+            id="starts"
+            type="datetime-local"
+            value={startsAt}
+            onChange={(e) => setStartsAt(e.target.value)}
             disabled={preview}
           />
+          <div className="chip-row" style={{ marginTop: "0.5rem" }}>
+            <button
+              type="button"
+              className="chip"
+              disabled={preview}
+              onClick={() => setStartsAt(defaultDatetimeLocal(user.timezone))}
+            >
+              Tonight 20:00
+            </button>
+            <button
+              type="button"
+              className="chip"
+              disabled={preview}
+              onClick={() =>
+                setStartsAt(shiftDays(defaultDatetimeLocal(user.timezone), 1))
+              }
+            >
+              Tomorrow 20:00
+            </button>
+            <button
+              type="button"
+              className="chip"
+              disabled={preview}
+              onClick={() => {
+                const base = new Date();
+                const day = base.getDay();
+                const add = (7 - day) % 7 || 7;
+                setStartsAt(shiftDays(toDatetimeLocal(base), add, 20));
+              }}
+            >
+              Next Sunday 20:00
+            </button>
+          </div>
         </div>
+
         <div className="form-row">
           <label htmlFor="duty">Duty</label>
           <select
@@ -334,6 +391,20 @@ export function HostPanel({
           </select>
         </div>
 
+        {user.canForceSchedule && (
+          <label className="force-toggle">
+            <input
+              type="checkbox"
+              checked={force}
+              disabled={preview}
+              onChange={(e) => setForce(e.target.checked)}
+            />
+            <span>
+              Force schedule (bypass week / collision rules — team lead)
+            </span>
+          </label>
+        )}
+
         <div className="btn-row">
           <button
             type="button"
@@ -346,11 +417,21 @@ export function HostPanel({
           <button
             type="button"
             className="btn"
-            disabled={preview || busy}
+            disabled={preview || busy || !title.trim()}
             onClick={() => void submitEvent()}
           >
-            Create draft
+            {editingId != null ? "Save changes" : "Create draft"}
           </button>
+          {editingId != null && (
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={busy}
+              onClick={resetForm}
+            >
+              Cancel edit
+            </button>
+          )}
         </div>
 
         {rules.length > 0 && (
@@ -369,8 +450,70 @@ export function HostPanel({
         )}
         {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+      </section>
 
-        <div style={{ marginTop: "1.25rem" }}>
+      <div className="host-side">
+        <section className={`surface${preview ? " preview" : ""}`}>
+          <div className="surface-head">
+            <div>
+              <h2>Your queue</h2>
+              <p>
+                {user.hostLead
+                  ? "All draft / pending / denied events."
+                  : "Your draft, pending, and denied events."}
+              </p>
+            </div>
+          </div>
+          {managed.length === 0 ? (
+            <p>No events in the queue.</p>
+          ) : (
+            <ul className="event-list">
+              {managed.map((event) => (
+                <li
+                  key={event.id}
+                  className={`event-item ${event.duty === "OFF_DUTY" ? "offduty" : ""} ${event.status === "DENIED" ? "pending" : ""}`}
+                >
+                  <span className="event-accent" />
+                  <div>
+                    <div className="event-title">{event.title}</div>
+                    <div className="event-meta">
+                      {formatClock(event.startTime, user.timezone)} ·{" "}
+                      {event.status.toLowerCase()}
+                      {event.denialReason ? ` — ${event.denialReason}` : ""}
+                    </div>
+                  </div>
+                  {event.canEdit !== false && (
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      disabled={preview}
+                      onClick={() => loadEventIntoForm(event)}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className={`surface${preview ? " preview" : ""}`}>
+          <div className="surface-head">
+            <div>
+              <h2>Published calendar</h2>
+              <p>Read-only view of live Discord events (for conflicts).</p>
+            </div>
+          </div>
+          <MonthCalendar
+            viewMonth={viewMonth}
+            onViewMonthChange={setViewMonth}
+            events={displayPublished}
+            timezone={user.timezone}
+          />
+        </section>
+
+        <section className="surface">
           <h3 style={{ margin: "0 0 0.65rem", color: "var(--gold)" }}>
             Hosting guides
           </h3>
@@ -385,8 +528,8 @@ export function HostPanel({
               Event Scheduling System
             </ExternalLink>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

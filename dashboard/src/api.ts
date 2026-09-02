@@ -11,6 +11,8 @@ export interface DashboardUser {
   deputy: boolean;
   staff: boolean;
   host: boolean;
+  hostLead: boolean;
+  canForceSchedule: boolean;
   trainerTypes: ("emt" | "tru" | "cadet")[];
 }
 
@@ -33,6 +35,8 @@ export interface CalendarEvent {
   eventType: string | null;
   durationMinutes: number;
   status: string;
+  denialReason?: string | null;
+  canEdit?: boolean;
 }
 
 export interface EventRuleResult {
@@ -189,6 +193,30 @@ export function createHostEvent(token: string, body: Record<string, unknown>) {
     validation: { results: EventRuleResult[]; overriddenIds: string[] };
   }>("/host/events", token, {
     method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchHostEvents(token: string) {
+  return apiFetch<{
+    hostLead: boolean;
+    canForceSchedule: boolean;
+    events: CalendarEvent[];
+  }>("/host/events", token);
+}
+
+export function updateHostEvent(
+  token: string,
+  eventId: number,
+  body: Record<string, unknown>,
+) {
+  return apiFetch<{
+    eventId: number;
+    startTime: string;
+    status: string;
+    validation: { results: EventRuleResult[]; overriddenIds: string[] };
+  }>(`/host/events/${eventId}`, token, {
+    method: "PUT",
     body: JSON.stringify(body),
   });
 }

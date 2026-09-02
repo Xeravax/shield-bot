@@ -26,6 +26,10 @@ export interface DashboardSession {
   deputy: boolean;
   staff: boolean;
   host: boolean;
+  /** Event hosting team lead (`events.manage.approve`) — edit any event */
+  hostLead: boolean;
+  /** Bypass week/time rules (`events.schedule.force`) */
+  canForceSchedule: boolean;
   trainerTypes: TrainerType[];
 }
 
@@ -85,6 +89,12 @@ export async function buildDashboardSession(
       (await hasNode(member, "roles.host")) ||
       (await hasNode(member, "roles.jrhost"))
     : false;
+  const hostLead = member
+    ? await hasNode(member, "events.manage.approve")
+    : false;
+  const canForceSchedule = member
+    ? await hasNode(member, "events.schedule.force")
+    : false;
 
   const trainerTypes: TrainerType[] = [];
   if (member) {
@@ -119,7 +129,9 @@ export async function buildDashboardSession(
     shieldMember,
     deputy,
     staff,
-    host,
+    host: host || hostLead,
+    hostLead,
+    canForceSchedule,
     trainerTypes,
   };
 }

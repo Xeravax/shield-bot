@@ -19,6 +19,8 @@ export const MOCK_USER: DashboardUser = {
   deputy: true,
   staff: true,
   host: true,
+  hostLead: true,
+  canForceSchedule: true,
   trainerTypes: ["emt", "cadet"],
 };
 

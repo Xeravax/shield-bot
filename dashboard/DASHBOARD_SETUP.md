@@ -66,12 +66,16 @@ Grant via `/permissions grant`:
 | `patrol.tracked` | Recruit+ — hours, calendar, handbook links |
 | `patrol.avatar` | Deputy+ — 2026 avatar guidelines link |
 | `dashboard.roles.staff` | Admin tab |
-| `dashboard.roles.host` | Host tab (or use `roles.host` / `roles.jrhost`) |
+| `dashboard.roles.host` | Host tab (or `roles.host` / `roles.jrhost`) |
+| `events.manage.approve` | Hosting team lead — edit any queued event; host tab |
+| `events.schedule.force` | Bypass week/collision rules when scheduling from the dashboard |
 | `dashboard.roles.trainer.emt` | EMT trainer tab content |
 | `dashboard.roles.trainer.tru` | TRU trainer tab content |
 | `dashboard.roles.trainer.cadet` | Cadet trainer tab content |
 
 > Enabling Activities creates a global **Entry Point** command (`Launch`). The bot preserves it during command sync (API 50240 if omitted).
+
+Dashboard API actions (login, timezone, event drafts, staff hour/modlog lookups and adjustments) are posted to the staff-logs forum thread **Dashboard Log**. Re-run logging setup / ensure threads if that category is missing on an existing forum.
 
 ## Cloudflare Pages
 

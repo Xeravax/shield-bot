@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchMe, type DashboardUser } from "./api";
-import { getAccessToken, initDevFallback, initDiscord } from "./discord";
+import {
+  getAccessToken,
+  getDiscordSdk,
+  initDevFallback,
+  initDiscord,
+  isCompactLayout,
+  LayoutMode,
+  subscribeLayoutMode,
+  type ActivityLayoutMode,
+} from "./discord";
 import { MOCK_USER } from "./mockData";
 import { AdminPanel } from "./components/AdminPanel";
 import { CalendarPanel } from "./components/CalendarPanel";
 import { HandbookSection } from "./components/HandbookSection";
 import { HostPanel } from "./components/HostPanel";
 import { HoursPanel } from "./components/HoursPanel";
+import { PipPresence } from "./components/PipPresence";
 import { PreviewNotice } from "./components/PreviewNotice";
 import { TrainerPanel } from "./components/TrainerPanel";
 
@@ -36,6 +46,9 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("home");
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [layoutMode, setLayoutMode] = useState<ActivityLayoutMode>(
+    LayoutMode.FOCUSED,
+  );
 
   const loadUser = useCallback(async (token: string) => {
     const me = await fetchMe(token);
@@ -71,9 +84,18 @@ export default function App() {
     void boot();
   }, [loadUser]);
 
+  useEffect(() => {
+    if (booting || !getDiscordSdk()) {
+      return;
+    }
+    return subscribeLayoutMode(setLayoutMode);
+  }, [booting]);
+
   const displayUser = user ?? MOCK_USER;
   const isAppPreview = booting || !user;
   const token = getAccessToken() ?? "";
+  // Tabs only from the authenticated profile — never from sample permissions.
+  const tabUser = user;
   const initials = displayUser.displayName
     .split(/\s+/)
     .map((p) => p[0])
@@ -81,19 +103,32 @@ export default function App() {
     .slice(0, 2)
     .toUpperCase();
 
+  if (isCompactLayout(layoutMode)) {
+    return <PipPresence user={displayUser} initials={initials} />;
+  }
+
   const tabs: Array<{ id: Tab; label: string; show: boolean }> = [
     { id: "home", label: "Overview", show: true },
-    { id: "admin", label: "Admin", show: displayUser.staff },
-    { id: "host", label: "Host", show: displayUser.host },
+    {
+      id: "admin",
+      label: "Admin",
+      show: Boolean(tabUser?.staff),
+    },
+    {
+      id: "host",
+      label: "Host",
+      show: Boolean(tabUser?.host),
+    },
     {
       id: "trainer",
       label: "Trainer",
-      show: displayUser.trainerTypes.length > 0,
+      show: Boolean(tabUser && tabUser.trainerTypes.length > 0),
     },
   ];
 
   const visibleTabs = tabs.filter((t) => t.show);
-  const copy = TAB_COPY[tab];
+  const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : "home";
+  const copy = TAB_COPY[activeTab];
 
   return (
     <div className="app">
@@ -129,7 +164,7 @@ export default function App() {
             <button
               key={t.id}
               type="button"
-              className={`tab ${tab === t.id ? "active" : ""}`}
+              className={`tab ${activeTab === t.id ? "active" : ""}`}
               onClick={() => setTab(t.id)}
             >
               <span className="tab-index">
@@ -180,7 +215,7 @@ export default function App() {
         </div>
 
         <main className="app-main">
-          {tab === "home" && (
+          {activeTab === "home" && (
             <div className="panel home-grid">
               <HoursPanel
                 token={token}
@@ -195,14 +230,14 @@ export default function App() {
               <HandbookSection user={displayUser} />
             </div>
           )}
-          {tab === "admin" && displayUser.staff && (
-            <AdminPanel token={token} preview={isAppPreview} />
+          {activeTab === "admin" && tabUser?.staff && (
+            <AdminPanel token={token} preview={false} />
           )}
-          {tab === "host" && displayUser.host && (
+          {activeTab === "host" && tabUser?.host && (
             <HostPanel
               token={token}
-              user={displayUser}
-              preview={isAppPreview}
+              user={tabUser}
+              preview={false}
               onTimezoneSaved={(timezone) => {
                 if (user) {
                   setUser({ ...user, timezone, timezoneStored: true });
@@ -210,8 +245,10 @@ export default function App() {
               }}
             />
           )}
-          {tab === "trainer" && displayUser.trainerTypes.length > 0 && (
-            <TrainerPanel user={displayUser} />
+          {activeTab === "trainer" &&
+            tabUser &&
+            tabUser.trainerTypes.length > 0 && (
+            <TrainerPanel user={tabUser} />
           )}
         </main>
       </div>

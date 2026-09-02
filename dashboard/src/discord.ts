@@ -1,7 +1,12 @@
-import { DiscordSDK } from "@discord/embedded-app-sdk";
+import { Common, DiscordSDK, Events } from "@discord/embedded-app-sdk";
 import { exchangeToken } from "./api";
 
 const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID as string;
+
+export type ActivityLayoutMode =
+  (typeof Common.LayoutModeTypeObject)[keyof typeof Common.LayoutModeTypeObject];
+
+export const LayoutMode = Common.LayoutModeTypeObject;
 
 let sdk: DiscordSDK | null = null;
 let accessToken: string | null = null;
@@ -73,6 +78,30 @@ export async function openExternalLink(url: string): Promise<void> {
 
 export function getDiscordSdk(): DiscordSDK | null {
   return sdk;
+}
+
+type LayoutModeListener = (mode: ActivityLayoutMode) => void;
+
+/** Subscribe to Discord Activity focused / PIP / grid layout changes. */
+export function subscribeLayoutMode(
+  listener: LayoutModeListener,
+): () => void {
+  if (!sdk) {
+    return () => undefined;
+  }
+
+  const handler = (update: { layout_mode: number }) => {
+    listener(update.layout_mode as ActivityLayoutMode);
+  };
+
+  void sdk.subscribe(Events.ACTIVITY_LAYOUT_MODE_UPDATE, handler);
+  return () => {
+    void sdk?.unsubscribe(Events.ACTIVITY_LAYOUT_MODE_UPDATE, handler);
+  };
+}
+
+export function isCompactLayout(mode: ActivityLayoutMode): boolean {
+  return mode === LayoutMode.PIP || mode === LayoutMode.GRID;
 }
 
 /** Dev fallback when not running inside Discord */

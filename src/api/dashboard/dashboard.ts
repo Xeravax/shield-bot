@@ -13,16 +13,21 @@ import {
   parseEventTypeOption,
 } from "../../managers/events/eventType.js";
 import {
+  beginEventEditForHost,
+  canEditEventPanel,
   runEventValidation,
+  updatePlanningChannelMessage,
 } from "../../managers/events/eventPlanningManager.js";
 import { getGuildCalendarFeedUrl } from "../../managers/events/discordEventCalendarFeed.js";
 import { hasNode } from "../../utility/permissionNodes.js";
 import {
   bearerToken,
+  dashboardGuildId,
   DashboardAuthError,
   DashboardConfigError,
   DashboardForbiddenError,
   exchangeOAuthCode,
+  fetchDiscordUser,
   resolveDashboardMember,
   setDashboardCors,
 } from "../../utility/dashboard/auth.js";
@@ -33,6 +38,10 @@ import {
   requireShieldMember,
   requireStaff,
 } from "../../utility/dashboard/session.js";
+import {
+  logDashboardAction,
+  logDashboardSessionAction,
+} from "../../utility/dashboard/activityLog.js";
 import {
   resolveTimezoneInput,
   updateUserPreferences,
@@ -115,6 +124,23 @@ export class DashboardAPI {
     try {
       const token = await exchangeOAuthCode(code);
       ctx.body = { access_token: token.access_token };
+
+      try {
+        const user = await fetchDiscordUser(token.access_token);
+        const displayName = user.global_name || user.username;
+        logDashboardAction({
+          guildId: dashboardGuildId(),
+          userId: user.id,
+          displayName,
+          title: "Dashboard login",
+          description: "OAuth session established via Discord Activity.",
+          severity: "success",
+        });
+      } catch (logError) {
+        loggers.bot.debug("Dashboard login log skipped", {
+          error: logError instanceof Error ? logError.message : String(logError),
+        });
+      }
     } catch (error) {
       if (error instanceof DashboardConfigError) {
         jsonError(ctx, 503, error.message);
@@ -145,6 +171,8 @@ export class DashboardAPI {
         deputy: session.deputy,
         staff: session.staff,
         host: session.host,
+        hostLead: session.hostLead,
+        canForceSchedule: session.canForceSchedule,
         trainerTypes: session.trainerTypes,
       };
     });
@@ -280,6 +308,13 @@ export class DashboardAPI {
         timezone: resolved,
       });
 
+      logDashboardSessionAction(
+        session,
+        "Timezone updated",
+        `Set timezone to \`${resolved}\`.`,
+        [{ name: "Timezone", value: `\`${resolved}\``, inline: true }],
+      );
+
       ctx.body = {
         timezone: prefs.timezone,
         timezoneStored: prefs.timezoneStored,
@@ -299,9 +334,10 @@ export class DashboardAPI {
       }
 
       const { data } = parsed;
+      const force = data.force && session.canForceSchedule;
       const timezone = session.timezone;
       const startTime = resolveDraftStartTime(data.time, timezone, {
-        enforceWeek: !data.force,
+        enforceWeek: !force,
       });
 
       const guild = bot.guilds.cache.get(session.guildId) ?? null;
@@ -324,7 +360,7 @@ export class DashboardAPI {
           pendingCoHostUserId: null,
           coHostRequestMessageId: null,
           discordEventId: null,
-          forceOverride: data.force,
+          forceOverride: force,
           editResumeStatus: null,
           editSnapshot: null,
           editStartedAt: null,
@@ -332,7 +368,7 @@ export class DashboardAPI {
           updatedAt: new Date(),
         },
         guild,
-        data.force,
+        force,
       );
 
       ctx.body = {
@@ -342,6 +378,64 @@ export class DashboardAPI {
         blocking: results.some(
           (r) => r.severity === "fail" && !overriddenIds.includes(r.id),
         ),
+      };
+    });
+  }
+
+  @Get("/api/dashboard/host/events")
+  async listHostEvents(ctx: Context): Promise<void> {
+    await withDashboardAuth(ctx, async (session) => {
+      await requireHost(session);
+
+      const statuses = [
+        PlannedEventStatus.DRAFT,
+        PlannedEventStatus.PENDING,
+        PlannedEventStatus.DENIED,
+      ];
+
+      const rows = await prisma.plannedEvent.findMany({
+        where: {
+          guildId: session.guildId,
+          status: { in: statuses },
+          ...(session.hostLead ? {} : { hostId: session.user.id }),
+        },
+        orderBy: { startTime: "asc" },
+        take: 100,
+        select: {
+          id: true,
+          title: true,
+          startTime: true,
+          hostId: true,
+          coHostId: true,
+          duty: true,
+          eventType: true,
+          durationMinutes: true,
+          status: true,
+          denialReason: true,
+        },
+      });
+
+      ctx.body = {
+        hostLead: session.hostLead,
+        canForceSchedule: session.canForceSchedule,
+        events: rows.map((e) => ({
+          id: e.id,
+          title: e.title,
+          startTime: e.startTime.toISOString(),
+          endTime: new Date(
+            e.startTime.getTime() + e.durationMinutes * 60_000,
+          ).toISOString(),
+          hostId: e.hostId,
+          coHostId: e.coHostId,
+          duty: e.duty,
+          eventType: e.eventType,
+          durationMinutes: e.durationMinutes,
+          status: e.status,
+          denialReason: e.denialReason,
+          canEdit:
+            session.hostLead ||
+            e.hostId === session.user.id,
+        })),
       };
     });
   }
@@ -363,8 +457,9 @@ export class DashboardAPI {
       }
 
       const { data } = parsed;
+      const force = data.force && session.canForceSchedule;
       const startTime = resolveDraftStartTime(data.time, session.timezone, {
-        enforceWeek: !data.force,
+        enforceWeek: !force,
       });
 
       const event = await prisma.plannedEvent.create({
@@ -378,16 +473,141 @@ export class DashboardAPI {
           duty: data.duty,
           eventType: data.eventType ?? null,
           durationMinutes: data.durationMinutes,
-          forceOverride: data.force,
+          forceOverride: force,
         },
       });
 
       const guild = bot.guilds.cache.get(session.guildId) ?? null;
-      const validation = await runEventValidation(event, guild, data.force);
+      const validation = await runEventValidation(event, guild, force);
+
+      logDashboardSessionAction(
+        session,
+        "Event draft created",
+        `Created draft **${event.title}** from the Activity dashboard.`,
+        [
+          { name: "Event ID", value: `\`${event.id}\``, inline: true },
+          {
+            name: "Start",
+            value: `<t:${Math.floor(event.startTime.getTime() / 1000)}:F>`,
+            inline: true,
+          },
+          { name: "Duty", value: data.duty, inline: true },
+          {
+            name: "Duration",
+            value: `${data.durationMinutes} min`,
+            inline: true,
+          },
+        ],
+        "success",
+      );
 
       ctx.body = {
         eventId: event.id,
         startTime: event.startTime.toISOString(),
+        validation,
+      };
+    });
+  }
+
+  @Put("/api/dashboard/host/events/:eventId")
+  async updateHostEvent(ctx: Context): Promise<void> {
+    await withDashboardAuth(ctx, async (session) => {
+      await requireHost(session);
+
+      if (!session.timezoneStored) {
+        jsonError(ctx, 403, "Timezone must be configured before editing.");
+        return;
+      }
+
+      const eventId = Number(ctx.params.eventId);
+      if (!Number.isFinite(eventId)) {
+        jsonError(ctx, 400, "Invalid event id.");
+        return;
+      }
+
+      const existing = await prisma.plannedEvent.findUnique({
+        where: { id: eventId },
+      });
+      if (!existing || existing.guildId !== session.guildId) {
+        jsonError(ctx, 404, "Event not found.");
+        return;
+      }
+
+      if (
+        !(await canEditEventPanel(
+          session.user.id,
+          session.member,
+          existing.hostId,
+        ))
+      ) {
+        jsonError(ctx, 403, "You cannot edit this event.");
+        return;
+      }
+
+      const parsed = parseHostEventBody(ctx);
+      if (!parsed.ok) {
+        jsonError(ctx, 400, parsed.error);
+        return;
+      }
+
+      const guild =
+        bot.guilds.cache.get(session.guildId) ??
+        (await bot.guilds.fetch(session.guildId).catch(() => null));
+      if (!guild) {
+        jsonError(ctx, 503, "Guild unavailable.");
+        return;
+      }
+
+      const opened = await beginEventEditForHost(
+        eventId,
+        guild,
+        session.user.id,
+        session.member,
+      );
+      if (!opened.success) {
+        jsonError(ctx, 400, opened.error ?? "Cannot edit this event.");
+        return;
+      }
+
+      const { data } = parsed;
+      const force = data.force && session.canForceSchedule;
+      const startTime = resolveDraftStartTime(data.time, session.timezone, {
+        enforceWeek: !force,
+      });
+
+      const updated = await prisma.plannedEvent.update({
+        where: { id: eventId },
+        data: {
+          title: normalizeEventTitle(data.title),
+          startTime,
+          duty: data.duty,
+          eventType: data.eventType ?? null,
+          durationMinutes: data.durationMinutes,
+          forceOverride: force,
+        },
+      });
+
+      await updatePlanningChannelMessage(guild, updated);
+      const validation = await runEventValidation(updated, guild, force);
+
+      logDashboardSessionAction(
+        session,
+        "Event draft updated",
+        `Updated **${updated.title}** (#${updated.id}) from the Activity dashboard.`,
+        [
+          {
+            name: "Start",
+            value: `<t:${Math.floor(updated.startTime.getTime() / 1000)}:F>`,
+            inline: true,
+          },
+          { name: "Status", value: updated.status, inline: true },
+        ],
+      );
+
+      ctx.body = {
+        eventId: updated.id,
+        startTime: updated.startTime.toISOString(),
+        status: updated.status,
         validation,
       };
     });
@@ -481,6 +701,20 @@ export class DashboardAPI {
       );
       const allTimeMs = await patrolTimer.getUserTotal(session.guildId, targetId);
 
+      logDashboardSessionAction(
+        session,
+        "Viewed member hours",
+        `Looked up patrol hours for <@${targetId}>.`,
+        [
+          { name: "Target", value: `<@${targetId}> (\`${targetId}\`)`, inline: true },
+          {
+            name: "Month",
+            value: `${MONTH_NAMES[m - 1]} ${y}`,
+            inline: true,
+          },
+        ],
+      );
+
       ctx.body = {
         userId: targetId,
         year: y,
@@ -539,6 +773,32 @@ export class DashboardAPI {
         month,
       );
 
+      const hoursDelta = msToHours(Math.trunc(deltaMs));
+      logDashboardSessionAction(
+        session,
+        "Patrol hours adjusted",
+        `Adjusted hours for <@${targetId}> via the Activity dashboard.`,
+        [
+          { name: "Target", value: `<@${targetId}> (\`${targetId}\`)`, inline: true },
+          {
+            name: "Delta",
+            value: `${hoursDelta >= 0 ? "+" : ""}${hoursDelta}h`,
+            inline: true,
+          },
+          {
+            name: "Month",
+            value: `${MONTH_NAMES[month - 1]} ${year}`,
+            inline: true,
+          },
+          {
+            name: "New total",
+            value: `${msToHours(totalMs)}h`,
+            inline: true,
+          },
+        ],
+        "mod",
+      );
+
       ctx.body = {
         userId: targetId,
         year,
@@ -567,6 +827,18 @@ export class DashboardAPI {
           take: 50,
         }),
       ]);
+
+      logDashboardSessionAction(
+        session,
+        "Viewed mod logs",
+        `Opened moderation history for <@${targetId}>.`,
+        [
+          { name: "Target", value: `<@${targetId}> (\`${targetId}\`)`, inline: true },
+          { name: "Cases", value: String(cases.length), inline: true },
+          { name: "Notes", value: String(notes.length), inline: true },
+        ],
+        "mod",
+      );
 
       ctx.body = {
         cases: cases.map((c) => ({
