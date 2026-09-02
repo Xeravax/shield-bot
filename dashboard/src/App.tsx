@@ -12,6 +12,7 @@ import {
 } from "./discord";
 import { MOCK_USER } from "./mockData";
 import { AdminPanel } from "./components/AdminPanel";
+import { BootSplash, type BootSplashPhase } from "./components/BootSplash";
 import { CalendarPanel } from "./components/CalendarPanel";
 import { HandbookSection } from "./components/HandbookSection";
 import { HostPanel } from "./components/HostPanel";
@@ -21,6 +22,8 @@ import { PreviewNotice } from "./components/PreviewNotice";
 import { TrainerPanel } from "./components/TrainerPanel";
 
 type Tab = "home" | "admin" | "host" | "trainer";
+
+const MIN_BOOT_MS = 3000;
 
 const TAB_COPY: Record<Tab, { title: string; subtitle: string }> = {
   home: {
@@ -41,10 +44,17 @@ const TAB_COPY: Record<Tab, { title: string; subtitle: string }> = {
   },
 };
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, Math.max(0, ms));
+  });
+}
+
 export default function App() {
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [tab, setTab] = useState<Tab>("home");
-  const [booting, setBooting] = useState(true);
+  const [splashPhase, setSplashPhase] = useState<BootSplashPhase>("loading");
+  const [showApp, setShowApp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [layoutMode, setLayoutMode] = useState<ActivityLayoutMode>(
     LayoutMode.FOCUSED,
@@ -55,46 +65,72 @@ export default function App() {
     setUser(me);
   }, []);
 
+  const revealApp = useCallback(() => {
+    setShowApp(true);
+  }, []);
+
   useEffect(() => {
     async function boot() {
+      const started = Date.now();
       try {
-        const devToken = import.meta.env.VITE_DEV_ACCESS_TOKEN as
-          | string
-          | undefined;
-        if (devToken) {
-          await initDevFallback(devToken);
-        } else {
-          await initDiscord();
-        }
-        const token = getAccessToken();
-        if (!token) {
-          throw new Error("No access token");
-        }
-        await loadUser(token);
+        const auth = (async () => {
+          const devToken = import.meta.env.VITE_DEV_ACCESS_TOKEN as
+            | string
+            | undefined;
+          if (devToken) {
+            await initDevFallback(devToken);
+          } else {
+            await initDiscord();
+          }
+          const token = getAccessToken();
+          if (!token) {
+            throw new Error("No access token");
+          }
+          await loadUser(token);
+        })();
+
+        await Promise.all([auth, sleep(MIN_BOOT_MS - (Date.now() - started))]);
       } catch (e) {
         setError(
           e instanceof Error
             ? e.message
             : "Failed to connect to Discord Activity",
         );
+        const remaining = MIN_BOOT_MS - (Date.now() - started);
+        if (remaining > 0) {
+          await sleep(remaining);
+        }
       } finally {
-        setBooting(false);
+        setSplashPhase("finishing");
       }
     }
     void boot();
   }, [loadUser]);
 
   useEffect(() => {
-    if (booting || !getDiscordSdk()) {
+    if (!showApp || !getDiscordSdk()) {
       return;
     }
     return subscribeLayoutMode(setLayoutMode);
-  }, [booting]);
+  }, [showApp]);
+
+  useEffect(() => {
+    const compact = isCompactLayout(layoutMode);
+    document.documentElement.classList.toggle("layout-pip", compact);
+    document.body.classList.toggle("layout-pip", compact);
+    return () => {
+      document.documentElement.classList.remove("layout-pip");
+      document.body.classList.remove("layout-pip");
+    };
+  }, [layoutMode]);
+
+  if (!showApp) {
+    return <BootSplash phase={splashPhase} onDone={revealApp} />;
+  }
 
   const displayUser = user ?? MOCK_USER;
-  const isAppPreview = booting || !user;
+  const isAppPreview = !user;
   const token = getAccessToken() ?? "";
-  // Tabs only from the authenticated profile — never from sample permissions.
   const tabUser = user;
   const initials = displayUser.displayName
     .split(/\s+/)
@@ -180,15 +216,11 @@ export default function App() {
         {isAppPreview && (
           <PreviewNotice
             className="app-level"
-            message={
-              booting
-                ? "Sample data — connecting to Discord…"
-                : "Sample data — could not load your profile"
-            }
+            message="Sample data — could not load your profile"
           />
         )}
 
-        {error && !booting && (
+        {error && (
           <PreviewNotice className="app-level error" message={error} />
         )}
 
