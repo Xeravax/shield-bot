@@ -52,18 +52,26 @@ Grant via `/permissions grant`:
 ## Cloudflare Pages
 
 - Project name: `shield-dashboard` (must match CI workflow).
-- Custom domain: `dashboard.vrcshield.com` (attach in Pages → Custom domains).
-- Production branch label in Pages: `dashboard`.
+- Custom domain: `dashboard.vrcshield.com` (Pages → Custom domains → attach to **production**).
+- Pages **Production branch** must be `dashboard` so CI’s `--branch=dashboard` updates the live domain.
 
 ### Deploy flow (GitHub Actions)
 
-1. Push dashboard changes to **`main`** (paths under `dashboard/` or the workflow file).
-2. CI builds the SPA.
-3. If `dashboard/` (or the workflow) differs from the tip of the git **`dashboard`** branch, CI fast-forwards that branch to the same commit.
-4. CI then deploys `dashboard/dist` to Cloudflare Pages.
-5. Manual runs: **Actions → Deploy Dashboard → Run workflow** always rebuilds and deploys (and syncs the branch).
+1. Push dashboard changes to git **`main`** (paths under `dashboard/` or the workflow file).
+2. CI builds the SPA with `VITE_DISCORD_CLIENT_ID` from GitHub variable `DISCORD_CLIENT_ID`.
+3. If `dashboard/` differs from the tip of the git **`dashboard`** tracking branch, CI fast-forwards that git branch.
+4. CI deploys `dashboard/dist` to Cloudflare Pages **production** (`--branch=dashboard`).
+5. Manual runs: **Actions → Deploy Dashboard → Run workflow** always rebuilds and deploys.
 
-You do **not** push to the `dashboard` branch yourself for deploys; CI owns that branch as a pointer to the last successful dashboard deploy from `main`.
+**Do not confuse:**
+
+| URL | What it is |
+|-----|------------|
+| `https://shield-dashboard.pages.dev` | Production Pages host |
+| `https://dashboard.vrcshield.com` | Custom domain → production |
+| `https://<hash>.shield-dashboard.pages.dev` | One-off deploy URL (fine if that deploy is marked Production) |
+
+Discord URL mapping `/` must target the **production** host (`dashboard.vrcshield.com` or `shield-dashboard.pages.dev`).
 
 ## GitHub Actions secrets
 

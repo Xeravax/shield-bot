@@ -32,6 +32,13 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
+      - name: Require Discord client ID
+        run: |
+          if [ -z "${{ vars.DISCORD_CLIENT_ID }}" ]; then
+            echo "::error::Repository variable DISCORD_CLIENT_ID is empty. Set it to the Discord Application Client ID (same as APPLICATION_ID)."
+            exit 1
+          fi
+
       - name: Install dependencies
         working-directory: dashboard
         run: npm ci
@@ -66,10 +73,11 @@ jobs:
 
           git push origin "HEAD:dashboard"
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy to Cloudflare Pages (production)
         if: steps.sync.outputs.changed == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dashboard/dist --project-name=shield-dashboard --branch=dashboard
+          # Must match the Pages project's Production branch (`dashboard`).
+          command: pages deploy dashboard/dist --project-name=shield-dashboard --branch=dashboard --commit-dirty=true

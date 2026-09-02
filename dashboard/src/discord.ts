@@ -29,7 +29,9 @@ export function isDiscordActivity(): boolean {
 
 export async function initDiscord(): Promise<void> {
   if (!clientId) {
-    throw new Error("VITE_DISCORD_CLIENT_ID is not set");
+    throw new Error(
+      "VITE_DISCORD_CLIENT_ID is not set in this build. Set GitHub Actions variable DISCORD_CLIENT_ID and redeploy.",
+    );
   }
   if (!isDiscordActivity()) {
     throw new Error(
@@ -38,7 +40,15 @@ export async function initDiscord(): Promise<void> {
   }
 
   sdk = new DiscordSDK(clientId);
-  await sdk.ready();
+  try {
+    await sdk.ready();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Discord Activity SDK handshake failed (${detail}). Usually: wrong Client ID in the build, or URL mapping / does not point at production (dashboard.vrcshield.com). Built clientId length=${clientId.length}.`,
+      { cause: error },
+    );
+  }
 
   const { code } = await sdk.commands.authorize({
     client_id: clientId,
