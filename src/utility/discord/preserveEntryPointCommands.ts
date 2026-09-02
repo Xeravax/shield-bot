@@ -36,7 +36,7 @@ export async function initApplicationCommandsPreservingEntryPoint(
     );
 
     if (entryPoints.length === 0) {
-      return originalSet(commands, guildId);
+      return originalSet(commands);
     }
 
     const merged: ApplicationCommandDataResolvable[] = [...commands];
@@ -66,7 +66,7 @@ export async function initApplicationCommandsPreservingEntryPoint(
       );
     }
 
-    return originalSet(merged, guildId);
+    return originalSet(merged);
   }) as typeof manager.set;
 
   try {
