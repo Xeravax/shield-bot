@@ -10,9 +10,31 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
+/** True when running inside Discord's Activity iframe (discordsays.com proxy). */
+export function isDiscordActivity(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const host = window.location.hostname;
+  if (host.endsWith("discordsays.com") || host.endsWith("discordapigames.com")) {
+    return true;
+  }
+  // Local tunnel / URL override still runs in a Discord iframe
+  try {
+    return window.parent !== window && Boolean(document.referrer.includes("discord.com"));
+  } catch {
+    return window.parent !== window;
+  }
+}
+
 export async function initDiscord(): Promise<void> {
   if (!clientId) {
     throw new Error("VITE_DISCORD_CLIENT_ID is not set");
+  }
+  if (!isDiscordActivity()) {
+    throw new Error(
+      "Open this dashboard as a Discord Activity (not by visiting the domain directly). Check Activities → URL Mappings: / → dashboard.vrcshield.com",
+    );
   }
 
   sdk = new DiscordSDK(clientId);

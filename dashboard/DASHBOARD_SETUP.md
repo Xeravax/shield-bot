@@ -15,6 +15,16 @@
 5. Copy **Client ID** → `APPLICATION_ID` (bot) and `VITE_DISCORD_CLIENT_ID` (dashboard build).
 6. Copy **Client Secret** → `DISCORD_CLIENT_SECRET` (bot only, never in the SPA).
 
+### Launching
+
+Always open the dashboard **from Discord as an Activity** (voice channel → Activities / app launcher). Visiting `https://dashboard.vrcshield.com` in a normal browser will not work — the Embedded App SDK requires Discord’s iframe (`*.discordsays.com`) and will error with `RPCError: Invalid Origin`.
+
+If the Activity still fails after launching in Discord:
+
+- Confirm `/` maps to `dashboard.vrcshield.com` (no `https://`).
+- Confirm the deployed build’s `VITE_DISCORD_CLIENT_ID` / GitHub variable `DISCORD_CLIENT_ID` matches this application’s Client ID.
+- Hard-refresh or re-launch the Activity after changing URL mappings (proxy cache).
+
 ## Bot environment
 
 ```env
