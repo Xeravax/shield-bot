@@ -281,6 +281,19 @@ async function run() {
   await bot.login(env.BOT_TOKEN);
 
   const server = new Koa();
+  server.use(async (ctx, next) => {
+    if (ctx.path.startsWith("/api/dashboard")) {
+      const { setDashboardCors } = await import(
+        "./utility/dashboard/auth.js"
+      );
+      setDashboardCors(ctx);
+      if (ctx.method === "OPTIONS") {
+        ctx.status = 204;
+        return;
+      }
+    }
+    await next();
+  });
   server.use(multer().single("file"));
   server.use(bodyParser());
   await server.build();

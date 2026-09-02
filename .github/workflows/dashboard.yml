@@ -1,0 +1,75 @@
+name: Deploy Dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dashboard/**"
+      - ".github/workflows/dashboard.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: dashboard-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Sync dashboard branch and deploy to Cloudflare Pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      deployments: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Build
+        working-directory: dashboard
+        env:
+          VITE_DISCORD_CLIENT_ID: ${{ vars.DISCORD_CLIENT_ID }}
+        run: npm run build
+
+      - name: Sync dashboard branch
+        id: sync
+        env:
+          FORCE_DEPLOY: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          git fetch origin dashboard:refs/remotes/origin/dashboard 2>/dev/null || true
+
+          changed=true
+          if [ "$FORCE_DEPLOY" != "true" ] && git rev-parse --verify origin/dashboard >/dev/null 2>&1; then
+            if git diff --quiet origin/dashboard HEAD -- dashboard .github/workflows/dashboard.yml; then
+              changed=false
+            fi
+          fi
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+          if [ "$changed" != "true" ]; then
+            echo "dashboard branch already matches; skipping branch push and Pages deploy."
+            exit 0
+          fi
+
+          git push origin "HEAD:dashboard"
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.sync.outputs.changed == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dashboard/dist --project-name=shield-dashboard --branch=dashboard

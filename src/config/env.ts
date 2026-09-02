@@ -10,6 +10,12 @@ const envSchema = z.object({
   APPLICATION_ID: z.string().min(1, "APPLICATION_ID is required").optional(),
   BOT_OWNER_ID: z.string().min(1, "BOT_OWNER_ID is required"),
 
+  /** OAuth client secret for Discord Activity dashboard token exchange */
+  DISCORD_CLIENT_SECRET: z.string().min(1).optional(),
+
+  /** Guild ID where the Discord Activity dashboard operates */
+  DASHBOARD_GUILD_ID: z.string().regex(/^\d{17,20}$/, "DASHBOARD_GUILD_ID must be a Discord snowflake").optional(),
+
   // Database Configuration (Required)
   DATABASE_URL: z.string().url("DATABASE_URL must be a valid database URL"),
 

@@ -57,7 +57,15 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "patrol.manage.wipe", description: "Confirm patrol wipe actions (buttons)" },
     { node: "patrol.manage.promotion", description: "Approve/deny patrol promotion suggestions (buttons)" },
     { node: "patrol.manage.session-remove", description: "Remove individual patrol sessions (buttons)" },
-    { node: "patrol.tracked", description: "Member is eligible for patrol voice time tracking" },
+    { node: "patrol.tracked", description: "Member is eligible for patrol voice time tracking and SHIELD-only dashboard content (Recruit+)" },
+    { node: "patrol.avatar", description: "Deputy+ — may use custom SHIELD avatars; unlocks avatar guidelines on the dashboard" },
+  ],
+  dashboard: [
+    { node: "dashboard.roles.staff", description: "Dashboard Admin tab — manage hours, modlogs, server overview" },
+    { node: "dashboard.roles.host", description: "Dashboard Host tab — schedule events (also use roles.host / roles.jrhost)" },
+    { node: "dashboard.roles.trainer.emt", description: "Dashboard Trainer tab — EMT trainer handbook links" },
+    { node: "dashboard.roles.trainer.tru", description: "Dashboard Trainer tab — TRU trainer handbook links" },
+    { node: "dashboard.roles.trainer.cadet", description: "Dashboard Trainer tab — Cadet trainer handbook links" },
   ],
   loa: [
     { node: "loa.command.request", description: "/loa request - request a leave of absence" },
