@@ -47,6 +47,7 @@ import {
   formatShieldBannerCodeBlock,
 } from "./utility/shieldBanner.js";
 import { pollAllGuildAuditCatchup } from "./events/discord/logging/auditLogSafetyNet.js";
+import { initApplicationCommandsPreservingEntryPoint } from "./utility/discord/preserveEntryPointCommands.js";
 
 // Validate environment variables at startup
 let env;
@@ -120,19 +121,19 @@ bot.rest.on("rateLimited", (info) => {
 
 bot.once("clientReady", async () => {
   try {
-
     if (isDevelopmentForBot) {
       // In development: register commands to specific guild and delete global commands
       loggers.bot.info("Development mode detected - registering commands to guild and clearing global commands");
             
       // Register commands to the development guild
       // botGuilds is set in Client constructor, so initApplicationCommands will register to guild
-      await bot.initApplicationCommands();
+      // Entry Point (Activities) is preserved on global bulk updates (API 50240 otherwise)
+      await initApplicationCommandsPreservingEntryPoint(bot);
       
       loggers.bot.info(`Commands registered to development guild: ${devGuildIdForBot}`);
     } else {
-      // In production: register commands globally
-      await bot.initApplicationCommands();
+      // In production: register commands globally (preserving Activity Entry Point)
+      await initApplicationCommandsPreservingEntryPoint(bot);
     }
 
     const mode = isDevelopmentForBot ? "DEVELOPMENT" : "PROD";
@@ -164,32 +165,32 @@ bot.once("clientReady", async () => {
 
     // Audit-log safety net catch-up (seed cursor or process missed entries)
     runAuditCatchup(bot.guilds.cache.values(), "ready");
-
-    // VRChat login on startup
-    if (!hasVRChatCredentials()) {
-      loggers.vrchat.warn(
-        "VRChat credentials not set in environment variables. Skipping VRChat login.",
-      );
-    } else {
-      try {
-        const env = getEnv();
-        if (!env.VRCHAT_USERNAME || !env.VRCHAT_PASSWORD) {
-          throw new Error("VRChat credentials are required but not set");
-        }
-        const user = await loginAndGetCurrentUser(
-          env.VRCHAT_USERNAME,
-          env.VRCHAT_PASSWORD,
-        );
-        const userTyped = user as { displayName?: string; username?: string; id: string };
-        loggers.vrchat.info(
-          `VRChat login successful: ${userTyped.displayName || ""} | ${userTyped.username || ""} | ${userTyped.id}`,
-        );
-      } catch (err) {
-        loggers.vrchat.error("VRChat login failed", err);
-      }
-    }
   } catch (error) {
     loggers.bot.error("Failed to initialize application commands", error);
+  }
+
+  // VRChat login is independent of slash-command sync (do not skip on 50240/etc.)
+  if (!hasVRChatCredentials()) {
+    loggers.vrchat.warn(
+      "VRChat credentials not set in environment variables. Skipping VRChat login.",
+    );
+  } else {
+    try {
+      const env = getEnv();
+      if (!env.VRCHAT_USERNAME || !env.VRCHAT_PASSWORD) {
+        throw new Error("VRChat credentials are required but not set");
+      }
+      const user = await loginAndGetCurrentUser(
+        env.VRCHAT_USERNAME,
+        env.VRCHAT_PASSWORD,
+      );
+      const userTyped = user as { displayName?: string; username?: string; id: string };
+      loggers.vrchat.info(
+        `VRChat login successful: ${userTyped.displayName || ""} | ${userTyped.username || ""} | ${userTyped.id}`,
+      );
+    } catch (err) {
+      loggers.vrchat.error("VRChat login failed", err);
+    }
   }
 
   loggers.schedules.info("Initializing schedules...");

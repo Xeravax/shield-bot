@@ -47,6 +47,8 @@ Grant via `/permissions grant`:
 | `dashboard.roles.trainer.tru` | TRU trainer tab content |
 | `dashboard.roles.trainer.cadet` | Cadet trainer tab content |
 
+> Enabling Activities creates a global **Entry Point** slash command (`Launch`). The bot preserves it during command sync (Discord API 50240 if omitted).
+
 ## Cloudflare Pages
 
 - Project name: `shield-dashboard` (must match CI workflow).
