@@ -1,29 +1,53 @@
 # SHIELD Discord Activity Dashboard — Setup
 
+## How Discord loads the Activity (important)
+
+Inside Discord, the dashboard does **not** run as `https://dashboard.vrcshield.com`. It runs as:
+
+`https://<CLIENT_ID>.discordsays.com/`
+
+Discord’s proxy fetches your files from the URL Mapping **target**, then serves them under `discordsays.com`. The iframe origin stays on the proxy forever.
+
+| Layer | Role |
+|-------|------|
+| Browser / SDK | `https://<CLIENT_ID>.discordsays.com/...` |
+| URL Mapping `/` | Discord fetches SPA from `dashboard.vrcshield.com` (or `shield-dashboard.pages.dev`) |
+| URL Mapping `/api` | Relative `/api/...` from the SPA → Discord fetches `api.vrcshield.com/api/...` |
+
+**Rules for the SPA**
+
+- Use **relative** paths only (`/api/dashboard/...`, `/logo.png`, `/assets/...`).
+- Never navigate the iframe to `dashboard.vrcshield.com` or hardcode that host for fetches.
+- Open handbooks / calendars with `sdk.commands.openExternalLink` (already used), not in-iframe navigation.
+- OAuth is via Embedded App SDK `authorize` → bot exchanges the code; not a browser redirect to your custom domain.
+
+Visiting the custom domain in Chrome is fine for a static peek, but the SDK will not work there (`RPCError: Invalid Origin`). Always launch from Discord.
+
 ## Discord Developer Portal
 
-1. **Application** → enable **Activities** (Settings → Enable Activities).
-2. **OAuth2** → add redirect `https://127.0.0.1` (required placeholder; SDK handles in-client flow).
+1. **Application** → enable **Activities**.
+2. **OAuth2** → add redirect `https://127.0.0.1` (placeholder; SDK handles in-client auth).
 3. **Activities → URL Mappings** (targets omit `https://`):
 
-   | Prefix | Target |
-   |--------|--------|
-   | `/` | `dashboard.vrcshield.com` |
-   | `/api` | `api.vrcshield.com/api` |
+   | Prefix | Target | Meaning |
+   |--------|--------|---------|
+   | `/` | `dashboard.vrcshield.com` | Where Discord **fetches** the SPA (not the iframe URL) |
+   | `/api` | `api.vrcshield.com/api` | Where Discord **fetches** API calls to `/api/*` |
 
-4. **Activities → Art Assets** — cover, background, tile for the Activity shelf.
-5. Copy **Client ID** → `APPLICATION_ID` (bot) and `VITE_DISCORD_CLIENT_ID` (dashboard build).
-6. Copy **Client Secret** → `DISCORD_CLIENT_SECRET` (bot only, never in the SPA).
+4. **Activities → Art Assets** — cover, background, tile.
+5. Client ID → `APPLICATION_ID` (bot) and GitHub var `DISCORD_CLIENT_ID` / `VITE_DISCORD_CLIENT_ID`.
+6. Client Secret → `DISCORD_CLIENT_SECRET` (bot only).
 
 ### Launching
 
-Always open the dashboard **from Discord as an Activity** (voice channel → Activities / app launcher). Visiting `https://dashboard.vrcshield.com` in a normal browser will not work — the Embedded App SDK requires Discord’s iframe (`*.discordsays.com`) and will error with `RPCError: Invalid Origin`.
+Voice channel → Activities / app launcher / Entry Point (`Launch`). Dev Mode URL Override is only for local tunnels.
 
-If the Activity still fails after launching in Discord:
+If SDK handshake fails inside Discord:
 
-- Confirm `/` maps to `dashboard.vrcshield.com` (no `https://`).
-- Confirm the deployed build’s `VITE_DISCORD_CLIENT_ID` / GitHub variable `DISCORD_CLIENT_ID` matches this application’s Client ID.
-- Hard-refresh or re-launch the Activity after changing URL mappings (proxy cache).
+- Client ID in the **built** SPA matches this application.
+- Mapping `/` points at **production** Pages (no preview hash URL).
+- Cloudflare is not 301-redirecting the mapped host to a different hostname in a way that breaks the proxy (prefer mapping directly to the host that serves 200 HTML).
+- Re-launch the Activity after mapping changes.
 
 ## Bot environment
 
@@ -47,37 +71,31 @@ Grant via `/permissions grant`:
 | `dashboard.roles.trainer.tru` | TRU trainer tab content |
 | `dashboard.roles.trainer.cadet` | Cadet trainer tab content |
 
-> Enabling Activities creates a global **Entry Point** slash command (`Launch`). The bot preserves it during command sync (Discord API 50240 if omitted).
+> Enabling Activities creates a global **Entry Point** command (`Launch`). The bot preserves it during command sync (API 50240 if omitted).
 
 ## Cloudflare Pages
 
-- Project name: `shield-dashboard` (must match CI workflow).
-- Custom domain: `dashboard.vrcshield.com` (Pages → Custom domains → attach to **production**).
-- Pages **Production branch** must be `dashboard` so CI’s `--branch=dashboard` updates the live domain.
+- Project: `shield-dashboard`
+- Custom domain: `dashboard.vrcshield.com` (production) — this is the **mapping target**, not the Activity iframe URL
+- Production branch: `dashboard` (matches CI `--branch=dashboard`)
 
-### Deploy flow (GitHub Actions)
+### Deploy flow
 
-1. Push dashboard changes to git **`main`** (paths under `dashboard/` or the workflow file).
-2. CI builds the SPA with `VITE_DISCORD_CLIENT_ID` from GitHub variable `DISCORD_CLIENT_ID`.
-3. If `dashboard/` differs from the tip of the git **`dashboard`** tracking branch, CI fast-forwards that git branch.
-4. CI deploys `dashboard/dist` to Cloudflare Pages **production** (`--branch=dashboard`).
-5. Manual runs: **Actions → Deploy Dashboard → Run workflow** always rebuilds and deploys.
-
-**Do not confuse:**
+1. Push SPA changes to git `main`.
+2. CI builds with `VITE_DISCORD_CLIENT_ID`.
+3. CI updates git `dashboard` tracking branch when needed.
+4. CI deploys `dashboard/dist` to Pages production (`--branch=dashboard`).
 
 | URL | What it is |
 |-----|------------|
-| `https://shield-dashboard.pages.dev` | Production Pages host |
-| `https://dashboard.vrcshield.com` | Custom domain → production |
-| `https://<hash>.shield-dashboard.pages.dev` | One-off deploy URL (fine if that deploy is marked Production) |
+| `https://<CLIENT_ID>.discordsays.com/` | What users actually run inside Discord |
+| `https://dashboard.vrcshield.com` | Pages custom domain (proxy fetch target / optional browser preview) |
+| `https://shield-dashboard.pages.dev` | Pages production alias |
 
-Discord URL mapping `/` must target the **production** host (`dashboard.vrcshield.com` or `shield-dashboard.pages.dev`).
+## GitHub Actions
 
-## GitHub Actions secrets
-
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-- Repository variable `DISCORD_CLIENT_ID` (for Vite build)
+- Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
+- Variable: `DISCORD_CLIENT_ID`
 
 ## Local development
 
@@ -86,4 +104,4 @@ cd dashboard && npm install && npm run dev
 cloudflared tunnel --url http://localhost:5173
 ```
 
-Map the tunnel host to `/` in URL Mappings, launch the Activity from Discord Developer Mode.
+Map `/` to the tunnel host (no `https://`), launch the Activity from Discord.

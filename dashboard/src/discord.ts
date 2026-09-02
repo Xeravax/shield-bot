@@ -35,7 +35,7 @@ export async function initDiscord(): Promise<void> {
   }
   if (!isDiscordActivity()) {
     throw new Error(
-      "Open this dashboard as a Discord Activity (not by visiting the domain directly). Check Activities → URL Mappings: / → dashboard.vrcshield.com",
+      "This app must run inside Discord’s Activity iframe (*.discordsays.com). Launch it from Discord — do not open dashboard.vrcshield.com in the iframe.",
     );
   }
 
@@ -45,7 +45,7 @@ export async function initDiscord(): Promise<void> {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Discord Activity SDK handshake failed (${detail}). Usually: wrong Client ID in the build, or URL mapping / does not point at production (dashboard.vrcshield.com). Built clientId length=${clientId.length}.`,
+      `Discord Activity SDK handshake failed (${detail}). Confirm VITE_DISCORD_CLIENT_ID matches the app, and URL Mapping / targets production Pages (Discord still serves via *.discordsays.com). clientId length=${clientId.length}.`,
       { cause: error },
     );
   }

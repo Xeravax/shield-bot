@@ -81,6 +81,9 @@ export interface ModlogNote {
 
 const API_BASE = "/api/dashboard";
 
+// API calls must stay relative so Discord’s discordsays.com proxy can forward
+// /api → api.vrcshield.com/api. Never use https://dashboard.vrcshield.com here.
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
