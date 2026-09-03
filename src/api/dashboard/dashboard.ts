@@ -1,4 +1,4 @@
-import { Get, Post, Put, Router } from "@discordx/koa";
+import { Delete, Get, Post, Put, Router } from "@discordx/koa";
 import type { Context } from "koa";
 import { EventDuty, EventType, PlannedEventStatus } from "../../generated/prisma/client.js";
 import { bot, modCaseManager, patrolTimer, prisma } from "../../main.js";
@@ -39,6 +39,7 @@ import {
   requireHost,
   requireShieldMember,
   requireStaff,
+  type DashboardSession,
 } from "../../utility/dashboard/session.js";
 import {
   logDashboardAction,
@@ -141,6 +142,76 @@ function serializePlannedEvent(
     canEdit: extras?.canEdit,
     canDelete: extras?.canDelete,
   };
+}
+
+async function handleHostEventDelete(ctx: Context): Promise<void> {
+  await withDashboardAuth(ctx, async (session: DashboardSession) => {
+    await requireHost(session);
+
+    const eventId = Number(ctx.params.eventId);
+    if (!Number.isFinite(eventId)) {
+      jsonError(ctx, 400, "Invalid event id.");
+      return;
+    }
+
+    const existing = await prisma.plannedEvent.findUnique({
+      where: { id: eventId },
+    });
+    if (!existing || existing.guildId !== session.guildId) {
+      jsonError(ctx, 404, "Event not found.");
+      return;
+    }
+
+    const guild =
+      bot.guilds.cache.get(session.guildId) ??
+      (await bot.guilds.fetch(session.guildId).catch(() => null));
+    if (!guild) {
+      jsonError(ctx, 503, "Guild unavailable.");
+      return;
+    }
+
+    const member = session.member;
+    let result: { success: boolean; error?: string; message?: string };
+
+    if (
+      existing.status === PlannedEventStatus.PENDING ||
+      existing.status === PlannedEventStatus.APPROVED
+    ) {
+      if (!(await canUserCancelPlannedEvent(session.user.id, member, existing))) {
+        jsonError(ctx, 403, "You cannot delete this event.");
+        return;
+      }
+      result = await cancelPlannedEvent(eventId, guild, session.user.id);
+    } else if (
+      existing.status === PlannedEventStatus.DRAFT ||
+      existing.status === PlannedEventStatus.DENIED
+    ) {
+      if (!(await canManageEventDraft(session.user.id, member, existing.hostId))) {
+        jsonError(ctx, 403, "You cannot delete this event.");
+        return;
+      }
+      await prisma.plannedEvent.delete({ where: { id: eventId } });
+      result = { success: true, message: "Event deleted." };
+    } else {
+      jsonError(ctx, 400, "This event cannot be deleted.");
+      return;
+    }
+
+    if (!result.success) {
+      jsonError(ctx, 400, result.error ?? "Could not delete event.");
+      return;
+    }
+
+    logDashboardSessionAction(
+      session,
+      "Event deleted",
+      `Deleted **${existing.title}** (#${existing.id}) from the Activity dashboard.`,
+      [{ name: "Status", value: existing.status, inline: true }],
+      "mod",
+    );
+
+    ctx.body = { ok: true, message: result.message ?? "Event deleted." };
+  });
 }
 
 const MONTH_NAMES = [
@@ -652,75 +723,14 @@ export class DashboardAPI {
     });
   }
 
-  @Post("/api/dashboard/host/events/:eventId/delete")
+  @Delete("/api/dashboard/host/events/:eventId")
   async deleteHostEvent(ctx: Context): Promise<void> {
-    await withDashboardAuth(ctx, async (session) => {
-      await requireHost(session);
+    await handleHostEventDelete(ctx);
+  }
 
-      const eventId = Number(ctx.params.eventId);
-      if (!Number.isFinite(eventId)) {
-        jsonError(ctx, 400, "Invalid event id.");
-        return;
-      }
-
-      const existing = await prisma.plannedEvent.findUnique({
-        where: { id: eventId },
-      });
-      if (!existing || existing.guildId !== session.guildId) {
-        jsonError(ctx, 404, "Event not found.");
-        return;
-      }
-
-      const guild =
-        bot.guilds.cache.get(session.guildId) ??
-        (await bot.guilds.fetch(session.guildId).catch(() => null));
-      if (!guild) {
-        jsonError(ctx, 503, "Guild unavailable.");
-        return;
-      }
-
-      const member = session.member;
-      let result: { success: boolean; error?: string; message?: string };
-
-      if (
-        existing.status === PlannedEventStatus.PENDING ||
-        existing.status === PlannedEventStatus.APPROVED
-      ) {
-        if (!(await canUserCancelPlannedEvent(session.user.id, member, existing))) {
-          jsonError(ctx, 403, "You cannot delete this event.");
-          return;
-        }
-        result = await cancelPlannedEvent(eventId, guild, session.user.id);
-      } else if (
-        existing.status === PlannedEventStatus.DRAFT ||
-        existing.status === PlannedEventStatus.DENIED
-      ) {
-        if (!(await canManageEventDraft(session.user.id, member, existing.hostId))) {
-          jsonError(ctx, 403, "You cannot delete this event.");
-          return;
-        }
-        await prisma.plannedEvent.delete({ where: { id: eventId } });
-        result = { success: true, message: "Event deleted." };
-      } else {
-        jsonError(ctx, 400, "This event cannot be deleted.");
-        return;
-      }
-
-      if (!result.success) {
-        jsonError(ctx, 400, result.error ?? "Could not delete event.");
-        return;
-      }
-
-      logDashboardSessionAction(
-        session,
-        "Event deleted",
-        `Deleted **${existing.title}** (#${existing.id}) from the Activity dashboard.`,
-        [{ name: "Status", value: existing.status, inline: true }],
-        "mod",
-      );
-
-      ctx.body = { ok: true, message: result.message ?? "Event deleted." };
-    });
+  @Post("/api/dashboard/host/events/:eventId/delete")
+  async deleteHostEventAlias(ctx: Context): Promise<void> {
+    await handleHostEventDelete(ctx);
   }
 
   @Get("/api/dashboard/admin/overview")

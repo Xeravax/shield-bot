@@ -244,12 +244,23 @@ export function updateHostEvent(
   });
 }
 
-export function deleteHostEvent(token: string, eventId: number) {
-  return apiFetch<{ ok: boolean; message: string }>(
-    `/host/events/${eventId}/delete`,
-    token,
-    { method: "POST" },
-  );
+export async function deleteHostEvent(token: string, eventId: number) {
+  try {
+    return await apiFetch<{ ok: boolean; message: string }>(
+      `/host/events/${eventId}`,
+      token,
+      { method: "DELETE" },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+      return apiFetch<{ ok: boolean; message: string }>(
+        `/host/events/${eventId}/delete`,
+        token,
+        { method: "POST" },
+      );
+    }
+    throw error;
+  }
 }
 
 export function fetchAdminOverview(token: string) {

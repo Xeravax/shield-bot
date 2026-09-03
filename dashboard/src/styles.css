@@ -814,7 +814,7 @@ textarea {
   min-width: 0;
   min-height: 0;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   padding: 0.4rem 0.5rem 0.5rem;
 }
 
@@ -901,8 +901,8 @@ textarea {
 }
 
 .app-main > .panel {
-  height: 100%;
-  min-height: 0;
+  min-height: 100%;
+  height: auto;
 }
 
 .panel {
@@ -913,13 +913,14 @@ textarea {
 .home-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
   grid-template-areas:
     "hours resources"
     "calendar resources";
   gap: 0.55rem 0.85rem;
-  height: 100%;
-  min-height: 0;
+  min-height: 100%;
+  height: auto;
+  align-content: start;
 }
 
 .home-grid > .hours-panel {
@@ -928,17 +929,17 @@ textarea {
 
 .home-grid > .calendar-panel {
   grid-area: calendar;
-  min-height: 0;
+  min-height: 280px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* Let dossier inside calendar fill the panel */
 .home-grid > .calendar-panel > .dossier {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -952,7 +953,7 @@ textarea {
 .home-grid > .resources-panel {
   grid-area: resources;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
 }
 
 .trainer-note {
@@ -1193,7 +1194,7 @@ textarea {
 
 .calendar-panel .month-cal {
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -1520,9 +1521,9 @@ textarea {
   display: grid;
   grid-template-columns: minmax(116px, 148px) minmax(0, 1fr);
   gap: 0;
-  align-items: stretch;
-  min-height: 0;
-  height: 100%;
+  align-items: start;
+  min-height: 100%;
+  height: auto;
 }
 
 .folder-rail {
@@ -1629,7 +1630,7 @@ textarea {
       transparent 40px
     ),
     rgba(14, 12, 9, 0.55);
-  overflow: auto;
+  overflow: visible;
 }
 
 /* Legacy aliases kept for any leftover markup */
@@ -1852,6 +1853,79 @@ textarea {
 .btn.secondary.danger:hover:not(:disabled) {
   color: var(--danger);
   border-color: var(--danger);
+}
+
+.btn.danger-solid {
+  background: linear-gradient(135deg, #e07a6a, #c45c4e);
+  color: #1a0f0d;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.form-row.has-error input,
+.form-row.has-error select,
+.form-row.has-error textarea,
+.force-switch-row.has-error .force-switch {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(224, 122, 106, 0.12);
+}
+
+.field-error {
+  margin: 0.35rem 0 0;
+  color: var(--danger);
+  font-size: 0.78rem;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 6, 4, 0.72);
+}
+
+.dialog-card {
+  width: min(420px, 100%);
+  max-height: min(80vh, 560px);
+  overflow: auto;
+  padding: 1rem 1.1rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-top: 3px solid var(--gold);
+  border-radius: var(--radius);
+  background: linear-gradient(165deg, #17140f 0%, #0e0c09 100%);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.dialog-card.danger {
+  border-top-color: var(--danger);
+}
+
+.dialog-card h2 {
+  margin: 0 0 0.55rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: var(--gold);
+}
+
+.dialog-card.danger h2 {
+  color: var(--danger);
+}
+
+.dialog-body {
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
 }
 
 .pulse-split {

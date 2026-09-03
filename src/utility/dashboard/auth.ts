@@ -141,7 +141,7 @@ export function setDashboardCors(ctx: Context): void {
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, Accept",
   );
-  ctx.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+  ctx.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   ctx.set("Vary", "Origin");
 }
 

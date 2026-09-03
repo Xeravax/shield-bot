@@ -107,7 +107,11 @@ export function AdminPanel({ token, preview = false }: Props) {
   }
 
   const isOverviewPreview = preview || overviewLoading;
-  const displayOverview = isOverviewPreview ? mockAdminOverview() : overview;
+  const displayOverview = isOverviewPreview
+    ? mockAdminOverview()
+    : overview
+      ? normalizeOverview(overview)
+      : null;
 
   const caseTypes = useMemo(() => {
     const types = new Set(
@@ -454,6 +458,36 @@ export function AdminPanel({ token, preview = false }: Props) {
       </div>
     </div>
   );
+}
+
+function normalizeOverview(raw: AdminOverview): AdminOverview {
+  const now = new Date();
+  const hoursMembers = raw.hoursMembers ?? [];
+  const monthHoursTotal =
+    typeof raw.monthHoursTotal === "number"
+      ? raw.monthHoursTotal
+      : hoursMembers.reduce((sum, m) => sum + (m.hours ?? 0), 0);
+
+  return {
+    pendingEventsThisWeek: raw.pendingEventsThisWeek ?? 0,
+    draftEvents: raw.draftEvents ?? 0,
+    openLoas: raw.openLoas ?? 0,
+    activePatrolSessions: raw.activePatrolSessions ?? 0,
+    monthLabel:
+      raw.monthLabel ||
+      now.toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+        timeZone: "UTC",
+      }),
+    monthHoursTotal,
+    hoursMembers,
+    activePatrols: raw.activePatrols ?? [],
+    recentCases: (raw.recentCases ?? []).map((c) => ({
+      ...c,
+      staffLogUrl: c.staffLogUrl ?? null,
+    })),
+  };
 }
 
 function Stat({ label, value }: { label: string; value: number | string }) {

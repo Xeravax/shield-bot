@@ -21,6 +21,7 @@ import {
   zonedDate,
 } from "../calendarUtils";
 import { mockCalendarEvents } from "../mockData";
+import { Dialog } from "./Dialog";
 import { ExternalLink } from "./HandbookSection";
 import { MonthCalendar } from "./MonthCalendar";
 import { PreviewNotice } from "./PreviewNotice";
@@ -91,6 +92,9 @@ export function HostPanel({
   const [force, setForce] = useState(false);
   const [rules, setRules] = useState<EventRuleResult[]>([]);
   const [blocking, setBlocking] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [validationOpen, setValidationOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<CalendarEvent | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -242,6 +246,8 @@ export function HostPanel({
     setForce(false);
     setRules([]);
     setBlocking(false);
+    setFieldErrors({});
+    setValidationOpen(false);
   }
 
   function loadEventIntoForm(event: CalendarEvent) {
@@ -256,6 +262,7 @@ export function HostPanel({
     setMessage(null);
     setError(null);
     setRules([]);
+    setFieldErrors({});
     setFlipDir("back");
     setHostSection("schedule");
   }
@@ -269,8 +276,10 @@ export function HostPanel({
     setMessage(null);
     try {
       const result = await validateHostEvent(token, eventBody());
-      setRules(result.results);
-      setBlocking(result.blocking);
+      applyValidation(result.results, result.blocking);
+      if (!result.blocking && !result.results.some((r) => r.severity === "fail")) {
+        setMessage("No blocking issues for this slot.");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Validation failed");
     } finally {
@@ -288,11 +297,10 @@ export function HostPanel({
     try {
       const validation = await validateHostEvent(token, eventBody());
       if (validation.blocking) {
-        setRules(validation.results);
-        setBlocking(true);
-        setError("Fix blocking issues before submitting.");
+        applyValidation(validation.results, true);
         return;
       }
+      applyValidation(validation.results, false);
       if (editingId != null) {
         const result = await updateHostEvent(token, editingId, eventBody());
         setRules(result.validation.results);
@@ -321,7 +329,12 @@ export function HostPanel({
     if (preview || event.canDelete === false) {
       return;
     }
-    if (!window.confirm(`Delete “${event.title}”? This cannot be undone.`)) {
+    setPendingDelete(event);
+  }
+
+  async function confirmDelete() {
+    const event = pendingDelete;
+    if (!event) {
       return;
     }
     setBusy(true);
@@ -330,6 +343,7 @@ export function HostPanel({
     try {
       const result = await deleteHostEvent(token, event.id);
       setMessage(result.message);
+      setPendingDelete(null);
       if (editingId === event.id) {
         resetForm();
       }
@@ -340,8 +354,23 @@ export function HostPanel({
       setPublished(data.events);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete event");
+      setPendingDelete(null);
     } finally {
       setBusy(false);
+    }
+  }
+
+  function applyValidation(nextRules: EventRuleResult[], isBlocking: boolean) {
+    setRules(nextRules);
+    setBlocking(isBlocking);
+    const nextFields = fieldErrorsFromRules(nextRules);
+    setFieldErrors(nextFields);
+    if (isBlocking || nextRules.some((r) => r.severity === "fail")) {
+      setValidationOpen(true);
+      setError("Fix the highlighted fields before submitting.");
+    } else {
+      setValidationOpen(false);
+      setError(null);
     }
   }
 
@@ -409,7 +438,7 @@ export function HostPanel({
 
             <div className="schedule-split">
               <div className="schedule-form">
-            <div className="form-row">
+            <div className={`form-row${fieldErrors.title ? " has-error" : ""}`}>
               <label htmlFor="title">Title</label>
               <input
                 id="title"
@@ -418,9 +447,10 @@ export function HostPanel({
                 placeholder="Patrol Event"
                 disabled={preview}
               />
+              <FieldHint message={fieldErrors.title} />
             </div>
 
-            <div className="form-row">
+            <div className={`form-row${fieldErrors.startsAt ? " has-error" : ""}`}>
               <label htmlFor="starts">Starts at (local)</label>
               <input
                 id="starts"
@@ -436,6 +466,7 @@ export function HostPanel({
                 }}
                 disabled={preview}
               />
+              <FieldHint message={fieldErrors.startsAt} />
               <div className="chip-row" style={{ marginTop: "0.5rem" }}>
                 <button
                   type="button"
@@ -475,7 +506,7 @@ export function HostPanel({
               </div>
             </div>
 
-            <div className="form-row">
+            <div className={`form-row${fieldErrors.duty ? " has-error" : ""}`}>
               <label htmlFor="duty">Duty</label>
               <select
                 id="duty"
@@ -488,8 +519,9 @@ export function HostPanel({
                 <option value="ON_DUTY">On-duty</option>
                 <option value="OFF_DUTY">Off-duty</option>
               </select>
+              <FieldHint message={fieldErrors.duty} />
             </div>
-            <div className="form-row">
+            <div className={`form-row${fieldErrors.duration ? " has-error" : ""}`}>
               <label htmlFor="duration">Duration (minutes)</label>
               <select
                 id="duration"
@@ -510,6 +542,7 @@ export function HostPanel({
                   </>
                 )}
               </select>
+              <FieldHint message={fieldErrors.duration} />
             </div>
             <div className="form-row">
               <label htmlFor="etype">Event type (optional)</label>
@@ -529,7 +562,7 @@ export function HostPanel({
             </div>
 
             {user.canForceSchedule && (
-              <div className="force-switch-row">
+              <div className={`force-switch-row${fieldErrors.force ? " has-error" : ""}`}>
                 <button
                   type="button"
                   role="switch"
@@ -543,6 +576,7 @@ export function HostPanel({
                 <div>
                   <strong>Force</strong>
                   <p>Bypass week and collision rules (team lead).</p>
+                  <FieldHint message={fieldErrors.force} />
                 </div>
               </div>
             )}
@@ -817,6 +851,89 @@ export function HostPanel({
           </>
         )}
       </div>
+      {validationOpen && (
+        <Dialog
+          title={blocking ? "Cannot submit yet" : "Validation"}
+          tone={blocking ? "danger" : "default"}
+          onClose={() => setValidationOpen(false)}
+        >
+          <ul className="rule-list">
+            {rules
+              .filter((r) => r.severity !== "pass")
+              .map((r) => (
+                <li key={r.id} className={`rule-item ${r.severity}`}>
+                  <strong>{r.label}:</strong> {r.message}
+                </li>
+              ))}
+          </ul>
+        </Dialog>
+      )}
+      {pendingDelete && (
+        <Dialog
+          title="Delete event"
+          tone="danger"
+          onClose={() => setPendingDelete(null)}
+          actions={
+            <>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => setPendingDelete(null)}
+              >
+                Keep it
+              </button>
+              <button
+                type="button"
+                className="btn danger-solid"
+                disabled={busy}
+                onClick={() => void confirmDelete()}
+              >
+                Delete
+              </button>
+            </>
+          }
+        >
+          <p>
+            Delete <strong>{pendingDelete.title}</strong>? This removes the
+            draft or cancels it on the roster. It cannot be undone.
+          </p>
+        </Dialog>
+      )}
     </div>
   );
+}
+
+function FieldHint({ message }: { message?: string }) {
+  if (!message) {
+    return null;
+  }
+  return <p className="field-error">{message}</p>;
+}
+
+const RULE_FIELD: Record<string, string> = {
+  title: "title",
+  time: "startsAt",
+  "monday-ban": "startsAt",
+  "scheduling-window": "startsAt",
+  overlap: "startsAt",
+  "offduty-collision": "startsAt",
+  duration: "duration",
+  "duration-3h": "duration",
+  "duration-invalid": "duration",
+  "host-weekly-limit": "force",
+  "host-role": "force",
+};
+
+function fieldErrorsFromRules(rules: EventRuleResult[]): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const rule of rules) {
+    if (rule.severity !== "fail") {
+      continue;
+    }
+    const field = RULE_FIELD[rule.id] ?? "startsAt";
+    if (!next[field]) {
+      next[field] = rule.message;
+    }
+  }
+  return next;
 }
