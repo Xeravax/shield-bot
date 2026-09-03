@@ -165,132 +165,130 @@ export default function App() {
   const visibleTabs = tabs.filter((t) => t.show);
   const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : "home";
   const copy = TAB_COPY[activeTab];
-  const isHome = activeTab === "home";
 
   return (
     <div className="app">
-      <header className="status-ribbon">
-        <div className="ribbon-identity">
-          {displayUser.avatarUrl ? (
-            <img
-              src={displayUser.avatarUrl}
-              alt=""
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <div className="avatar-fallback">{initials}</div>
-          )}
-          <div className="ribbon-meta">
-            <strong>{displayUser.displayName}</strong>
-            <span>@{displayUser.username}</span>
-          </div>
-        </div>
-
-        <div className="role-stamps">
-          <span
-            className={`role-stamp ${displayUser.shieldMember ? "on" : ""}`}
-          >
-            Recruit+
-          </span>
-          <span className={`role-stamp ${displayUser.deputy ? "on" : ""}`}>
-            Deputy+
-          </span>
-          {displayUser.staff && <span className="role-stamp on">Staff</span>}
-          {displayUser.host && <span className="role-stamp on">Host</span>}
-          {displayUser.trainerTypes.map((t) => (
-            <span key={t} className="role-stamp on">
-              {t.toUpperCase()}
-            </span>
+      <div className={`case-file case-${activeTab}`} data-tab={activeTab}>
+        <nav className="case-tabs" aria-label="Case file sections">
+          {visibleTabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`case-tab case-tab-${t.id}${activeTab === t.id ? " active" : ""}`}
+              onClick={() => setTab(t.id)}
+            >
+              <span className="tab-label">{t.label}</span>
+            </button>
           ))}
-        </div>
-      </header>
+        </nav>
 
-      {isHome ? (
-        <div className="masthead masthead-hero">
-          <img src="/logo.png" alt="SHIELD logo" />
-          <p className="masthead-kicker">S.H.I.E.L.D.</p>
-          <h1>{copy.title}</h1>
-          <p className="masthead-dek">{copy.subtitle}</p>
-        </div>
-      ) : (
-        <div className="masthead masthead-compact">
-          <img src="/logo.png" alt="" />
-          <div>
-            <p className="masthead-kicker">S.H.I.E.L.D.</p>
-            <h2>{copy.title}</h2>
-            <p className="masthead-dek">{copy.subtitle}</p>
+        <div className="case-sheet">
+          <header className="case-header">
+            <div className="case-identity">
+              {displayUser.avatarUrl ? (
+                <img
+                  src={displayUser.avatarUrl}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="avatar-fallback">{initials}</div>
+              )}
+              <div className="ribbon-meta">
+                <strong>{displayUser.displayName}</strong>
+                <span>@{displayUser.username}</span>
+              </div>
+            </div>
+
+            <div className="case-brand">
+              <img src="/logo.png" alt="SHIELD logo" />
+              <p className="masthead-kicker">S.H.I.E.L.D.</p>
+              <p className="case-file-no">CASE FILE</p>
+            </div>
+
+            <div className="role-stamps">
+              <span
+                className={`role-stamp ${displayUser.shieldMember ? "on" : ""}`}
+              >
+                Recruit+
+              </span>
+              <span className={`role-stamp ${displayUser.deputy ? "on" : ""}`}>
+                Deputy+
+              </span>
+              {displayUser.staff && (
+                <span className="role-stamp on">Staff</span>
+              )}
+              {displayUser.host && <span className="role-stamp on">Host</span>}
+              {displayUser.trainerTypes.map((t) => (
+                <span key={t} className="role-stamp on">
+                  {t.toUpperCase()}
+                </span>
+              ))}
+            </div>
+          </header>
+
+          <div className="case-briefing">
+            <h1>{copy.title}</h1>
+            <p>{copy.subtitle}</p>
           </div>
-        </div>
-      )}
 
-      <nav className="section-tabs" aria-label="Dashboard sections">
-        {visibleTabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`tab ${activeTab === t.id ? "active" : ""}`}
-            onClick={() => setTab(t.id)}
-          >
-            <span className="tab-label">{t.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      <div className="workspace">
-        {isAppPreview && (
-          <PreviewNotice
-            className="app-level"
-            message="Sample data — could not load your profile"
-          />
-        )}
-
-        {error && (
-          <PreviewNotice className="app-level error" message={error} />
-        )}
-
-        <main className="app-main">
-          {activeTab === "home" && (
-            <div className="panel home-grid">
-              <HoursPanel
-                token={token}
-                user={displayUser}
-                preview={isAppPreview}
+          <div className="workspace">
+            {isAppPreview && (
+              <PreviewNotice
+                className="app-level"
+                message="Sample data — could not load your profile"
               />
-              {displayUser.shieldMember ? (
-                <>
-                  <CalendarPanel
+            )}
+
+            {error && (
+              <PreviewNotice className="app-level error" message={error} />
+            )}
+
+            <main className="app-main">
+              {activeTab === "home" && (
+                <div className="panel home-grid">
+                  <HoursPanel
                     token={token}
                     user={displayUser}
                     preview={isAppPreview}
                   />
-                  <HandbookSection user={displayUser} />
-                </>
-              ) : (
-                <HandbookSection user={displayUser} />
+                  {displayUser.shieldMember ? (
+                    <>
+                      <CalendarPanel
+                        token={token}
+                        user={displayUser}
+                        preview={isAppPreview}
+                      />
+                      <HandbookSection user={displayUser} />
+                    </>
+                  ) : (
+                    <HandbookSection user={displayUser} />
+                  )}
+                </div>
               )}
-            </div>
-          )}
-          {activeTab === "admin" && tabUser?.staff && (
-            <AdminPanel token={token} preview={false} />
-          )}
-          {activeTab === "host" && tabUser?.host && (
-            <HostPanel
-              token={token}
-              user={tabUser}
-              preview={false}
-              onTimezoneSaved={(timezone) => {
-                if (user) {
-                  setUser({ ...user, timezone, timezoneStored: true });
-                }
-              }}
-            />
-          )}
-          {activeTab === "trainer" &&
-            tabUser &&
-            tabUser.trainerTypes.length > 0 && (
-              <TrainerPanel user={tabUser} />
-            )}
-        </main>
+              {activeTab === "admin" && tabUser?.staff && (
+                <AdminPanel token={token} preview={false} />
+              )}
+              {activeTab === "host" && tabUser?.host && (
+                <HostPanel
+                  token={token}
+                  user={tabUser}
+                  preview={false}
+                  onTimezoneSaved={(timezone) => {
+                    if (user) {
+                      setUser({ ...user, timezone, timezoneStored: true });
+                    }
+                  }}
+                />
+              )}
+              {activeTab === "trainer" &&
+                tabUser &&
+                tabUser.trainerTypes.length > 0 && (
+                  <TrainerPanel user={tabUser} />
+                )}
+            </main>
+          </div>
+        </div>
       </div>
     </div>
   );
