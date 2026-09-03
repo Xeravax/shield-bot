@@ -58,12 +58,67 @@ export function eventsByDay(
 ): Map<string, CalendarEvent[]> {
   const map = new Map<string, CalendarEvent[]>();
   for (const event of events) {
-    const key = dayKey(zonedDate(event.startTime, timezone));
-    const list = map.get(key) ?? [];
-    list.push(event);
-    map.set(key, list);
+    for (const day of eventOccupiedDays(event, timezone)) {
+      const key = dayKey(day);
+      const list = map.get(key) ?? [];
+      list.push(event);
+      map.set(key, list);
+    }
   }
   return map;
+}
+
+/** Calendar days this event occupies (local timezone). Midnight-exact ends do not include the end day. */
+export function eventOccupiedDays(event: CalendarEvent, timezone: string): Date[] {
+  return spanOccupiedDays(
+    zonedDate(event.startTime, timezone),
+    zonedDate(event.endTime, timezone),
+  );
+}
+
+export function spanOccupiedDays(start: Date, end: Date): Date[] {
+  const days: Date[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  let last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  // Exact midnight end means the event finished at the start of that day.
+  if (
+    end.getHours() === 0 &&
+    end.getMinutes() === 0 &&
+    end.getSeconds() === 0 &&
+    end.getMilliseconds() === 0 &&
+    last.getTime() > cursor.getTime()
+  ) {
+    last = addDays(last, -1);
+  }
+  if (last.getTime() < cursor.getTime()) {
+    last = new Date(cursor);
+  }
+  while (cursor.getTime() <= last.getTime()) {
+    days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+/** Split a local start/end into per-day segments for week/day grids. */
+export function daySegments(
+  start: Date,
+  end: Date,
+): Array<{ day: Date; start: Date; end: Date; continuesFromPrev: boolean; continuesToNext: boolean }> {
+  const occupied = spanOccupiedDays(start, end);
+  return occupied.map((day, index) => {
+    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0, 0);
+    const dayEnd = addDays(dayStart, 1);
+    const segStart = index === 0 ? start : dayStart;
+    const segEnd = end.getTime() < dayEnd.getTime() ? end : dayEnd;
+    return {
+      day,
+      start: segStart,
+      end: segEnd.getTime() > segStart.getTime() ? segEnd : new Date(segStart.getTime() + 30 * 60_000),
+      continuesFromPrev: index > 0,
+      continuesToNext: index < occupied.length - 1,
+    };
+  });
 }
 
 export function zonedDate(iso: string, timezone: string): Date {

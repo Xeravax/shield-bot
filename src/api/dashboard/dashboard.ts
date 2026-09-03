@@ -13,12 +13,15 @@ import {
   parseEventTypeOption,
 } from "../../managers/events/eventType.js";
 import {
+  approvePlannedEvent,
   beginEventEditForHost,
   canEditEventPanel,
   canManageEventDraft,
   canUserCancelPlannedEvent,
   cancelPlannedEvent,
+  denyPlannedEvent,
   runEventValidation,
+  submitEventForApproval,
   updatePlanningChannelMessage,
 } from "../../managers/events/eventPlanningManager.js";
 import { getGuildCalendarFeedUrl } from "../../managers/events/discordEventCalendarFeed.js";
@@ -106,6 +109,13 @@ function memberLabel(guildId: string, userId: string): string {
   const guild = bot.guilds.cache.get(guildId);
   const member = guild?.members.cache.get(userId);
   return member?.displayName ?? member?.user.username ?? userId;
+}
+
+async function resolveGuild(guildId: string) {
+  return (
+    bot.guilds.cache.get(guildId) ??
+    (await bot.guilds.fetch(guildId).catch(() => null))
+  );
 }
 
 function serializePlannedEvent(
@@ -731,6 +741,217 @@ export class DashboardAPI {
   @Post("/api/dashboard/host/events/:eventId/delete")
   async deleteHostEventAlias(ctx: Context): Promise<void> {
     await handleHostEventDelete(ctx);
+  }
+
+  @Post("/api/dashboard/host/events/:eventId/submit")
+  async submitHostEvent(ctx: Context): Promise<void> {
+    await withDashboardAuth(ctx, async (session) => {
+      await requireHost(session);
+
+      const eventId = Number(ctx.params.eventId);
+      if (!Number.isFinite(eventId)) {
+        jsonError(ctx, 400, "Invalid event id.");
+        return;
+      }
+
+      const existing = await prisma.plannedEvent.findUnique({
+        where: { id: eventId },
+      });
+      if (!existing || existing.guildId !== session.guildId) {
+        jsonError(ctx, 404, "Event not found.");
+        return;
+      }
+
+      if (
+        !(await canManageEventDraft(
+          session.user.id,
+          session.member,
+          existing.hostId,
+        ))
+      ) {
+        jsonError(ctx, 403, "You cannot submit this event.");
+        return;
+      }
+
+      const guild = await resolveGuild(session.guildId);
+      if (!guild) {
+        jsonError(ctx, 503, "Guild unavailable.");
+        return;
+      }
+
+      const result = await submitEventForApproval(eventId, guild);
+      if (!result.success || !result.event) {
+        jsonError(ctx, 400, result.error ?? "Could not submit event.");
+        return;
+      }
+
+      logDashboardSessionAction(
+        session,
+        "Event submitted",
+        `Submitted **${result.event.title}** (#${result.event.id}) for planning review.`,
+        [
+          { name: "Status", value: result.event.status, inline: true },
+          {
+            name: "Start",
+            value: `<t:${Math.floor(result.event.startTime.getTime() / 1000)}:F>`,
+            inline: true,
+          },
+        ],
+        "success",
+      );
+
+      ctx.body = {
+        ok: true,
+        message: "Event submitted to the planning channel.",
+        event: serializePlannedEvent(result.event, {
+          canEdit: true,
+          canDelete: true,
+        }),
+      };
+    });
+  }
+
+  @Post("/api/dashboard/host/events/:eventId/approve")
+  async approveHostEvent(ctx: Context): Promise<void> {
+    await withDashboardAuth(ctx, async (session) => {
+      await requireHost(session);
+      if (!session.hostLead) {
+        jsonError(ctx, 403, "Only event leads can approve events.");
+        return;
+      }
+
+      const eventId = Number(ctx.params.eventId);
+      if (!Number.isFinite(eventId)) {
+        jsonError(ctx, 400, "Invalid event id.");
+        return;
+      }
+
+      const existing = await prisma.plannedEvent.findUnique({
+        where: { id: eventId },
+      });
+      if (!existing || existing.guildId !== session.guildId) {
+        jsonError(ctx, 404, "Event not found.");
+        return;
+      }
+
+      const guild = await resolveGuild(session.guildId);
+      if (!guild) {
+        jsonError(ctx, 503, "Guild unavailable.");
+        return;
+      }
+
+      const result = await approvePlannedEvent(
+        eventId,
+        session.user.id,
+        guild,
+      );
+      if (!result.success) {
+        jsonError(ctx, 400, result.error ?? "Could not approve event.");
+        return;
+      }
+
+      const updated = await prisma.plannedEvent.findUnique({
+        where: { id: eventId },
+      });
+
+      logDashboardSessionAction(
+        session,
+        "Event approved",
+        `Approved **${existing.title}** (#${existing.id}) from the Activity dashboard.`,
+        [{ name: "Status", value: "APPROVED", inline: true }],
+        "success",
+      );
+
+      ctx.body = {
+        ok: true,
+        message: "Event approved.",
+        event: updated
+          ? serializePlannedEvent(updated, {
+              canEdit: true,
+              canDelete: true,
+            })
+          : null,
+      };
+    });
+  }
+
+  @Post("/api/dashboard/host/events/:eventId/deny")
+  async denyHostEvent(ctx: Context): Promise<void> {
+    await withDashboardAuth(ctx, async (session) => {
+      await requireHost(session);
+      if (!session.hostLead) {
+        jsonError(ctx, 403, "Only event leads can deny events.");
+        return;
+      }
+
+      const eventId = Number(ctx.params.eventId);
+      if (!Number.isFinite(eventId)) {
+        jsonError(ctx, 400, "Invalid event id.");
+        return;
+      }
+
+      const body = ctx.request.body as { reason?: string } | undefined;
+      const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+      if (!reason) {
+        jsonError(ctx, 400, "A denial reason is required.");
+        return;
+      }
+      if (reason.length > 1000) {
+        jsonError(ctx, 400, "Denial reason is too long.");
+        return;
+      }
+
+      const existing = await prisma.plannedEvent.findUnique({
+        where: { id: eventId },
+      });
+      if (!existing || existing.guildId !== session.guildId) {
+        jsonError(ctx, 404, "Event not found.");
+        return;
+      }
+
+      const guild = await resolveGuild(session.guildId);
+      if (!guild) {
+        jsonError(ctx, 503, "Guild unavailable.");
+        return;
+      }
+
+      const result = await denyPlannedEvent(
+        eventId,
+        session.user.id,
+        reason,
+        guild,
+      );
+      if (!result.success) {
+        jsonError(ctx, 400, result.error ?? "Could not deny event.");
+        return;
+      }
+
+      const updated = await prisma.plannedEvent.findUnique({
+        where: { id: eventId },
+      });
+
+      logDashboardSessionAction(
+        session,
+        "Event denied",
+        `Denied **${existing.title}** (#${existing.id}) from the Activity dashboard.`,
+        [
+          { name: "Status", value: "DENIED", inline: true },
+          { name: "Reason", value: reason.slice(0, 200) },
+        ],
+        "mod",
+      );
+
+      ctx.body = {
+        ok: true,
+        message: "Event denied.",
+        event: updated
+          ? serializePlannedEvent(updated, {
+              canEdit: true,
+              canDelete: true,
+            })
+          : null,
+      };
+    });
   }
 
   @Get("/api/dashboard/admin/overview")

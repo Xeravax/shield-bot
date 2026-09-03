@@ -10,7 +10,9 @@ import {
   eventsByDay,
   formatClock,
   sameDay,
+  spanOccupiedDays,
   startOfMonth,
+  zonedDate,
 } from "../calendarUtils";
 import { openExternalLink } from "../discord";
 import { mockCalendarEvents, mockCalendarLinks } from "../mockData";
@@ -120,7 +122,20 @@ export function CalendarPanel({ token, user, preview = false }: Props) {
             <p>No published events this day.</p>
           ) : (
             <ul className="event-list">
-              {selectedEvents.map((event) => (
+              {selectedEvents.map((event) => {
+                const startLocal = zonedDate(event.startTime, user.timezone);
+                const endLocal = zonedDate(event.endTime, user.timezone);
+                const occupied = spanOccupiedDays(startLocal, endLocal);
+                const firstKey = dayKey(occupied[0]);
+                const lastKey = dayKey(occupied[occupied.length - 1]);
+                const selectedKey = dayKey(selectedDay);
+                const spanNote =
+                  firstKey !== selectedKey
+                    ? " · continues from prior day"
+                    : lastKey !== selectedKey
+                      ? " · continues into next day"
+                      : "";
+                return (
                 <li
                   key={event.id}
                   className={`event-item ${event.duty === "OFF_DUTY" ? "offduty" : ""}`}
@@ -133,11 +148,13 @@ export function CalendarPanel({ token, user, preview = false }: Props) {
                       {" – "}
                       {formatClock(event.endTime, user.timezone)} ·{" "}
                       {event.duty === "ON_DUTY" ? "On-duty" : "Off-duty"}
+                      {spanNote}
                     </div>
                   </div>
                   <span className="badge approved">Live</span>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </div>

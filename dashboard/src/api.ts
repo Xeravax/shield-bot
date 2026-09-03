@@ -263,6 +263,33 @@ export async function deleteHostEvent(token: string, eventId: number) {
   }
 }
 
+export function submitHostEvent(token: string, eventId: number) {
+  return apiFetch<{
+    ok: boolean;
+    message: string;
+    event: CalendarEvent;
+  }>(`/host/events/${eventId}/submit`, token, { method: "POST" });
+}
+
+export function approveHostEvent(token: string, eventId: number) {
+  return apiFetch<{
+    ok: boolean;
+    message: string;
+    event: CalendarEvent | null;
+  }>(`/host/events/${eventId}/approve`, token, { method: "POST" });
+}
+
+export function denyHostEvent(token: string, eventId: number, reason: string) {
+  return apiFetch<{
+    ok: boolean;
+    message: string;
+    event: CalendarEvent | null;
+  }>(`/host/events/${eventId}/deny`, token, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export function fetchAdminOverview(token: string) {
   return apiFetch<AdminOverview>("/admin/overview", token);
 }

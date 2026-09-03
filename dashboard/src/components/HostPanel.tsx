@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  approveHostEvent,
   createHostEvent,
   deleteHostEvent,
+  denyHostEvent,
   fetchEvents,
   fetchHostEvents,
   HANDBOOK_LINKS,
   setTimezone,
+  submitHostEvent,
   updateHostEvent,
   validateHostEvent,
   type CalendarEvent,
@@ -95,6 +98,8 @@ export function HostPanel({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [validationOpen, setValidationOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<CalendarEvent | null>(null);
+  const [pendingDeny, setPendingDeny] = useState<CalendarEvent | null>(null);
+  const [denyReason, setDenyReason] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -287,7 +292,22 @@ export function HostPanel({
     }
   }
 
-  async function submitEvent() {
+  async function refreshLists() {
+    await refreshManaged();
+    if (preview || !token) {
+      return;
+    }
+    try {
+      const data = await fetchEvents(token, range.from, range.to, {
+        planning: true,
+      });
+      setPublished(data.events);
+    } catch {
+      // Keep existing calendar data on refresh failure.
+    }
+  }
+
+  async function saveDraft() {
     if (preview) {
       return;
     }
@@ -309,17 +329,104 @@ export function HostPanel({
         const result = await createHostEvent(token, eventBody());
         setRules(result.validation.results);
         setMessage(
-          `Draft event #${result.eventId} created. Submit it in Discord with /event submit when ready.`,
+          `Draft event #${result.eventId} saved. Use Submit for review to post it.`,
         );
       }
       resetForm();
-      await refreshManaged();
-      const data = await fetchEvents(token, range.from, range.to, {
-        planning: true,
-      });
-      setPublished(data.events);
+      await refreshLists();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save event");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitForReview(eventId?: number) {
+    if (preview) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      let id = eventId ?? editingId;
+      if (id == null) {
+        const validation = await validateHostEvent(token, eventBody());
+        if (validation.blocking) {
+          applyValidation(validation.results, true);
+          return;
+        }
+        const created = await createHostEvent(token, eventBody());
+        id = created.eventId;
+      } else if (eventId == null) {
+        const validation = await validateHostEvent(token, eventBody());
+        if (validation.blocking) {
+          applyValidation(validation.results, true);
+          return;
+        }
+        await updateHostEvent(token, id, eventBody());
+      }
+
+      const result = await submitHostEvent(token, id);
+      setMessage(result.message);
+      resetForm();
+      await refreshLists();
+      setFlipDir("fwd");
+      setHostSection("queue");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to submit event");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveEvent(event: CalendarEvent) {
+    if (preview || !user.hostLead) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await approveHostEvent(token, event.id);
+      setMessage(result.message);
+      await refreshLists();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to approve event");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openDeny(event: CalendarEvent) {
+    if (preview || !user.hostLead) {
+      return;
+    }
+    setDenyReason("");
+    setPendingDeny(event);
+  }
+
+  async function confirmDeny() {
+    const event = pendingDeny;
+    const reason = denyReason.trim();
+    if (!event) {
+      return;
+    }
+    if (!reason) {
+      setError("A denial reason is required.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await denyHostEvent(token, event.id, reason);
+      setMessage(result.message);
+      setPendingDeny(null);
+      setDenyReason("");
+      await refreshLists();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to deny event");
     } finally {
       setBusy(false);
     }
@@ -347,11 +454,7 @@ export function HostPanel({
       if (editingId === event.id) {
         resetForm();
       }
-      await refreshManaged();
-      const data = await fetchEvents(token, range.from, range.to, {
-        planning: true,
-      });
-      setPublished(data.events);
+      await refreshLists();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete event");
       setPendingDelete(null);
@@ -374,6 +477,68 @@ export function HostPanel({
     }
   }
 
+  function eventActions(event: CalendarEvent) {
+    const status = event.status.toUpperCase();
+    const canSubmit =
+      event.canEdit !== false && (status === "DRAFT" || status === "DENIED");
+    const canReview = user.hostLead && status === "PENDING";
+
+    return (
+      <div className="btn-row">
+        {canSubmit && (
+          <button
+            type="button"
+            className="btn"
+            disabled={preview || busy}
+            onClick={() => void submitForReview(event.id)}
+          >
+            Submit
+          </button>
+        )}
+        {canReview && (
+          <>
+            <button
+              type="button"
+              className="btn"
+              disabled={preview || busy}
+              onClick={() => void approveEvent(event)}
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              className="btn secondary danger"
+              disabled={preview || busy}
+              onClick={() => openDeny(event)}
+            >
+              Deny
+            </button>
+          </>
+        )}
+        {event.canEdit !== false && (
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={preview}
+            onClick={() => loadEventIntoForm(event)}
+          >
+            Edit
+          </button>
+        )}
+        {event.canDelete !== false && (
+          <button
+            type="button"
+            className="btn secondary danger"
+            disabled={preview || busy}
+            onClick={() => void removeEvent(event)}
+          >
+            Delete
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="panel folder-shell">
       <nav className="folder-rail" aria-label="Host sections">
@@ -384,7 +549,7 @@ export function HostPanel({
               label: "Schedule",
               hint: "Submit for roster",
             },
-            { id: "queue" as const, label: "Queue", hint: "Your drafts" },
+            { id: "queue" as const, label: "Queue", hint: "Review & drafts" },
             {
               id: "board" as const,
               label: "Board",
@@ -425,10 +590,11 @@ export function HostPanel({
                 </h2>
                 <p>
                   Pick a start date &amp; time in{" "}
-                  <strong>{user.timezone}</strong>.
+                  <strong>{user.timezone}</strong>. Save a draft, or submit for
+                  review to post it in the planning channel
                   {user.hostLead
-                    ? " Team lead: you can edit any pending draft."
-                    : " You can edit your own drafts and pending events."}
+                    ? ". As a team lead you can also approve or deny from Queue."
+                    : "."}
                 </p>
               </div>
             </div>
@@ -592,11 +758,19 @@ export function HostPanel({
               </button>
               <button
                 type="button"
+                className="btn secondary"
+                disabled={preview || busy || !title.trim()}
+                onClick={() => void saveDraft()}
+              >
+                {editingId != null ? "Save draft" : "Create draft"}
+              </button>
+              <button
+                type="button"
                 className="btn"
                 disabled={preview || busy || !title.trim()}
-                onClick={() => void submitEvent()}
+                onClick={() => void submitForReview()}
               >
-                {editingId != null ? "Save changes" : "Create draft"}
+                Submit for review
               </button>
               {editingId != null && (
                 <>
@@ -613,8 +787,9 @@ export function HostPanel({
                     className="btn secondary danger"
                     disabled={preview || busy}
                     onClick={() => {
-                      const current = displayPublished.find((e) => e.id === editingId)
-                        ?? managed.find((e) => e.id === editingId);
+                      const current =
+                        displayPublished.find((e) => e.id === editingId) ??
+                        managed.find((e) => e.id === editingId);
                       if (current) {
                         void removeEvent(current);
                       }
@@ -681,8 +856,8 @@ export function HostPanel({
                 <h2>Your queue</h2>
                 <p>
                   {user.hostLead
-                    ? "All draft / pending / denied events."
-                    : "Your draft, pending, and denied events."}
+                    ? "Drafts, pending review, and denied events — approve or deny pending ones here."
+                    : "Your drafts, pending submissions, and denied events."}
                 </p>
               </div>
             </div>
@@ -706,28 +881,7 @@ export function HostPanel({
                         {event.denialReason ? ` — ${event.denialReason}` : ""}
                       </div>
                     </div>
-                    {event.canEdit !== false && (
-                      <div className="btn-row">
-                        <button
-                          type="button"
-                          className="btn secondary"
-                          disabled={preview}
-                          onClick={() => loadEventIntoForm(event)}
-                        >
-                          Edit
-                        </button>
-                        {event.canDelete !== false && (
-                          <button
-                            type="button"
-                            className="btn secondary danger"
-                            disabled={preview || busy}
-                            onClick={() => void removeEvent(event)}
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    {eventActions(event)}
                   </li>
                 ))}
               </ul>
@@ -742,8 +896,8 @@ export function HostPanel({
                 <div>
                   <h2>Event board</h2>
                   <p>
-                    Published roster plus drafts waiting to be accepted. Click a
-                    day or event to inspect, edit, or delete.
+                    Published roster plus drafts and pending review. Submit,
+                    approve, or deny without leaving the dashboard.
                   </p>
                 </div>
               </div>
@@ -803,28 +957,7 @@ export function HostPanel({
                               {event.denialReason ? ` — ${event.denialReason}` : ""}
                             </div>
                           </div>
-                          <div className="btn-row">
-                            {event.canEdit !== false && (
-                              <button
-                                type="button"
-                                className="btn secondary"
-                                disabled={preview}
-                                onClick={() => loadEventIntoForm(event)}
-                              >
-                                Edit
-                              </button>
-                            )}
-                            {event.canDelete !== false && (
-                              <button
-                                type="button"
-                                className="btn secondary danger"
-                                disabled={preview || busy}
-                                onClick={() => void removeEvent(event)}
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
+                          <div>{eventActions(event)}</div>
                         </li>
                       ))}
                   </ul>
@@ -897,6 +1030,56 @@ export function HostPanel({
             Delete <strong>{pendingDelete.title}</strong>? This removes the
             draft or cancels it on the roster. It cannot be undone.
           </p>
+        </Dialog>
+      )}
+      {pendingDeny && (
+        <Dialog
+          title="Deny event"
+          tone="danger"
+          onClose={() => {
+            setPendingDeny(null);
+            setDenyReason("");
+          }}
+          actions={
+            <>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  setPendingDeny(null);
+                  setDenyReason("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn danger-solid"
+                disabled={busy || !denyReason.trim()}
+                onClick={() => void confirmDeny()}
+              >
+                Deny
+              </button>
+            </>
+          }
+        >
+          <p>
+            Deny <strong>{pendingDeny.title}</strong> and notify the host.
+          </p>
+          <div className={`form-row${!denyReason.trim() ? " has-error" : ""}`}>
+            <label htmlFor="deny-reason">Reason</label>
+            <textarea
+              id="deny-reason"
+              rows={3}
+              value={denyReason}
+              onChange={(e) => setDenyReason(e.target.value)}
+              placeholder="Why this event is being denied"
+              disabled={busy}
+            />
+            {!denyReason.trim() && (
+              <p className="field-error">A denial reason is required.</p>
+            )}
+          </div>
         </Dialog>
       )}
     </div>

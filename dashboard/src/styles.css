@@ -902,7 +902,12 @@ textarea {
 
 .app-main > .panel {
   min-height: 100%;
-  height: auto;
+  height: 100%;
+}
+
+.app-main > .panel.home-grid,
+.panel.home-grid {
+  display: grid;
 }
 
 .panel {
@@ -912,15 +917,15 @@ textarea {
 
 .home-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.9fr);
+  grid-template-rows: auto minmax(360px, 1fr);
   grid-template-areas:
     "hours resources"
     "calendar resources";
   gap: 0.55rem 0.85rem;
   min-height: 100%;
-  height: auto;
-  align-content: start;
+  height: 100%;
+  align-content: stretch;
 }
 
 .home-grid > .hours-panel {
@@ -929,17 +934,18 @@ textarea {
 
 .home-grid > .calendar-panel {
   grid-area: calendar;
-  min-height: 280px;
+  min-height: 360px;
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* Let dossier inside calendar fill the panel */
-.home-grid > .calendar-panel > .dossier {
+.home-grid > .calendar-panel > .dossier,
+.home-grid > .calendar-panel.dossier {
   flex: 1;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -1185,16 +1191,20 @@ textarea {
   align-items: start;
 }
 
-/* When inside the home-grid calendar panel, fill remaining height */
+/* Overview: month grid takes the full left column; day detail sits underneath */
 .calendar-panel .calendar-layout {
   flex: 1;
   min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr) auto;
   align-items: stretch;
+  gap: 0.65rem;
 }
 
 .calendar-panel .month-cal {
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -1203,12 +1213,19 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  grid-auto-rows: minmax(1.6rem, 1fr);
+  grid-auto-rows: minmax(2.75rem, 1fr);
 }
 
-/* Scoped override: day cells in calendar-panel shrink to fit */
 .calendar-panel .month-cal-day {
-  min-height: 0;
+  min-height: 2.75rem;
+  justify-content: center;
+}
+
+.calendar-panel .day-detail {
+  max-height: 9.5rem;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 0.45rem;
 }
 
 .month-cal {
@@ -1334,6 +1351,12 @@ textarea {
 
 .month-cal-dot.approved:not(.published) {
   background: var(--ok);
+}
+
+.month-cal-dot.continues {
+  border-radius: 2px;
+  width: 7px;
+  height: 4px;
 }
 
 .month-cal-pill {
@@ -2111,6 +2134,16 @@ textarea {
 .week-cal-event.draft,
 .week-cal-event.approved {
   border-style: dashed;
+}
+
+.week-cal-event.continues-prev {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.week-cal-event.continues-next {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .week-cal-event.proposed {

@@ -10,6 +10,7 @@ import {
   formatMonthTitle,
   sameDay,
   startOfMonth,
+  zonedDate,
 } from "../calendarUtils";
 
 interface Props {
@@ -100,13 +101,24 @@ export function MonthCalendar({
             >
               <span className="month-cal-date">{day.getDate()}</span>
               <div className="month-cal-events">
-                {dayEvents.slice(0, 4).map((event) => (
-                  <span
-                    key={event.id}
-                    className={`month-cal-dot ${event.duty === "OFF_DUTY" ? "offduty" : "onduty"} ${eventStatusClass(event.status)}`}
-                    title={`${event.title} · ${formatClock(event.startTime, timezone)}`}
-                  />
-                ))}
+                {dayEvents.slice(0, 4).map((event) => {
+                  const localStart = zonedDate(event.startTime, timezone);
+                  const continues =
+                    dayKey(
+                      new Date(
+                        localStart.getFullYear(),
+                        localStart.getMonth(),
+                        localStart.getDate(),
+                      ),
+                    ) !== key;
+                  return (
+                    <span
+                      key={`${event.id}-${key}`}
+                      className={`month-cal-dot ${event.duty === "OFF_DUTY" ? "offduty" : "onduty"} ${eventStatusClass(event.status)}${continues ? " continues" : ""}`}
+                      title={`${event.title} · ${formatClock(event.startTime, timezone)} – ${formatClock(event.endTime, timezone)}${continues ? " (continues)" : ""}`}
+                    />
+                  );
+                })}
                 {dayEvents.length > 4 && (
                   <span className="month-cal-more">+{dayEvents.length - 4}</span>
                 )}

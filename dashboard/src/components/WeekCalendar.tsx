@@ -3,6 +3,7 @@ import type { CalendarEvent } from "../api";
 import {
   WEEKDAYS,
   addDays,
+  daySegments,
   eventStatusClass,
   formatClock,
   rangesOverlap,
@@ -43,28 +44,45 @@ export function WeekCalendar({
 }: Props) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const hoursCount = HOUR_END - HOUR_START;
-
-  function localParts(iso: string) {
-    return zonedDate(iso, timezone);
-  }
+  const weekEnd = addDays(weekStart, 7);
 
   function topPct(date: Date): number {
     const hours = date.getHours() + date.getMinutes() / 60;
-    return ((hours - HOUR_START) / hoursCount) * 100;
+    const clamped = Math.min(HOUR_END, Math.max(HOUR_START, hours));
+    return ((clamped - HOUR_START) / hoursCount) * 100;
   }
 
   function heightPct(start: Date, end: Date): number {
-    const ms = Math.max(end.getTime() - start.getTime(), 30 * 60_000);
+    const dayStartCap = new Date(
+      start.getFullYear(),
+      start.getMonth(),
+      start.getDate(),
+      HOUR_START,
+    ).getTime();
+    const dayEndCap = new Date(
+      start.getFullYear(),
+      start.getMonth(),
+      start.getDate(),
+      HOUR_END,
+    ).getTime();
+    const startMs = Math.max(dayStartCap, start.getTime());
+    // Segments that run to midnight (next day 00:00) fill to the bottom of the column.
+    const endMs =
+      end.getHours() === 0 &&
+      end.getMinutes() === 0 &&
+      end.getTime() > start.getTime()
+        ? dayEndCap
+        : Math.min(dayEndCap, end.getTime());
+    const ms = Math.max(endMs - startMs, 20 * 60_000);
     return (ms / 3_600_000 / hoursCount) * 100;
   }
 
-  function inWeek(date: Date): boolean {
-    const end = addDays(weekStart, 7);
-    return date >= weekStart && date < end;
-  }
-
   function dayIndex(date: Date): number {
-    const start = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
+    const start = new Date(
+      weekStart.getFullYear(),
+      weekStart.getMonth(),
+      weekStart.getDate(),
+    );
     const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     return Math.round((d.getTime() - start.getTime()) / 86_400_000);
   }
@@ -94,6 +112,24 @@ export function WeekCalendar({
         new Date(ev.endTime).getTime(),
       ),
     );
+
+  const eventBlocks = events.flatMap((event) => {
+    const start = zonedDate(event.startTime, timezone);
+    const end = zonedDate(event.endTime, timezone);
+    return daySegments(start, end)
+      .map((seg) => ({ event, seg }))
+      .filter(({ seg }) => {
+        const col = dayIndex(seg.day);
+        return col >= 0 && col <= 6 && seg.start < weekEnd && seg.end > weekStart;
+      });
+  });
+
+  const proposedBlocks = proposed
+    ? daySegments(proposed.start, proposed.end).filter((seg) => {
+        const col = dayIndex(seg.day);
+        return col >= 0 && col <= 6;
+      })
+    : [];
 
   return (
     <div className="week-cal">
@@ -165,61 +201,79 @@ export function WeekCalendar({
           ))}
 
           <div className="week-cal-overlay">
-            {events.map((event) => {
-              const start = localParts(event.startTime);
-              const end = localParts(event.endTime);
-              if (!inWeek(start)) {
-                return null;
-              }
-              const col = dayIndex(start);
-              if (col < 0 || col > 6) {
-                return null;
-              }
+            {eventBlocks.map(({ event, seg }) => {
+              const col = dayIndex(seg.day);
               const collide = collidingIds.has(event.id);
+              const spanClass = [
+                seg.continuesFromPrev ? "continues-prev" : "",
+                seg.continuesToNext ? "continues-next" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
               return (
                 <button
-                  key={event.id}
+                  key={`${event.id}-${dayKeySafe(seg.day)}`}
                   type="button"
-                  className={`week-cal-event ${eventStatusClass(event.status)}${event.duty === "OFF_DUTY" ? " offduty" : ""}${collide ? " collide" : ""}`}
+                  className={`week-cal-event ${eventStatusClass(event.status)}${event.duty === "OFF_DUTY" ? " offduty" : ""}${collide ? " collide" : ""}${spanClass ? ` ${spanClass}` : ""}`}
                   style={{
                     left: `calc((100% / 7) * ${col} + 2px)`,
                     width: "calc(100% / 7 - 4px)",
-                    top: `${topPct(start)}%`,
-                    height: `${Math.max(heightPct(start, end), 4)}%`,
+                    top: `${topPct(seg.start)}%`,
+                    height: `${Math.max(heightPct(seg.start, seg.end), 4)}%`,
                   }}
-                  title={`${event.title} · ${formatClock(event.startTime, timezone)} · ${event.status}`}
+                  title={`${event.title} · ${formatClock(event.startTime, timezone)} – ${formatClock(event.endTime, timezone)} · ${event.status}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelectEvent?.(event);
                   }}
                 >
                   {collide && <span className="week-cal-collide-layer" />}
-                  <span className="week-cal-event-title">{event.title}</span>
+                  <span className="week-cal-event-title">
+                    {seg.continuesFromPrev ? "↩ " : ""}
+                    {event.title}
+                    {seg.continuesToNext ? " →" : ""}
+                  </span>
                   <span className="week-cal-event-meta">
-                    {formatClock(event.startTime, timezone)} · {event.status.toLowerCase()}
+                    {formatClock(event.startTime, timezone)}
+                    {seg.continuesToNext || seg.continuesFromPrev
+                      ? ` – ${formatClock(event.endTime, timezone)}`
+                      : ""}{" "}
+                    · {event.status.toLowerCase()}
                   </span>
                 </button>
               );
             })}
 
-            {proposed && inWeek(proposed.start) && (
-              <div
-                className={`week-cal-event proposed${proposedCollides ? " collide" : ""}`}
-                style={{
-                  left: `calc((100% / 7) * ${dayIndex(proposed.start)} + 2px)`,
-                  width: "calc(100% / 7 - 4px)",
-                  top: `${topPct(proposed.start)}%`,
-                  height: `${Math.max(heightPct(proposed.start, proposed.end), 4)}%`,
-                }}
-              >
-                {proposedCollides && <span className="week-cal-collide-layer" />}
-                <span className="week-cal-event-title">{proposed.title || "New event"}</span>
-                <span className="week-cal-event-meta">proposed</span>
-              </div>
-            )}
+            {proposedBlocks.map((seg) => {
+              const col = dayIndex(seg.day);
+              return (
+                <div
+                  key={`proposed-${dayKeySafe(seg.day)}`}
+                  className={`week-cal-event proposed${proposedCollides ? " collide" : ""}${seg.continuesFromPrev ? " continues-prev" : ""}${seg.continuesToNext ? " continues-next" : ""}`}
+                  style={{
+                    left: `calc((100% / 7) * ${col} + 2px)`,
+                    width: "calc(100% / 7 - 4px)",
+                    top: `${topPct(seg.start)}%`,
+                    height: `${Math.max(heightPct(seg.start, seg.end), 4)}%`,
+                  }}
+                >
+                  {proposedCollides && <span className="week-cal-collide-layer" />}
+                  <span className="week-cal-event-title">
+                    {seg.continuesFromPrev ? "↩ " : ""}
+                    {proposed?.title || "New event"}
+                    {seg.continuesToNext ? " →" : ""}
+                  </span>
+                  <span className="week-cal-event-meta">proposed</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+function dayKeySafe(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
