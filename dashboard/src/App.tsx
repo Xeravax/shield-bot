@@ -27,20 +27,20 @@ const MIN_BOOT_MS = 3000;
 
 const TAB_COPY: Record<Tab, { title: string; subtitle: string }> = {
   home: {
-    title: "Command overview",
-    subtitle: "Your patrol hours, upcoming events, and essential handbooks.",
+    title: "Duty briefing",
+    subtitle: "Patrol hours, the published roster, and essential handbooks.",
   },
   admin: {
-    title: "Staff console",
-    subtitle: "Server health, hour adjustments, and moderation history.",
+    title: "Staff briefing",
+    subtitle: "Server pulse, member lookup, and recent cases.",
   },
   host: {
-    title: "Event hosting",
-    subtitle: "Schedule around collisions in your timezone.",
+    title: "Hosting desk",
+    subtitle: "Submit events for the roster in your timezone.",
   },
   trainer: {
-    title: "Trainer desk",
-    subtitle: "Handbooks for your trainer assignments.",
+    title: "Trainer assignments",
+    subtitle: "Handbooks for the desks you cover.",
   },
 };
 
@@ -165,52 +165,76 @@ export default function App() {
   const visibleTabs = tabs.filter((t) => t.show);
   const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : "home";
   const copy = TAB_COPY[activeTab];
+  const isHome = activeTab === "home";
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="topbar-row">
-          <div className="brand">
-            <img src="/logo.png" alt="SHIELD logo" />
-            <div className="brand-copy">
-              <p className="brand-kicker">S.H.I.E.L.D.</p>
-              <h1>Dashboard</h1>
-            </div>
-          </div>
-
-          <div className="profile-chip">
-            {displayUser.avatarUrl ? (
-              <img
-                src={displayUser.avatarUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="avatar-fallback">{initials}</div>
-            )}
-            <div className="profile-meta">
-              <strong>{displayUser.displayName}</strong>
-              <span>@{displayUser.username}</span>
-            </div>
+      <header className="status-ribbon">
+        <div className="ribbon-identity">
+          {displayUser.avatarUrl ? (
+            <img
+              src={displayUser.avatarUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="avatar-fallback">{initials}</div>
+          )}
+          <div className="ribbon-meta">
+            <strong>{displayUser.displayName}</strong>
+            <span>@{displayUser.username}</span>
           </div>
         </div>
 
-        <nav className="topbar-nav" aria-label="Dashboard sections">
-          {visibleTabs.map((t, index) => (
-            <button
-              key={t.id}
-              type="button"
-              className={`tab ${activeTab === t.id ? "active" : ""}`}
-              onClick={() => setTab(t.id)}
-            >
-              <span className="tab-index">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <span className="tab-label">{t.label}</span>
-            </button>
+        <div className="role-stamps">
+          <span
+            className={`role-stamp ${displayUser.shieldMember ? "on" : ""}`}
+          >
+            Recruit+
+          </span>
+          <span className={`role-stamp ${displayUser.deputy ? "on" : ""}`}>
+            Deputy+
+          </span>
+          {displayUser.staff && <span className="role-stamp on">Staff</span>}
+          {displayUser.host && <span className="role-stamp on">Host</span>}
+          {displayUser.trainerTypes.map((t) => (
+            <span key={t} className="role-stamp on">
+              {t.toUpperCase()}
+            </span>
           ))}
-        </nav>
+        </div>
       </header>
+
+      {isHome ? (
+        <div className="masthead masthead-hero">
+          <img src="/logo.png" alt="SHIELD logo" />
+          <p className="masthead-kicker">S.H.I.E.L.D.</p>
+          <h1>{copy.title}</h1>
+          <p className="masthead-dek">{copy.subtitle}</p>
+        </div>
+      ) : (
+        <div className="masthead masthead-compact">
+          <img src="/logo.png" alt="" />
+          <div>
+            <p className="masthead-kicker">S.H.I.E.L.D.</p>
+            <h2>{copy.title}</h2>
+            <p className="masthead-dek">{copy.subtitle}</p>
+          </div>
+        </div>
+      )}
+
+      <nav className="section-tabs" aria-label="Dashboard sections">
+        {visibleTabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`tab ${activeTab === t.id ? "active" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            <span className="tab-label">{t.label}</span>
+          </button>
+        ))}
+      </nav>
 
       <div className="workspace">
         {isAppPreview && (
@@ -224,28 +248,6 @@ export default function App() {
           <PreviewNotice className="app-level error" message={error} />
         )}
 
-        <div className="workspace-top">
-          <div>
-            <h2>{copy.title}</h2>
-            <p>{copy.subtitle}</p>
-          </div>
-          <div className="role-pills">
-            <span className={`role-pill ${displayUser.shieldMember ? "on" : ""}`}>
-              Recruit+
-            </span>
-            <span className={`role-pill ${displayUser.deputy ? "on" : ""}`}>
-              Deputy+
-            </span>
-            {displayUser.staff && <span className="role-pill on">Staff</span>}
-            {displayUser.host && <span className="role-pill on">Host</span>}
-            {displayUser.trainerTypes.map((t) => (
-              <span key={t} className="role-pill on">
-                {t.toUpperCase()}
-              </span>
-            ))}
-          </div>
-        </div>
-
         <main className="app-main">
           {activeTab === "home" && (
             <div className="panel home-grid">
@@ -254,12 +256,18 @@ export default function App() {
                 user={displayUser}
                 preview={isAppPreview}
               />
-              <CalendarPanel
-                token={token}
-                user={displayUser}
-                preview={isAppPreview}
-              />
-              <HandbookSection user={displayUser} />
+              {displayUser.shieldMember ? (
+                <>
+                  <CalendarPanel
+                    token={token}
+                    user={displayUser}
+                    preview={isAppPreview}
+                  />
+                  <HandbookSection user={displayUser} />
+                </>
+              ) : (
+                <HandbookSection user={displayUser} />
+              )}
             </div>
           )}
           {activeTab === "admin" && tabUser?.staff && (
@@ -280,8 +288,8 @@ export default function App() {
           {activeTab === "trainer" &&
             tabUser &&
             tabUser.trainerTypes.length > 0 && (
-            <TrainerPanel user={tabUser} />
-          )}
+              <TrainerPanel user={tabUser} />
+            )}
         </main>
       </div>
     </div>

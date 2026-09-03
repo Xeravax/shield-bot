@@ -39,13 +39,13 @@ export function HoursPanel({ token, user, preview = false }: Props) {
   const total = displayMonths.reduce((sum, m) => sum + m.hours, 0);
 
   return (
-    <section className={`surface hours-panel${isPreview ? " preview" : ""}`}>
-      <div className="surface-head">
+    <section className={`dossier hours-panel${isPreview ? " preview" : ""}`}>
+      <div className="dossier-head">
         <div>
           <h2>Patrol hours</h2>
-          <p>Monthly totals as a graph — UTC months.</p>
+          <p>Current month spotlight — UTC months.</p>
         </div>
-        <div className="chip-row">
+        <div className="chip-row" role="group" aria-label="Month range">
           {[3, 6, 12].map((n) => (
             <button
               key={n}

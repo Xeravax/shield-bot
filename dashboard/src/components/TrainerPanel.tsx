@@ -39,7 +39,7 @@ export function TrainerPanel({ user }: Props) {
   if (sections.length === 0) {
     return (
       <div className="panel">
-        <section className="surface">
+        <section className="dossier">
           <p>No trainer roles assigned.</p>
         </section>
       </div>
@@ -49,15 +49,16 @@ export function TrainerPanel({ user }: Props) {
   return (
     <div className="panel trainer-grid">
       {sections.map((s) => (
-        <section key={s.type} className="surface">
-          <div className="surface-head">
+        <section key={s.type} className="dossier trainer-dossier">
+          <div className="dossier-head">
             <div>
               <h2>{s.title}</h2>
               <p>{s.blurb}</p>
             </div>
           </div>
-          <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-            More trainer tools will be added here later.
+          <p className="trainer-note">
+            Assignment desk — handbook for this role. More tools will land here
+            later.
           </p>
           <ExternalLink href={s.href}>Open trainer handbook</ExternalLink>
         </section>

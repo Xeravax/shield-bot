@@ -31,11 +31,11 @@ export function ExternalLink({
 export function HandbookSection({ user }: Props) {
   if (!user.shieldMember) {
     return (
-      <section className="surface resources-panel">
-        <div className="surface-head">
+      <section className="dossier resources-panel">
+        <div className="dossier-head">
           <div>
-            <h2>Resources</h2>
-            <p>SHIELD handbooks unlock at Recruit+.</p>
+            <h2>Dossier</h2>
+            <p>Handbooks unlock at Recruit+.</p>
           </div>
         </div>
         <div className="notice">
@@ -48,10 +48,10 @@ export function HandbookSection({ user }: Props) {
   }
 
   return (
-    <section className="surface resources-panel">
-      <div className="surface-head">
+    <section className="dossier resources-panel">
+      <div className="dossier-head">
         <div>
-          <h2>Resources</h2>
+          <h2>Handbooks</h2>
           <p>Open guides outside Discord.</p>
         </div>
       </div>

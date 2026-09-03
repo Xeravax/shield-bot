@@ -106,7 +106,7 @@ export function AdminPanel({ token, preview = false }: Props) {
   const displayOverview = isOverviewPreview ? mockAdminOverview() : overview;
 
   const sections: Array<{ id: AdminSection; label: string; hint: string }> = [
-    { id: "pulse", label: "Server pulse", hint: "Membership & activity counts" },
+    { id: "pulse", label: "Server pulse", hint: "Membership & activity" },
     { id: "lookup", label: "Member lookup", hint: "Hours & mod history" },
     { id: "cases", label: "Recent cases", hint: "Latest moderation" },
   ];
@@ -129,8 +129,8 @@ export function AdminPanel({ token, preview = false }: Props) {
 
       <div className="admin-stage">
         {section === "pulse" && (
-          <section className={`surface${isOverviewPreview ? " preview" : ""}`}>
-            <div className="surface-head">
+          <section className={`dossier${isOverviewPreview ? " preview" : ""}`}>
+            <div className="dossier-head">
               <div>
                 <h2>Server pulse</h2>
                 <p>Live counts across membership, events, and patrols.</p>
@@ -164,8 +164,8 @@ export function AdminPanel({ token, preview = false }: Props) {
         )}
 
         {section === "lookup" && (
-          <section className="surface">
-            <div className="surface-head">
+          <section className="dossier">
+            <div className="dossier-head">
               <div>
                 <h2>Member lookup</h2>
                 <p>Patrol hours and moderation history by Discord user ID.</p>
@@ -279,8 +279,8 @@ export function AdminPanel({ token, preview = false }: Props) {
         )}
 
         {section === "cases" && (
-          <section className={`surface${isOverviewPreview ? " preview" : ""}`}>
-            <div className="surface-head">
+          <section className={`dossier${isOverviewPreview ? " preview" : ""}`}>
+            <div className="dossier-head">
               <div>
                 <h2>Recent cases</h2>
                 <p>Latest moderation activity across the guild.</p>

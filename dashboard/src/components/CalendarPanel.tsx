@@ -63,11 +63,11 @@ export function CalendarPanel({ token, user, preview = false }: Props) {
   const selectedEvents = byDay.get(dayKey(selectedDay)) ?? [];
 
   return (
-    <section className={`surface calendar-panel${isPreview ? " preview" : ""}`}>
-      <div className="surface-head">
+    <section className={`dossier calendar-panel${isPreview ? " preview" : ""}`}>
+      <div className="dossier-head">
         <div>
-          <h2>Schedule</h2>
-          <p>Published Discord events on a month calendar.</p>
+          <h2>Duty board</h2>
+          <p>Published Discord events for the month.</p>
         </div>
         <div className="btn-row calendar-subscribe">
           <button
@@ -75,14 +75,14 @@ export function CalendarPanel({ token, user, preview = false }: Props) {
             className="btn secondary"
             onClick={() => void openExternalLink(links.googleUrl)}
           >
-            Google Calendar
+            Google
           </button>
           <button
             type="button"
             className="btn secondary"
             onClick={() => void openExternalLink(links.appleUrl)}
           >
-            Apple Calendar
+            Apple
           </button>
         </div>
       </div>

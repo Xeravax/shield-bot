@@ -25,7 +25,7 @@ export function PipPresence({ user, initials }: Props) {
       </div>
       <div className="pip-presence-copy">
         <p className="pip-kicker">S.H.I.E.L.D.</p>
-        <p className="pip-title">Dashboard</p>
+        <p className="pip-title">Briefing</p>
         <p className="pip-user">{user.displayName}</p>
       </div>
     </div>

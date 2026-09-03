@@ -142,8 +142,8 @@ export function HostPanel({
   if (!user.timezoneStored) {
     return (
       <div className="panel">
-        <section className="surface" style={{ maxWidth: 520 }}>
-          <div className="surface-head">
+        <section className="dossier" style={{ maxWidth: 520 }}>
+          <div className="dossier-head">
             <div>
               <h2>Set your timezone</h2>
               <p>
@@ -267,10 +267,10 @@ export function HostPanel({
 
   return (
     <div className="panel host-grid">
-      <section className={`surface${preview ? " preview" : ""}`}>
-        <div className="surface-head">
+      <section className={`dossier${preview ? " preview" : ""}`}>
+        <div className="dossier-head">
           <div>
-            <h2>{editingId != null ? "Edit event" : "Schedule event"}</h2>
+            <h2>{editingId != null ? "Edit roster entry" : "Submit for roster"}</h2>
             <p>
               Pick a start date &amp; time in <strong>{user.timezone}</strong>.
               {user.hostLead
@@ -453,8 +453,8 @@ export function HostPanel({
       </section>
 
       <div className="host-side">
-        <section className={`surface${preview ? " preview" : ""}`}>
-          <div className="surface-head">
+        <section className={`dossier${preview ? " preview" : ""}`}>
+          <div className="dossier-head">
             <div>
               <h2>Your queue</h2>
               <p>
@@ -498,8 +498,8 @@ export function HostPanel({
           )}
         </section>
 
-        <section className={`surface${preview ? " preview" : ""}`}>
-          <div className="surface-head">
+        <section className={`dossier${preview ? " preview" : ""}`}>
+          <div className="dossier-head">
             <div>
               <h2>Published calendar</h2>
               <p>Read-only view of live Discord events (for conflicts).</p>
@@ -513,7 +513,7 @@ export function HostPanel({
           />
         </section>
 
-        <section className="surface">
+        <section className="dossier">
           <h3 style={{ margin: "0 0 0.65rem", color: "var(--gold)" }}>
             Hosting guides
           </h3>
