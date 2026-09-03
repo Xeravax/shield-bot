@@ -112,22 +112,22 @@ export function AdminPanel({ token, preview = false }: Props) {
   ];
 
   return (
-    <div className="panel admin-shell">
-      <nav className="admin-rail" aria-label="Admin sections">
+    <div className="panel folder-shell">
+      <nav className="folder-rail" aria-label="Admin sections">
         {sections.map((s) => (
           <button
             key={s.id}
             type="button"
-            className={`admin-rail-item ${section === s.id ? "active" : ""}`}
+            className={`folder-rail-tab folder-rail-${s.id}${section === s.id ? " active" : ""}`}
             onClick={() => setSection(s.id)}
           >
-            <span className="admin-rail-label">{s.label}</span>
-            <span className="admin-rail-hint">{s.hint}</span>
+            <span className="folder-rail-label">{s.label}</span>
+            <span className="folder-rail-hint">{s.hint}</span>
           </button>
         ))}
       </nav>
 
-      <div className="admin-stage">
+      <div className="folder-stage">
         {section === "pulse" && (
           <section className={`dossier${isOverviewPreview ? " preview" : ""}`}>
             <div className="dossier-head">

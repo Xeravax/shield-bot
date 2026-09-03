@@ -7,7 +7,7 @@ interface Props {
   onDone: () => void;
 }
 
-/** Briefing-folder boot gate: idle closed while loading, then opens to reveal. */
+/** Briefing-folder boot gate: idle closed while loading, then cover opens. */
 export function BootSplash({ phase, onDone }: Props) {
   const doneRef = useRef(false);
 
@@ -63,14 +63,12 @@ export function BootSplash({ phase, onDone }: Props) {
             </p>
           </div>
 
-          <div className="folder-body" aria-hidden="true">
+          <div className="folder-pocket" aria-hidden="true">
             <span className="folder-tab">BRIEFING</span>
             <span className="folder-label">DUTY FILE</span>
           </div>
 
-          <div className="folder-flap" aria-hidden="true">
-            <span className="folder-flap-edge" />
-          </div>
+          <div className="folder-cover" aria-hidden="true" />
         </div>
       </div>
     </div>

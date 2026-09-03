@@ -1,4 +1,5 @@
 import { HANDBOOK_LINKS, type DashboardUser } from "../api";
+import { useMemo, useState } from "react";
 import { ExternalLink } from "./HandbookSection";
 
 interface Props {
@@ -32,11 +33,16 @@ const TRAINER_SECTIONS: Array<{
 ];
 
 export function TrainerPanel({ user }: Props) {
-  const sections = TRAINER_SECTIONS.filter((s) =>
-    user.trainerTypes.includes(s.type),
+  const sections = useMemo(
+    () =>
+      TRAINER_SECTIONS.filter((s) => user.trainerTypes.includes(s.type)),
+    [user.trainerTypes],
   );
+  const [active, setActive] = useState(sections[0]?.type ?? "emt");
+  const current =
+    sections.find((s) => s.type === active) ?? sections[0] ?? null;
 
-  if (sections.length === 0) {
+  if (sections.length === 0 || !current) {
     return (
       <div className="panel">
         <section className="dossier">
@@ -47,22 +53,36 @@ export function TrainerPanel({ user }: Props) {
   }
 
   return (
-    <div className="panel trainer-grid">
-      {sections.map((s) => (
-        <section key={s.type} className="dossier trainer-dossier">
+    <div className="panel folder-shell">
+      <nav className="folder-rail" aria-label="Trainer assignments">
+        {sections.map((s) => (
+          <button
+            key={s.type}
+            type="button"
+            className={`folder-rail-tab folder-rail-${s.type}${current.type === s.type ? " active" : ""}`}
+            onClick={() => setActive(s.type)}
+          >
+            <span className="folder-rail-label">{s.title}</span>
+            <span className="folder-rail-hint">{s.type.toUpperCase()}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div className="folder-stage">
+        <section className="dossier trainer-dossier">
           <div className="dossier-head">
             <div>
-              <h2>{s.title}</h2>
-              <p>{s.blurb}</p>
+              <h2>{current.title}</h2>
+              <p>{current.blurb}</p>
             </div>
           </div>
           <p className="trainer-note">
             Assignment desk — handbook for this role. More tools will land here
             later.
           </p>
-          <ExternalLink href={s.href}>Open trainer handbook</ExternalLink>
+          <ExternalLink href={current.href}>Open trainer handbook</ExternalLink>
         </section>
-      ))}
+      </div>
     </div>
   );
 }

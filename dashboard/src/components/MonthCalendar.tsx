@@ -99,17 +99,15 @@ export function MonthCalendar({
             >
               <span className="month-cal-date">{day.getDate()}</span>
               <div className="month-cal-events">
-                {dayEvents.slice(0, 3).map((event) => (
+                {dayEvents.slice(0, 4).map((event) => (
                   <span
                     key={event.id}
-                    className={`month-cal-pill ${event.duty === "OFF_DUTY" ? "offduty" : "onduty"}`}
+                    className={`month-cal-dot ${event.duty === "OFF_DUTY" ? "offduty" : "onduty"}`}
                     title={`${event.title} · ${formatClock(event.startTime, timezone)}`}
-                  >
-                    {formatClock(event.startTime, timezone)} {event.title}
-                  </span>
+                  />
                 ))}
-                {dayEvents.length > 3 && (
-                  <span className="month-cal-more">+{dayEvents.length - 3}</span>
+                {dayEvents.length > 4 && (
+                  <span className="month-cal-more">+{dayEvents.length - 4}</span>
                 )}
               </div>
             </button>

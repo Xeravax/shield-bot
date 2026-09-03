@@ -203,7 +203,8 @@ export default function App() {
             <div className="case-brand">
               <img src="/logo.png" alt="SHIELD logo" />
               <p className="masthead-kicker">S.H.I.E.L.D.</p>
-              <p className="case-file-no">CASE FILE</p>
+              <h1>{copy.title}</h1>
+              <p className="case-dek">{copy.subtitle}</p>
             </div>
 
             <div className="role-stamps">
@@ -226,11 +227,6 @@ export default function App() {
               ))}
             </div>
           </header>
-
-          <div className="case-briefing">
-            <h1>{copy.title}</h1>
-            <p>{copy.subtitle}</p>
-          </div>
 
           <div className="workspace">
             {isAppPreview && (

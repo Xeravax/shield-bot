@@ -90,6 +90,9 @@ export function HostPanel({
   const [busy, setBusy] = useState(false);
   const [published, setPublished] = useState<CalendarEvent[]>([]);
   const [managed, setManaged] = useState<CalendarEvent[]>([]);
+  const [hostSection, setHostSection] = useState<
+    "schedule" | "queue" | "board"
+  >("schedule");
 
   const range = useMemo(() => {
     const from = new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1);
@@ -210,6 +213,7 @@ export function HostPanel({
     setMessage(null);
     setError(null);
     setRules([]);
+    setHostSection("schedule");
   }
 
   async function checkCollision() {
@@ -266,269 +270,311 @@ export function HostPanel({
   }
 
   return (
-    <div className="panel host-grid">
-      <section className={`dossier${preview ? " preview" : ""}`}>
-        <div className="dossier-head">
-          <div>
-            <h2>{editingId != null ? "Edit roster entry" : "Submit for roster"}</h2>
-            <p>
-              Pick a start date &amp; time in <strong>{user.timezone}</strong>.
-              {user.hostLead
-                ? " Team lead: you can edit any pending draft."
-                : " You can edit your own drafts and pending events."}
-            </p>
-          </div>
-        </div>
-        {preview && (
-          <PreviewNotice message="Event scheduling unavailable in sample mode." />
-        )}
+    <div className="panel folder-shell">
+      <nav className="folder-rail" aria-label="Host sections">
+        <button
+          type="button"
+          className={`folder-rail-tab folder-rail-schedule${hostSection === "schedule" ? " active" : ""}`}
+          onClick={() => setHostSection("schedule")}
+        >
+          <span className="folder-rail-label">Schedule</span>
+          <span className="folder-rail-hint">Submit for roster</span>
+        </button>
+        <button
+          type="button"
+          className={`folder-rail-tab folder-rail-queue${hostSection === "queue" ? " active" : ""}`}
+          onClick={() => setHostSection("queue")}
+        >
+          <span className="folder-rail-label">Queue</span>
+          <span className="folder-rail-hint">Your drafts</span>
+        </button>
+        <button
+          type="button"
+          className={`folder-rail-tab folder-rail-board${hostSection === "board" ? " active" : ""}`}
+          onClick={() => setHostSection("board")}
+        >
+          <span className="folder-rail-label">Board</span>
+          <span className="folder-rail-hint">Published + guides</span>
+        </button>
+      </nav>
 
-        <div className="form-row">
-          <label htmlFor="title">Title</label>
-          <input
-            id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Patrol Event"
-            disabled={preview}
-          />
-        </div>
-
-        <div className="form-row">
-          <label htmlFor="starts">Starts at (local)</label>
-          <input
-            id="starts"
-            type="datetime-local"
-            value={startsAt}
-            onChange={(e) => setStartsAt(e.target.value)}
-            disabled={preview}
-          />
-          <div className="chip-row" style={{ marginTop: "0.5rem" }}>
-            <button
-              type="button"
-              className="chip"
-              disabled={preview}
-              onClick={() => setStartsAt(defaultDatetimeLocal(user.timezone))}
-            >
-              Tonight 20:00
-            </button>
-            <button
-              type="button"
-              className="chip"
-              disabled={preview}
-              onClick={() =>
-                setStartsAt(shiftDays(defaultDatetimeLocal(user.timezone), 1))
-              }
-            >
-              Tomorrow 20:00
-            </button>
-            <button
-              type="button"
-              className="chip"
-              disabled={preview}
-              onClick={() => {
-                const base = new Date();
-                const day = base.getDay();
-                const add = (7 - day) % 7 || 7;
-                setStartsAt(shiftDays(toDatetimeLocal(base), add, 20));
-              }}
-            >
-              Next Sunday 20:00
-            </button>
-          </div>
-        </div>
-
-        <div className="form-row">
-          <label htmlFor="duty">Duty</label>
-          <select
-            id="duty"
-            value={duty}
-            onChange={(e) =>
-              setDuty(e.target.value as "ON_DUTY" | "OFF_DUTY")
-            }
-            disabled={preview}
-          >
-            <option value="ON_DUTY">On-duty</option>
-            <option value="OFF_DUTY">Off-duty</option>
-          </select>
-        </div>
-        <div className="form-row">
-          <label htmlFor="duration">Duration (minutes)</label>
-          <select
-            id="duration"
-            value={duration}
-            onChange={(e) => setDuration(Number(e.target.value))}
-            disabled={preview}
-          >
-            {duty === "ON_DUTY" ? (
-              <>
-                <option value={120}>2 hours</option>
-                <option value={180}>3 hours</option>
-              </>
-            ) : (
-              <>
-                <option value={60}>1 hour</option>
-                <option value={120}>2 hours</option>
-                <option value={180}>3 hours</option>
-              </>
+      <div className="folder-stage">
+        {hostSection === "schedule" && (
+          <section className={`dossier${preview ? " preview" : ""}`}>
+            <div className="dossier-head">
+              <div>
+                <h2>
+                  {editingId != null ? "Edit roster entry" : "Submit for roster"}
+                </h2>
+                <p>
+                  Pick a start date &amp; time in{" "}
+                  <strong>{user.timezone}</strong>.
+                  {user.hostLead
+                    ? " Team lead: you can edit any pending draft."
+                    : " You can edit your own drafts and pending events."}
+                </p>
+              </div>
+            </div>
+            {preview && (
+              <PreviewNotice message="Event scheduling unavailable in sample mode." />
             )}
-          </select>
-        </div>
-        <div className="form-row">
-          <label htmlFor="etype">Event type (optional)</label>
-          <select
-            id="etype"
-            value={eventType}
-            onChange={(e) => setEventType(e.target.value)}
-            disabled={preview}
-          >
-            <option value="">Auto</option>
-            <option value="PATROL">Patrol</option>
-            <option value="GAME">Game</option>
-            <option value="SPECIAL">Special</option>
-            <option value="RECRUITMENT">Recruitment</option>
-            <option value="OTHER">Other</option>
-          </select>
-        </div>
 
-        {user.canForceSchedule && (
-          <label className="force-toggle">
-            <input
-              type="checkbox"
-              checked={force}
-              disabled={preview}
-              onChange={(e) => setForce(e.target.checked)}
-            />
-            <span>
-              Force schedule (bypass week / collision rules — team lead)
-            </span>
-          </label>
-        )}
-
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn secondary"
-            disabled={preview || busy}
-            onClick={() => void checkCollision()}
-          >
-            Check collisions
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={preview || busy || !title.trim()}
-            onClick={() => void submitEvent()}
-          >
-            {editingId != null ? "Save changes" : "Create draft"}
-          </button>
-          {editingId != null && (
-            <button
-              type="button"
-              className="btn secondary"
-              disabled={busy}
-              onClick={resetForm}
-            >
-              Cancel edit
-            </button>
-          )}
-        </div>
-
-        {rules.length > 0 && (
-          <ul className="rule-list">
-            {rules.map((r) => (
-              <li key={r.id} className={`rule-item ${r.severity}`}>
-                <strong>{r.label}:</strong> {r.message}
-              </li>
-            ))}
-          </ul>
-        )}
-        {blocking && (
-          <p style={{ color: "var(--danger)" }}>
-            Blocking rule failures must be resolved before submitting.
-          </p>
-        )}
-        {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
-        {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-      </section>
-
-      <div className="host-side">
-        <section className={`dossier${preview ? " preview" : ""}`}>
-          <div className="dossier-head">
-            <div>
-              <h2>Your queue</h2>
-              <p>
-                {user.hostLead
-                  ? "All draft / pending / denied events."
-                  : "Your draft, pending, and denied events."}
-              </p>
+            <div className="form-row">
+              <label htmlFor="title">Title</label>
+              <input
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Patrol Event"
+                disabled={preview}
+              />
             </div>
-          </div>
-          {managed.length === 0 ? (
-            <p>No events in the queue.</p>
-          ) : (
-            <ul className="event-list">
-              {managed.map((event) => (
-                <li
-                  key={event.id}
-                  className={`event-item ${event.duty === "OFF_DUTY" ? "offduty" : ""} ${event.status === "DENIED" ? "pending" : ""}`}
+
+            <div className="form-row">
+              <label htmlFor="starts">Starts at (local)</label>
+              <input
+                id="starts"
+                type="datetime-local"
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                disabled={preview}
+              />
+              <div className="chip-row" style={{ marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="chip"
+                  disabled={preview}
+                  onClick={() =>
+                    setStartsAt(defaultDatetimeLocal(user.timezone))
+                  }
                 >
-                  <span className="event-accent" />
-                  <div>
-                    <div className="event-title">{event.title}</div>
-                    <div className="event-meta">
-                      {formatClock(event.startTime, user.timezone)} ·{" "}
-                      {event.status.toLowerCase()}
-                      {event.denialReason ? ` — ${event.denialReason}` : ""}
-                    </div>
-                  </div>
-                  {event.canEdit !== false && (
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      disabled={preview}
-                      onClick={() => loadEventIntoForm(event)}
-                    >
-                      Edit
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className={`dossier${preview ? " preview" : ""}`}>
-          <div className="dossier-head">
-            <div>
-              <h2>Published calendar</h2>
-              <p>Read-only view of live Discord events (for conflicts).</p>
+                  Tonight 20:00
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  disabled={preview}
+                  onClick={() =>
+                    setStartsAt(
+                      shiftDays(defaultDatetimeLocal(user.timezone), 1),
+                    )
+                  }
+                >
+                  Tomorrow 20:00
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  disabled={preview}
+                  onClick={() => {
+                    const base = new Date();
+                    const day = base.getDay();
+                    const add = (7 - day) % 7 || 7;
+                    setStartsAt(shiftDays(toDatetimeLocal(base), add, 20));
+                  }}
+                >
+                  Next Sunday 20:00
+                </button>
+              </div>
             </div>
-          </div>
-          <MonthCalendar
-            viewMonth={viewMonth}
-            onViewMonthChange={setViewMonth}
-            events={displayPublished}
-            timezone={user.timezone}
-          />
-        </section>
 
-        <section className="dossier">
-          <h3 style={{ margin: "0 0 0.65rem", color: "var(--gold)" }}>
-            Hosting guides
-          </h3>
-          <div className="resource-grid">
-            <ExternalLink href={HANDBOOK_LINKS.hosting101}>
-              Event Hosting 101
-            </ExternalLink>
-            <ExternalLink href={HANDBOOK_LINKS.attendance}>
-              Attendance System
-            </ExternalLink>
-            <ExternalLink href={HANDBOOK_LINKS.scheduling}>
-              Event Scheduling System
-            </ExternalLink>
-          </div>
-        </section>
+            <div className="form-row">
+              <label htmlFor="duty">Duty</label>
+              <select
+                id="duty"
+                value={duty}
+                onChange={(e) =>
+                  setDuty(e.target.value as "ON_DUTY" | "OFF_DUTY")
+                }
+                disabled={preview}
+              >
+                <option value="ON_DUTY">On-duty</option>
+                <option value="OFF_DUTY">Off-duty</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label htmlFor="duration">Duration (minutes)</label>
+              <select
+                id="duration"
+                value={duration}
+                onChange={(e) => setDuration(Number(e.target.value))}
+                disabled={preview}
+              >
+                {duty === "ON_DUTY" ? (
+                  <>
+                    <option value={120}>2 hours</option>
+                    <option value={180}>3 hours</option>
+                  </>
+                ) : (
+                  <>
+                    <option value={60}>1 hour</option>
+                    <option value={120}>2 hours</option>
+                    <option value={180}>3 hours</option>
+                  </>
+                )}
+              </select>
+            </div>
+            <div className="form-row">
+              <label htmlFor="etype">Event type (optional)</label>
+              <select
+                id="etype"
+                value={eventType}
+                onChange={(e) => setEventType(e.target.value)}
+                disabled={preview}
+              >
+                <option value="">Auto</option>
+                <option value="PATROL">Patrol</option>
+                <option value="GAME">Game</option>
+                <option value="SPECIAL">Special</option>
+                <option value="RECRUITMENT">Recruitment</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+
+            {user.canForceSchedule && (
+              <label className="force-toggle">
+                <input
+                  type="checkbox"
+                  checked={force}
+                  disabled={preview}
+                  onChange={(e) => setForce(e.target.checked)}
+                />
+                <span>
+                  Force schedule (bypass week / collision rules — team lead)
+                </span>
+              </label>
+            )}
+
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={preview || busy}
+                onClick={() => void checkCollision()}
+              >
+                Check collisions
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={preview || busy || !title.trim()}
+                onClick={() => void submitEvent()}
+              >
+                {editingId != null ? "Save changes" : "Create draft"}
+              </button>
+              {editingId != null && (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={busy}
+                  onClick={resetForm}
+                >
+                  Cancel edit
+                </button>
+              )}
+            </div>
+
+            {rules.length > 0 && (
+              <ul className="rule-list">
+                {rules.map((r) => (
+                  <li key={r.id} className={`rule-item ${r.severity}`}>
+                    <strong>{r.label}:</strong> {r.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {blocking && (
+              <p style={{ color: "var(--danger)" }}>
+                Blocking rule failures must be resolved before submitting.
+              </p>
+            )}
+            {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
+            {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+          </section>
+        )}
+
+        {hostSection === "queue" && (
+          <section className={`dossier${preview ? " preview" : ""}`}>
+            <div className="dossier-head">
+              <div>
+                <h2>Your queue</h2>
+                <p>
+                  {user.hostLead
+                    ? "All draft / pending / denied events."
+                    : "Your draft, pending, and denied events."}
+                </p>
+              </div>
+            </div>
+            {managed.length === 0 ? (
+              <p>No events in the queue.</p>
+            ) : (
+              <ul className="event-list">
+                {managed.map((event) => (
+                  <li
+                    key={event.id}
+                    className={`event-item ${event.duty === "OFF_DUTY" ? "offduty" : ""} ${event.status === "DENIED" ? "pending" : ""}`}
+                  >
+                    <span className="event-accent" />
+                    <div>
+                      <div className="event-title">{event.title}</div>
+                      <div className="event-meta">
+                        {formatClock(event.startTime, user.timezone)} ·{" "}
+                        {event.status.toLowerCase()}
+                        {event.denialReason ? ` — ${event.denialReason}` : ""}
+                      </div>
+                    </div>
+                    {event.canEdit !== false && (
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        disabled={preview}
+                        onClick={() => loadEventIntoForm(event)}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {hostSection === "board" && (
+          <>
+            <section className={`dossier${preview ? " preview" : ""}`}>
+              <div className="dossier-head">
+                <div>
+                  <h2>Published calendar</h2>
+                  <p>Read-only view of live Discord events (for conflicts).</p>
+                </div>
+              </div>
+              <MonthCalendar
+                viewMonth={viewMonth}
+                onViewMonthChange={setViewMonth}
+                events={displayPublished}
+                timezone={user.timezone}
+              />
+            </section>
+
+            <section className="dossier">
+              <h3 style={{ margin: "0 0 0.65rem", color: "var(--gold)" }}>
+                Hosting guides
+              </h3>
+              <div className="resource-grid">
+                <ExternalLink href={HANDBOOK_LINKS.hosting101}>
+                  Event Hosting 101
+                </ExternalLink>
+                <ExternalLink href={HANDBOOK_LINKS.attendance}>
+                  Attendance System
+                </ExternalLink>
+                <ExternalLink href={HANDBOOK_LINKS.scheduling}>
+                  Event Scheduling System
+                </ExternalLink>
+              </div>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );
