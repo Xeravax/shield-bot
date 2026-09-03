@@ -53,6 +53,7 @@ function sleep(ms: number): Promise<void> {
 export default function App() {
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [tab, setTab] = useState<Tab>("home");
+  const [flipDir, setFlipDir] = useState<"fwd" | "back">("fwd");
   const [splashPhase, setSplashPhase] = useState<BootSplashPhase>("loading");
   const [showApp, setShowApp] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -166,6 +167,17 @@ export default function App() {
   const activeTab = visibleTabs.some((t) => t.id === tab) ? tab : "home";
   const copy = TAB_COPY[activeTab];
 
+  function selectTab(next: Tab) {
+    if (next === activeTab) {
+      return;
+    }
+    const order = visibleTabs.map((t) => t.id);
+    const from = order.indexOf(activeTab);
+    const to = order.indexOf(next);
+    setFlipDir(to >= from ? "fwd" : "back");
+    setTab(next);
+  }
+
   return (
     <div className="app">
       <div className={`case-file case-${activeTab}`} data-tab={activeTab}>
@@ -175,7 +187,7 @@ export default function App() {
               key={t.id}
               type="button"
               className={`case-tab case-tab-${t.id}${activeTab === t.id ? " active" : ""}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => selectTab(t.id)}
             >
               <span className="tab-label">{t.label}</span>
             </button>
@@ -240,7 +252,10 @@ export default function App() {
               <PreviewNotice className="app-level error" message={error} />
             )}
 
-            <main className="app-main">
+            <main
+              key={activeTab}
+              className={`app-main flip-${flipDir}`}
+            >
               {activeTab === "home" && (
                 <div className="panel home-grid">
                   <HoursPanel

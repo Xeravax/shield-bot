@@ -93,6 +93,7 @@ export function HostPanel({
   const [hostSection, setHostSection] = useState<
     "schedule" | "queue" | "board"
   >("schedule");
+  const [flipDir, setFlipDir] = useState<"fwd" | "back">("fwd");
 
   const range = useMemo(() => {
     const from = new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1);
@@ -213,6 +214,7 @@ export function HostPanel({
     setMessage(null);
     setError(null);
     setRules([]);
+    setFlipDir("back");
     setHostSection("schedule");
   }
 
@@ -272,33 +274,45 @@ export function HostPanel({
   return (
     <div className="panel folder-shell">
       <nav className="folder-rail" aria-label="Host sections">
-        <button
-          type="button"
-          className={`folder-rail-tab folder-rail-schedule${hostSection === "schedule" ? " active" : ""}`}
-          onClick={() => setHostSection("schedule")}
-        >
-          <span className="folder-rail-label">Schedule</span>
-          <span className="folder-rail-hint">Submit for roster</span>
-        </button>
-        <button
-          type="button"
-          className={`folder-rail-tab folder-rail-queue${hostSection === "queue" ? " active" : ""}`}
-          onClick={() => setHostSection("queue")}
-        >
-          <span className="folder-rail-label">Queue</span>
-          <span className="folder-rail-hint">Your drafts</span>
-        </button>
-        <button
-          type="button"
-          className={`folder-rail-tab folder-rail-board${hostSection === "board" ? " active" : ""}`}
-          onClick={() => setHostSection("board")}
-        >
-          <span className="folder-rail-label">Board</span>
-          <span className="folder-rail-hint">Published + guides</span>
-        </button>
+        {(
+          [
+            {
+              id: "schedule" as const,
+              label: "Schedule",
+              hint: "Submit for roster",
+            },
+            { id: "queue" as const, label: "Queue", hint: "Your drafts" },
+            {
+              id: "board" as const,
+              label: "Board",
+              hint: "Published + guides",
+            },
+          ] as const
+        ).map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className={`folder-rail-tab folder-rail-${s.id}${hostSection === s.id ? " active" : ""}`}
+            onClick={() => {
+              if (s.id === hostSection) {
+                return;
+              }
+              const order = ["schedule", "queue", "board"] as const;
+              setFlipDir(
+                order.indexOf(s.id) >= order.indexOf(hostSection)
+                  ? "fwd"
+                  : "back",
+              );
+              setHostSection(s.id);
+            }}
+          >
+            <span className="folder-rail-label">{s.label}</span>
+            <span className="folder-rail-hint">{s.hint}</span>
+          </button>
+        ))}
       </nav>
 
-      <div className="folder-stage">
+      <div key={hostSection} className={`folder-stage flip-${flipDir}`}>
         {hostSection === "schedule" && (
           <section className={`dossier${preview ? " preview" : ""}`}>
             <div className="dossier-head">

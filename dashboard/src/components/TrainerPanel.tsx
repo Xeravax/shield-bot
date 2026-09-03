@@ -39,6 +39,7 @@ export function TrainerPanel({ user }: Props) {
     [user.trainerTypes],
   );
   const [active, setActive] = useState(sections[0]?.type ?? "emt");
+  const [flipDir, setFlipDir] = useState<"fwd" | "back">("fwd");
   const current =
     sections.find((s) => s.type === active) ?? sections[0] ?? null;
 
@@ -60,7 +61,16 @@ export function TrainerPanel({ user }: Props) {
             key={s.type}
             type="button"
             className={`folder-rail-tab folder-rail-${s.type}${current.type === s.type ? " active" : ""}`}
-            onClick={() => setActive(s.type)}
+            onClick={() => {
+              if (s.type === active) {
+                return;
+              }
+              const order = sections.map((x) => x.type);
+              setFlipDir(
+                order.indexOf(s.type) >= order.indexOf(active) ? "fwd" : "back",
+              );
+              setActive(s.type);
+            }}
           >
             <span className="folder-rail-label">{s.title}</span>
             <span className="folder-rail-hint">{s.type.toUpperCase()}</span>
@@ -68,7 +78,7 @@ export function TrainerPanel({ user }: Props) {
         ))}
       </nav>
 
-      <div className="folder-stage">
+      <div key={current.type} className={`folder-stage flip-${flipDir}`}>
         <section className="dossier trainer-dossier">
           <div className="dossier-head">
             <div>

@@ -6,7 +6,7 @@ interface Props {
 
 export function HoursChart({ months }: Props) {
   const width = 640;
-  const height = 148;
+  const height = 120;
   const pad = { top: 14, right: 12, bottom: 32, left: 36 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;

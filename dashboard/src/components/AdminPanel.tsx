@@ -22,6 +22,7 @@ type AdminSection = "pulse" | "lookup" | "cases";
 
 export function AdminPanel({ token, preview = false }: Props) {
   const [section, setSection] = useState<AdminSection>("pulse");
+  const [flipDir, setFlipDir] = useState<"fwd" | "back">("fwd");
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(!preview);
   const [targetId, setTargetId] = useState("");
@@ -111,6 +112,15 @@ export function AdminPanel({ token, preview = false }: Props) {
     { id: "cases", label: "Recent cases", hint: "Latest moderation" },
   ];
 
+  function selectSection(next: AdminSection) {
+    if (next === section) {
+      return;
+    }
+    const order = sections.map((s) => s.id);
+    setFlipDir(order.indexOf(next) >= order.indexOf(section) ? "fwd" : "back");
+    setSection(next);
+  }
+
   return (
     <div className="panel folder-shell">
       <nav className="folder-rail" aria-label="Admin sections">
@@ -119,7 +129,7 @@ export function AdminPanel({ token, preview = false }: Props) {
             key={s.id}
             type="button"
             className={`folder-rail-tab folder-rail-${s.id}${section === s.id ? " active" : ""}`}
-            onClick={() => setSection(s.id)}
+            onClick={() => selectSection(s.id)}
           >
             <span className="folder-rail-label">{s.label}</span>
             <span className="folder-rail-hint">{s.hint}</span>
@@ -127,7 +137,7 @@ export function AdminPanel({ token, preview = false }: Props) {
         ))}
       </nav>
 
-      <div className="folder-stage">
+      <div key={section} className={`folder-stage flip-${flipDir}`}>
         {section === "pulse" && (
           <section className={`dossier${isOverviewPreview ? " preview" : ""}`}>
             <div className="dossier-head">
