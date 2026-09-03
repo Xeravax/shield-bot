@@ -5,9 +5,9 @@ interface Props {
 }
 
 export function HoursChart({ months }: Props) {
-  const width = 720;
-  const height = 260;
-  const pad = { top: 24, right: 16, bottom: 42, left: 44 };
+  const width = 640;
+  const height = 148;
+  const pad = { top: 14, right: 12, bottom: 32, left: 36 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
   const maxHours = Math.max(...months.map((m) => m.hours), 1);
@@ -74,7 +74,7 @@ export function HoursChart({ months }: Props) {
             d={line}
             fill="none"
             stroke="url(#hoursLine)"
-            strokeWidth="3"
+            strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -85,7 +85,7 @@ export function HoursChart({ months }: Props) {
             <circle
               cx={p.x}
               cy={p.y}
-              r={p.isCurrent ? 7 : 5}
+              r={p.isCurrent ? 5 : 3.5}
               className={p.isCurrent ? "chart-point current" : "chart-point"}
             />
             <title>

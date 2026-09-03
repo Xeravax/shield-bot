@@ -1,4 +1,4 @@
-import { useEffect, useRef, type TransitionEvent } from "react";
+import { useEffect, useRef } from "react";
 
 export type BootSplashPhase = "loading" | "finishing";
 
@@ -7,9 +7,7 @@ interface Props {
   onDone: () => void;
 }
 
-const RING_R = 54;
-const RING_C = 2 * Math.PI * RING_R;
-
+/** Briefing-folder boot gate: idle closed while loading, then opens to reveal. */
 export function BootSplash({ phase, onDone }: Props) {
   const doneRef = useRef(false);
 
@@ -22,15 +20,12 @@ export function BootSplash({ phase, onDone }: Props) {
         doneRef.current = true;
         onDone();
       }
-    }, 750);
+    }, 1400);
     return () => window.clearTimeout(fallback);
   }, [phase, onDone]);
 
-  function handleTransitionEnd(e: TransitionEvent<SVGCircleElement>) {
-    if (e.propertyName !== "stroke-dashoffset") {
-      return;
-    }
-    if (doneRef.current) {
+  function handleOpenEnd() {
+    if (phase !== "finishing" || doneRef.current) {
       return;
     }
     doneRef.current = true;
@@ -44,27 +39,40 @@ export function BootSplash({ phase, onDone }: Props) {
       aria-live="polite"
       aria-busy={phase === "loading"}
     >
-      <div className={`boot-mark ${phase}`}>
-        <svg className="boot-ring" viewBox="0 0 120 120" aria-hidden="true">
-          <circle className="boot-ring-track" cx="60" cy="60" r={RING_R} />
-          <circle
-            className="boot-ring-arc"
-            cx="60"
-            cy="60"
-            r={RING_R}
-            style={{
-              strokeDasharray: RING_C,
-              strokeDashoffset: phase === "finishing" ? 0 : RING_C * 0.72,
-            }}
-            onTransitionEnd={handleTransitionEnd}
-          />
-        </svg>
-        <img className="boot-logo" src="/logo.png" alt="S.H.I.E.L.D." />
+      <div className={`boot-folder ${phase}`}>
+        <div className="folder-shadow" aria-hidden="true" />
+
+        <div
+          className="folder-stage"
+          onAnimationEnd={(e) => {
+            if (
+              phase === "finishing" &&
+              e.animationName === "folder-reveal-done"
+            ) {
+              handleOpenEnd();
+            }
+          }}
+        >
+          <div className="folder-back" aria-hidden="true" />
+
+          <div className="folder-paper">
+            <img src="/logo.png" alt="" />
+            <p className="boot-kicker">S.H.I.E.L.D.</p>
+            <p className="boot-caption">
+              {phase === "loading" ? "Opening dossier…" : "Briefing ready"}
+            </p>
+          </div>
+
+          <div className="folder-body" aria-hidden="true">
+            <span className="folder-tab">BRIEFING</span>
+            <span className="folder-label">DUTY FILE</span>
+          </div>
+
+          <div className="folder-flap" aria-hidden="true">
+            <span className="folder-flap-edge" />
+          </div>
+        </div>
       </div>
-      <p className="boot-kicker">S.H.I.E.L.D.</p>
-      <p className="boot-caption">
-        {phase === "loading" ? "Connecting…" : "Ready"}
-      </p>
     </div>
   );
 }
