@@ -269,6 +269,11 @@ export function fetchModlogs(token: string, userId: string) {
   );
 }
 
+export const SITE_LINKS = {
+  guides: "https://guides.vrcshield.com",
+  main: "https://vrcshield.com",
+} as const;
+
 export const HANDBOOK_LINKS = {
   fullHandbook:
     "https://guides.vrcshield.com/books/shield-handbook/page/full-handbook",

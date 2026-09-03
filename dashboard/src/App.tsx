@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchMe, type DashboardUser } from "./api";
+import { fetchMe, SITE_LINKS, type DashboardUser } from "./api";
 import {
   getAccessToken,
   getDiscordSdk,
@@ -7,6 +7,7 @@ import {
   initDiscord,
   isCompactLayout,
   LayoutMode,
+  openExternalLink,
   subscribeLayoutMode,
   type ActivityLayoutMode,
 } from "./discord";
@@ -192,6 +193,24 @@ export default function App() {
               <span className="tab-label">{t.label}</span>
             </button>
           ))}
+          <div className="case-tabs-links">
+            <button
+              type="button"
+              className="site-link-btn"
+              onClick={() => void openExternalLink(SITE_LINKS.guides)}
+              title="guides.vrcshield.com"
+            >
+              📖 Guides
+            </button>
+            <button
+              type="button"
+              className="site-link-btn"
+              onClick={() => void openExternalLink(SITE_LINKS.main)}
+              title="vrcshield.com"
+            >
+              🛡️ SHIELD
+            </button>
+          </div>
         </nav>
 
         <div className="case-sheet">
@@ -219,25 +238,7 @@ export default function App() {
               <p className="case-dek">{copy.subtitle}</p>
             </div>
 
-            <div className="role-stamps">
-              <span
-                className={`role-stamp ${displayUser.shieldMember ? "on" : ""}`}
-              >
-                Recruit+
-              </span>
-              <span className={`role-stamp ${displayUser.deputy ? "on" : ""}`}>
-                Deputy+
-              </span>
-              {displayUser.staff && (
-                <span className="role-stamp on">Staff</span>
-              )}
-              {displayUser.host && <span className="role-stamp on">Host</span>}
-              {displayUser.trainerTypes.map((t) => (
-                <span key={t} className="role-stamp on">
-                  {t.toUpperCase()}
-                </span>
-              ))}
-            </div>
+            <div className="header-spacer" />
           </header>
 
           <div className="workspace">

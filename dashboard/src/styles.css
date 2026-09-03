@@ -632,6 +632,38 @@ textarea {
   opacity: 1;
 }
 
+.case-tabs-links {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25rem;
+  margin-left: auto;
+  padding-bottom: 3px;
+}
+
+.site-link-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.32rem 0.6rem;
+  border: 1px solid rgba(223, 189, 107, 0.35);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s;
+}
+
+.site-link-btn:hover {
+  color: var(--gold);
+  border-color: rgba(223, 189, 107, 0.65);
+  background: var(--gold-soft);
+}
+
 .case-sheet {
   flex: 1;
   min-height: 0;
@@ -741,29 +773,8 @@ textarea {
   font-weight: 600;
 }
 
-.role-stamps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  justify-content: flex-end;
-}
-
-.role-stamp {
-  font-family: var(--font-display);
-  font-size: 0.65rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  background: transparent;
-  padding: 0.2rem 0.4rem;
-  border-radius: 2px;
-}
-
-.role-stamp.on {
-  color: var(--case-accent);
-  border-color: color-mix(in srgb, var(--case-accent) 45%, transparent);
-  background: color-mix(in srgb, var(--case-accent) 12%, transparent);
+.header-spacer {
+  /* maintains the 3-column header grid so .case-brand stays centred */
 }
 
 .ribbon-meta {
@@ -901,14 +912,14 @@ textarea {
 
 .home-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
-    "hours hours"
+    "hours resources"
     "calendar resources";
   gap: 0.55rem 0.85rem;
   height: 100%;
   min-height: 0;
-  align-content: start;
 }
 
 .home-grid > .hours-panel {
@@ -917,15 +928,31 @@ textarea {
 
 .home-grid > .calendar-panel {
   grid-area: calendar;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Let dossier inside calendar fill the panel */
+.home-grid > .calendar-panel > .dossier {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .home-grid > .resources-panel:only-child {
   grid-column: 1 / -1;
+  grid-row: 1 / -1;
   grid-area: auto;
 }
 
 .home-grid > .resources-panel {
   grid-area: resources;
+  min-height: 0;
+  overflow: auto;
 }
 
 .trainer-note {
@@ -1067,12 +1094,10 @@ textarea {
   gap: 0.85rem;
   align-content: end;
   padding-bottom: 0.2rem;
-  max-width: 240px;
 }
 
 .hours-chart-wrap {
   width: 100%;
-  max-width: 480px;
   margin-top: 0.15rem;
   border-top: 1px solid var(--line);
   padding-top: 0.4rem;
@@ -1157,6 +1182,32 @@ textarea {
   grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.7fr);
   gap: 0.75rem;
   align-items: start;
+}
+
+/* When inside the home-grid calendar panel, fill remaining height */
+.calendar-panel .calendar-layout {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.calendar-panel .month-cal {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.calendar-panel .month-cal-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  grid-auto-rows: minmax(1.6rem, 1fr);
+}
+
+/* Scoped override: day cells in calendar-panel shrink to fit */
+.calendar-panel .month-cal-day {
+  min-height: 0;
 }
 
 .month-cal {
@@ -1855,7 +1906,19 @@ textarea {
 }
 
 @media (max-width: 980px) {
-  .home-grid,
+  .home-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    grid-template-areas:
+      "hours"
+      "calendar"
+      "resources";
+  }
+
+  .home-grid > .resources-panel {
+    overflow: visible;
+  }
+
   .admin-grid,
   .admin-shell,
   .folder-shell,
@@ -1991,10 +2054,6 @@ textarea {
     display: none;
   }
 
-  .role-stamps {
-    order: 3;
-    justify-content: center;
-  }
 
   .workspace {
     padding: 0.4rem;

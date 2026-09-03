@@ -22,7 +22,9 @@ export function dayKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-/** Monday-first calendar cells for a month (includes leading/trailing days). */
+/** Monday-first calendar cells for a month (includes leading/trailing days).
+ *  Trailing rows that are entirely outside the current month are trimmed,
+ *  so a 5-week month renders 5 rows instead of always 6. */
 export function buildMonthCells(viewMonth: Date): Date[] {
   const first = startOfMonth(viewMonth);
   const mondayOffset = (first.getDay() + 6) % 7;
@@ -35,6 +37,18 @@ export function buildMonthCells(viewMonth: Date): Date[] {
     d.setDate(gridStart.getDate() + i);
     cells.push(d);
   }
+
+  // Drop the last row if every cell in it is outside the view month
+  const month = viewMonth.getMonth();
+  while (cells.length > 7) {
+    const lastRow = cells.slice(-7);
+    if (lastRow.every((d) => d.getMonth() !== month)) {
+      cells.splice(-7);
+    } else {
+      break;
+    }
+  }
+
   return cells;
 }
 
