@@ -5,6 +5,7 @@ import {
   buildMonthCells,
   dayKey,
   eventsByDay,
+  eventStatusClass,
   formatClock,
   formatMonthTitle,
   sameDay,
@@ -102,7 +103,7 @@ export function MonthCalendar({
                 {dayEvents.slice(0, 4).map((event) => (
                   <span
                     key={event.id}
-                    className={`month-cal-dot ${event.duty === "OFF_DUTY" ? "offduty" : "onduty"}`}
+                    className={`month-cal-dot ${event.duty === "OFF_DUTY" ? "offduty" : "onduty"} ${eventStatusClass(event.status)}`}
                     title={`${event.title} · ${formatClock(event.startTime, timezone)}`}
                   />
                 ))}

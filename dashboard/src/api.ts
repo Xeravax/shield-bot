@@ -36,7 +36,9 @@ export interface CalendarEvent {
   durationMinutes: number;
   status: string;
   denialReason?: string | null;
+  published?: boolean;
   canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export interface EventRuleResult {
@@ -47,12 +49,23 @@ export interface EventRuleResult {
 }
 
 export interface AdminOverview {
-  recruitPlus: number;
-  deputyPlus: number;
   pendingEventsThisWeek: number;
   draftEvents: number;
   openLoas: number;
   activePatrolSessions: number;
+  monthLabel: string;
+  monthHoursTotal: number;
+  hoursMembers: Array<{
+    userId: string;
+    displayName: string;
+    hours: number;
+  }>;
+  activePatrols: Array<{
+    userId: string;
+    displayName: string;
+    startedAt: string;
+    channelId: string;
+  }>;
   recentCases: Array<{
     id: number;
     caseNumber: number;
@@ -61,6 +74,7 @@ export interface AdminOverview {
     moderatorId: string;
     reason: string | null;
     createdAt: string;
+    staffLogUrl: string | null;
   }>;
 }
 
@@ -156,9 +170,18 @@ export interface CalendarSubscribeLinks {
   appleUrl: string;
 }
 
-export function fetchEvents(token: string, from: string, to: string) {
+export function fetchEvents(
+  token: string,
+  from: string,
+  to: string,
+  opts?: { planning?: boolean },
+) {
+  const params = new URLSearchParams({ from, to });
+  if (opts?.planning) {
+    params.set("planning", "1");
+  }
   return apiFetch<{ events: CalendarEvent[]; calendar: CalendarSubscribeLinks }>(
-    `/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    `/events?${params.toString()}`,
     token,
   );
 }
@@ -219,6 +242,14 @@ export function updateHostEvent(
     method: "PUT",
     body: JSON.stringify(body),
   });
+}
+
+export function deleteHostEvent(token: string, eventId: number) {
+  return apiFetch<{ ok: boolean; message: string }>(
+    `/host/events/${eventId}/delete`,
+    token,
+    { method: "POST" },
+  );
 }
 
 export function fetchAdminOverview(token: string) {

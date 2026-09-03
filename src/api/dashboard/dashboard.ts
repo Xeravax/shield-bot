@@ -15,6 +15,9 @@ import {
 import {
   beginEventEditForHost,
   canEditEventPanel,
+  canManageEventDraft,
+  canUserCancelPlannedEvent,
+  cancelPlannedEvent,
   runEventValidation,
   updatePlanningChannelMessage,
 } from "../../managers/events/eventPlanningManager.js";
@@ -33,7 +36,6 @@ import {
 } from "../../utility/dashboard/auth.js";
 import {
   buildDashboardSession,
-  countMembersWithNode,
   requireHost,
   requireShieldMember,
   requireStaff,
@@ -95,8 +97,50 @@ async function withDashboardAuth<T>(
   }
 }
 
-function msToHours(ms: number): number {
-  return Math.round((ms / 3_600_000) * 100) / 100;
+function msToHours(ms: number | bigint): number {
+  return Math.round((Number(ms) / 3_600_000) * 100) / 100;
+}
+
+function memberLabel(guildId: string, userId: string): string {
+  const guild = bot.guilds.cache.get(guildId);
+  const member = guild?.members.cache.get(userId);
+  return member?.displayName ?? member?.user.username ?? userId;
+}
+
+function serializePlannedEvent(
+  e: {
+    id: number;
+    title: string;
+    startTime: Date;
+    hostId: string;
+    coHostId: string | null;
+    duty: string;
+    eventType: string | null;
+    durationMinutes: number;
+    status: string;
+    denialReason?: string | null;
+    discordEventId?: string | null;
+  },
+  extras?: { canEdit?: boolean; canDelete?: boolean },
+) {
+  return {
+    id: e.id,
+    title: e.title,
+    startTime: e.startTime.toISOString(),
+    endTime: new Date(
+      e.startTime.getTime() + e.durationMinutes * 60_000,
+    ).toISOString(),
+    hostId: e.hostId,
+    coHostId: e.coHostId,
+    duty: e.duty,
+    eventType: e.eventType,
+    durationMinutes: e.durationMinutes,
+    status: e.discordEventId ? "PUBLISHED" : e.status,
+    denialReason: e.denialReason ?? null,
+    published: Boolean(e.discordEventId),
+    canEdit: extras?.canEdit,
+    canDelete: extras?.canDelete,
+  };
 }
 
 const MONTH_NAMES = [
@@ -236,13 +280,17 @@ export class DashboardAPI {
         return;
       }
 
-      // Only published/exported Discord events — not draft, pending, denied, or
-      // approved-but-not-yet-exported planning rows.
+      const includePlanning =
+        session.host && String(ctx.query.planning ?? "") === "1";
+
+      // Published Discord events; hosts may also request unpublished planning rows.
       const rows = await prisma.plannedEvent.findMany({
         where: {
           guildId: session.guildId,
-          discordEventId: { not: null },
           startTime: { gte: from, lte: to },
+          ...(includePlanning
+            ? {}
+            : { discordEventId: { not: null } }),
         },
         orderBy: { startTime: "asc" },
         select: {
@@ -255,6 +303,7 @@ export class DashboardAPI {
           eventType: true,
           durationMinutes: true,
           status: true,
+          denialReason: true,
           discordEventId: true,
         },
       });
@@ -269,21 +318,16 @@ export class DashboardAPI {
           googleUrl: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`,
           appleUrl: webcalUrl,
         },
-        events: rows.map((e) => ({
-          id: e.id,
-          title: e.title,
-          startTime: e.startTime.toISOString(),
-          endTime: new Date(
-            e.startTime.getTime() + e.durationMinutes * 60_000,
-          ).toISOString(),
-          hostId: e.hostId,
-          coHostId: e.coHostId,
-          duty: e.duty,
-          eventType: e.eventType,
-          durationMinutes: e.durationMinutes,
-          status: "PUBLISHED",
-          discordEventId: e.discordEventId,
-        })),
+        events: rows.map((e) =>
+          serializePlannedEvent(e, {
+            canEdit:
+              includePlanning &&
+              (session.hostLead || e.hostId === session.user.id),
+            canDelete:
+              includePlanning &&
+              (session.hostLead || e.hostId === session.user.id),
+          }),
+        ),
       };
     });
   }
@@ -387,17 +431,25 @@ export class DashboardAPI {
     await withDashboardAuth(ctx, async (session) => {
       await requireHost(session);
 
-      const statuses = [
-        PlannedEventStatus.DRAFT,
-        PlannedEventStatus.PENDING,
-        PlannedEventStatus.DENIED,
-      ];
-
       const rows = await prisma.plannedEvent.findMany({
         where: {
           guildId: session.guildId,
-          status: { in: statuses },
           ...(session.hostLead ? {} : { hostId: session.user.id }),
+          OR: [
+            {
+              status: {
+                in: [
+                  PlannedEventStatus.DRAFT,
+                  PlannedEventStatus.PENDING,
+                  PlannedEventStatus.DENIED,
+                ],
+              },
+            },
+            {
+              status: PlannedEventStatus.APPROVED,
+              discordEventId: null,
+            },
+          ],
         },
         orderBy: { startTime: "asc" },
         take: 100,
@@ -412,30 +464,17 @@ export class DashboardAPI {
           durationMinutes: true,
           status: true,
           denialReason: true,
+          discordEventId: true,
         },
       });
 
       ctx.body = {
         hostLead: session.hostLead,
         canForceSchedule: session.canForceSchedule,
-        events: rows.map((e) => ({
-          id: e.id,
-          title: e.title,
-          startTime: e.startTime.toISOString(),
-          endTime: new Date(
-            e.startTime.getTime() + e.durationMinutes * 60_000,
-          ).toISOString(),
-          hostId: e.hostId,
-          coHostId: e.coHostId,
-          duty: e.duty,
-          eventType: e.eventType,
-          durationMinutes: e.durationMinutes,
-          status: e.status,
-          denialReason: e.denialReason,
-          canEdit:
-            session.hostLead ||
-            e.hostId === session.user.id,
-        })),
+        events: rows.map((e) => {
+          const own = session.hostLead || e.hostId === session.user.id;
+          return serializePlannedEvent(e, { canEdit: own, canDelete: own });
+        }),
       };
     });
   }
@@ -613,16 +652,89 @@ export class DashboardAPI {
     });
   }
 
+  @Post("/api/dashboard/host/events/:eventId/delete")
+  async deleteHostEvent(ctx: Context): Promise<void> {
+    await withDashboardAuth(ctx, async (session) => {
+      await requireHost(session);
+
+      const eventId = Number(ctx.params.eventId);
+      if (!Number.isFinite(eventId)) {
+        jsonError(ctx, 400, "Invalid event id.");
+        return;
+      }
+
+      const existing = await prisma.plannedEvent.findUnique({
+        where: { id: eventId },
+      });
+      if (!existing || existing.guildId !== session.guildId) {
+        jsonError(ctx, 404, "Event not found.");
+        return;
+      }
+
+      const guild =
+        bot.guilds.cache.get(session.guildId) ??
+        (await bot.guilds.fetch(session.guildId).catch(() => null));
+      if (!guild) {
+        jsonError(ctx, 503, "Guild unavailable.");
+        return;
+      }
+
+      const member = session.member;
+      let result: { success: boolean; error?: string; message?: string };
+
+      if (
+        existing.status === PlannedEventStatus.PENDING ||
+        existing.status === PlannedEventStatus.APPROVED
+      ) {
+        if (!(await canUserCancelPlannedEvent(session.user.id, member, existing))) {
+          jsonError(ctx, 403, "You cannot delete this event.");
+          return;
+        }
+        result = await cancelPlannedEvent(eventId, guild, session.user.id);
+      } else if (
+        existing.status === PlannedEventStatus.DRAFT ||
+        existing.status === PlannedEventStatus.DENIED
+      ) {
+        if (!(await canManageEventDraft(session.user.id, member, existing.hostId))) {
+          jsonError(ctx, 403, "You cannot delete this event.");
+          return;
+        }
+        await prisma.plannedEvent.delete({ where: { id: eventId } });
+        result = { success: true, message: "Event deleted." };
+      } else {
+        jsonError(ctx, 400, "This event cannot be deleted.");
+        return;
+      }
+
+      if (!result.success) {
+        jsonError(ctx, 400, result.error ?? "Could not delete event.");
+        return;
+      }
+
+      logDashboardSessionAction(
+        session,
+        "Event deleted",
+        `Deleted **${existing.title}** (#${existing.id}) from the Activity dashboard.`,
+        [{ name: "Status", value: existing.status, inline: true }],
+        "mod",
+      );
+
+      ctx.body = { ok: true, message: result.message ?? "Event deleted." };
+    });
+  }
+
   @Get("/api/dashboard/admin/overview")
   async adminOverview(ctx: Context): Promise<void> {
     await withDashboardAuth(ctx, async (session) => {
       await requireStaff(session);
 
       const week = getCurrentEventWeekRange();
-      const [recruitPlus, deputyPlus, pendingEvents, draftEvents, openLoas, recentCases, activeSessions] =
+      const now = new Date();
+      const year = now.getUTCFullYear();
+      const month = now.getUTCMonth() + 1;
+
+      const [pendingEvents, draftEvents, openLoas, recentCases, activeSessions, hoursTop] =
         await Promise.all([
-          countMembersWithNode(session.guildId, "patrol.tracked"),
-          countMembersWithNode(session.guildId, "patrol.avatar"),
           prisma.plannedEvent.count({
             where: {
               guildId: session.guildId,
@@ -645,7 +757,7 @@ export class DashboardAPI {
           prisma.modCase.findMany({
             where: { guildId: session.guildId },
             orderBy: { createdAt: "desc" },
-            take: 10,
+            take: 40,
             select: {
               id: true,
               caseNumber: true,
@@ -654,23 +766,51 @@ export class DashboardAPI {
               moderatorId: true,
               reason: true,
               createdAt: true,
+              logMessageId: true,
+              logThreadId: true,
             },
           }),
-          prisma.activeVoicePatrolSession.count({
+          prisma.activeVoicePatrolSession.findMany({
             where: { guildId: session.guildId },
+            select: { userId: true, startedAt: true, channelId: true },
+            orderBy: { startedAt: "asc" },
           }),
+          patrolTimer.getTopByMonth(session.guildId, year, month, 1000),
         ]);
 
+      const hoursMembers = hoursTop.slice(0, 25).map((row) => ({
+        userId: row.userId,
+        displayName: memberLabel(session.guildId, row.userId),
+        hours: msToHours(row.totalMs),
+      }));
+      const monthHoursTotal = hoursMembers.reduce((sum, m) => sum + m.hours, 0);
+
       ctx.body = {
-        recruitPlus,
-        deputyPlus,
         pendingEventsThisWeek: pendingEvents,
         draftEvents,
         openLoas,
-        activePatrolSessions: activeSessions,
+        activePatrolSessions: activeSessions.length,
+        monthLabel: `${MONTH_NAMES[month - 1]} ${year}`,
+        monthHoursTotal,
+        hoursMembers,
+        activePatrols: activeSessions.map((s) => ({
+          userId: s.userId,
+          displayName: memberLabel(session.guildId, s.userId),
+          startedAt: s.startedAt.toISOString(),
+          channelId: s.channelId,
+        })),
         recentCases: recentCases.map((c) => ({
-          ...c,
+          id: c.id,
+          caseNumber: c.caseNumber,
+          type: c.type,
+          targetId: c.targetId,
+          moderatorId: c.moderatorId,
+          reason: c.reason,
           createdAt: c.createdAt.toISOString(),
+          staffLogUrl:
+            c.logThreadId && c.logMessageId
+              ? `https://discord.com/channels/${session.guildId}/${c.logThreadId}/${c.logMessageId}`
+              : null,
         })),
       };
     });

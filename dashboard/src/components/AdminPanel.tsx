@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   adjustAdminHours,
   fetchAdminHours,
@@ -9,6 +9,7 @@ import {
   type ModlogCase,
   type ModlogNote,
 } from "../api";
+import { openExternalLink } from "../discord";
 import { mockAdminOverview } from "../mockData";
 import { ExternalLink } from "./HandbookSection";
 import { PreviewNotice } from "./PreviewNotice";
@@ -34,6 +35,8 @@ export function AdminPanel({ token, preview = false }: Props) {
   const [adjustValue, setAdjustValue] = useState("+1h");
   const [cases, setCases] = useState<ModlogCase[]>([]);
   const [notes, setNotes] = useState<ModlogNote[]>([]);
+  const [caseType, setCaseType] = useState("ALL");
+  const [caseQuery, setCaseQuery] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,8 +109,35 @@ export function AdminPanel({ token, preview = false }: Props) {
   const isOverviewPreview = preview || overviewLoading;
   const displayOverview = isOverviewPreview ? mockAdminOverview() : overview;
 
+  const caseTypes = useMemo(() => {
+    const types = new Set(
+      (displayOverview?.recentCases ?? []).map((c) => c.type),
+    );
+    return ["ALL", ...Array.from(types).sort()];
+  }, [displayOverview]);
+
+  const filteredCases = useMemo(() => {
+    const rows = displayOverview?.recentCases ?? [];
+    const q = caseQuery.trim().toLowerCase();
+    return rows.filter((c) => {
+      if (caseType !== "ALL" && c.type !== caseType) {
+        return false;
+      }
+      if (!q) {
+        return true;
+      }
+      return (
+        String(c.caseNumber).includes(q) ||
+        c.type.toLowerCase().includes(q) ||
+        c.targetId.includes(q) ||
+        c.moderatorId.includes(q) ||
+        (c.reason ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [displayOverview, caseType, caseQuery]);
+
   const sections: Array<{ id: AdminSection; label: string; hint: string }> = [
-    { id: "pulse", label: "Server pulse", hint: "Membership & activity" },
+    { id: "pulse", label: "Server pulse", hint: "Hours & patrols" },
     { id: "lookup", label: "Member lookup", hint: "Hours & mod history" },
     { id: "cases", label: "Recent cases", hint: "Latest moderation" },
   ];
@@ -143,25 +173,75 @@ export function AdminPanel({ token, preview = false }: Props) {
             <div className="dossier-head">
               <div>
                 <h2>Server pulse</h2>
-                <p>Live counts across membership, events, and patrols.</p>
+                <p>Patrol hours, live sessions, and event backlog.</p>
               </div>
             </div>
             {isOverviewPreview && <PreviewNotice />}
             {displayOverview ? (
-              <div className="grid-2">
-                <Stat label="Recruit+" value={displayOverview.recruitPlus} />
-                <Stat label="Deputy+" value={displayOverview.deputyPlus} />
-                <Stat
-                  label="Pending (week)"
-                  value={displayOverview.pendingEventsThisWeek}
-                />
-                <Stat label="Draft events" value={displayOverview.draftEvents} />
-                <Stat label="Open LOAs" value={displayOverview.openLoas} />
-                <Stat
-                  label="Active patrols"
-                  value={displayOverview.activePatrolSessions}
-                />
-              </div>
+              <>
+                <div className="grid-2">
+                  <Stat
+                    label={`${displayOverview.monthLabel} hours`}
+                    value={`${displayOverview.monthHoursTotal.toFixed(1)}h`}
+                  />
+                  <Stat
+                    label="On patrol now"
+                    value={displayOverview.activePatrolSessions}
+                  />
+                  <Stat
+                    label="Pending (week)"
+                    value={displayOverview.pendingEventsThisWeek}
+                  />
+                  <Stat label="Draft events" value={displayOverview.draftEvents} />
+                  <Stat label="Open LOAs" value={displayOverview.openLoas} />
+                </div>
+
+                <div className="pulse-split">
+                  <div>
+                    <h3 className="pulse-heading">Hours this month</h3>
+                    {displayOverview.hoursMembers.length === 0 ? (
+                      <p>No patrol hours recorded this month.</p>
+                    ) : (
+                      <table className="case-table">
+                        <thead>
+                          <tr>
+                            <th>Member</th>
+                            <th>Hours</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayOverview.hoursMembers.map((m) => (
+                            <tr key={m.userId}>
+                              <td>{m.displayName}</td>
+                              <td>{m.hours.toFixed(1)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="pulse-heading">Currently patrolling</h3>
+                    {displayOverview.activePatrols.length === 0 ? (
+                      <p>Nobody on a tracked patrol right now.</p>
+                    ) : (
+                      <ul className="event-list">
+                        {displayOverview.activePatrols.map((s) => (
+                          <li key={s.userId} className="event-item">
+                            <span className="event-accent" />
+                            <div>
+                              <div className="event-title">{s.displayName}</div>
+                              <div className="event-meta">
+                                since {new Date(s.startedAt).toLocaleTimeString()}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </>
             ) : (
               <p>Loading overview…</p>
             )}
@@ -297,7 +377,32 @@ export function AdminPanel({ token, preview = false }: Props) {
               </div>
             </div>
             {isOverviewPreview && <PreviewNotice />}
-            {displayOverview && displayOverview.recentCases.length > 0 ? (
+            <div className="lookup-bar">
+              <div className="form-row" style={{ flex: 1, margin: 0 }}>
+                <label htmlFor="case-query">Search</label>
+                <input
+                  id="case-query"
+                  value={caseQuery}
+                  onChange={(e) => setCaseQuery(e.target.value)}
+                  placeholder="Case #, user ID, reason…"
+                />
+              </div>
+              <div className="form-row" style={{ margin: 0 }}>
+                <label htmlFor="case-type">Type</label>
+                <select
+                  id="case-type"
+                  value={caseType}
+                  onChange={(e) => setCaseType(e.target.value)}
+                >
+                  {caseTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {t === "ALL" ? "All types" : t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {filteredCases.length > 0 ? (
               <table className="case-table">
                 <thead>
                   <tr>
@@ -306,10 +411,11 @@ export function AdminPanel({ token, preview = false }: Props) {
                     <th>Target</th>
                     <th>Moderator</th>
                     <th>Reason</th>
+                    <th>Log</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayOverview.recentCases.map((c) => (
+                  {filteredCases.map((c) => (
                     <tr key={c.id}>
                       <td>{c.caseNumber}</td>
                       <td>{c.type}</td>
@@ -320,12 +426,25 @@ export function AdminPanel({ token, preview = false }: Props) {
                         <code>{c.moderatorId}</code>
                       </td>
                       <td>{c.reason ?? "—"}</td>
+                      <td>
+                        {c.staffLogUrl ? (
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            onClick={() => void openExternalLink(c.staffLogUrl!)}
+                          >
+                            Staff log
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             ) : (
-              <p>No recent cases.</p>
+              <p>No cases match this filter.</p>
             )}
           </section>
         )}
@@ -337,7 +456,7 @@ export function AdminPanel({ token, preview = false }: Props) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="stat">
       <div className="label">{label}</div>

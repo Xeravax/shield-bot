@@ -110,3 +110,35 @@ export function formatNaturalDayTime(date: Date, hour: number, minute: number): 
   const mm = String(minute).padStart(2, "0");
   return `${months[date.getMonth()]} ${date.getDate()} ${date.getFullYear()} ${hh}:${mm}`;
 }
+
+export function rangesOverlap(
+  aStart: number,
+  aEnd: number,
+  bStart: number,
+  bEnd: number,
+): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+export function startOfWeek(date: Date): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const offset = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - offset);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+export function addDays(date: Date, delta: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + delta);
+  return d;
+}
+
+export function eventStatusClass(status: string): string {
+  const s = status.toUpperCase();
+  if (s === "PENDING") return "pending";
+  if (s === "DRAFT") return "draft";
+  if (s === "DENIED") return "denied";
+  if (s === "APPROVED") return "approved";
+  return "published";
+}

@@ -73,6 +73,7 @@ export function mockCalendarEvents(): CalendarEvent[] {
     hour: number,
     duty: "ON_DUTY" | "OFF_DUTY",
     durationMinutes = 120,
+    status = "PUBLISHED",
   ): CalendarEvent {
     const start = new Date(now + offsetDays * day);
     start.setHours(hour, 0, 0, 0);
@@ -87,12 +88,17 @@ export function mockCalendarEvents(): CalendarEvent[] {
       duty,
       eventType: duty === "ON_DUTY" ? "PATROL" : "GAME",
       durationMinutes,
-      status: "PUBLISHED",
+      status,
+      published: status === "PUBLISHED",
+      canEdit: status !== "PUBLISHED",
+      canDelete: status !== "PUBLISHED",
     };
   }
 
   return [
     event(9001, "Tuesday Patrol Event", 2, 20, "ON_DUTY"),
+    event(9002, "Pending Friday Patrol", 4, 20, "ON_DUTY", 120, "PENDING"),
+    event(9006, "Draft rooftop hangout", 1, 19, "OFF_DUTY", 60, "DRAFT"),
     event(9003, "Community Game Night", 8, 18, "OFF_DUTY", 180),
     event(9004, "Saturday Patrol Event", -3, 20, "ON_DUTY"),
     event(9005, "Special Operations Event", -10, 21, "ON_DUTY", 180),
@@ -113,12 +119,33 @@ export function mockCalendarLinks(): CalendarSubscribeLinks {
 export function mockAdminOverview(): AdminOverview {
   const now = new Date();
   return {
-    recruitPlus: 142,
-    deputyPlus: 86,
     pendingEventsThisWeek: 3,
     draftEvents: 2,
     openLoas: 4,
-    activePatrolSessions: 5,
+    activePatrolSessions: 3,
+    monthLabel: `${MONTH_NAMES[now.getUTCMonth()]} ${now.getUTCFullYear()}`,
+    monthHoursTotal: 186.4,
+    hoursMembers: [
+      { userId: "111", displayName: "Avery", hours: 42.1 },
+      { userId: "222", displayName: "Jordan", hours: 31.5 },
+      { userId: "333", displayName: "Riley", hours: 28.0 },
+      { userId: "444", displayName: "Sam", hours: 19.8 },
+      { userId: "555", displayName: "Quinn", hours: 14.2 },
+    ],
+    activePatrols: [
+      {
+        userId: "111",
+        displayName: "Avery",
+        startedAt: new Date(now.getTime() - 45 * 60_000).toISOString(),
+        channelId: "1",
+      },
+      {
+        userId: "222",
+        displayName: "Jordan",
+        startedAt: new Date(now.getTime() - 12 * 60_000).toISOString(),
+        channelId: "1",
+      },
+    ],
     recentCases: [
       {
         id: 1,
@@ -128,6 +155,7 @@ export function mockAdminOverview(): AdminOverview {
         moderatorId: "222222222222222222",
         reason: "Sample warning — inappropriate language in patrol channel",
         createdAt: new Date(now.getTime() - 2 * 86_400_000).toISOString(),
+        staffLogUrl: "https://discord.com/channels/0/0/0",
       },
       {
         id: 2,
@@ -137,6 +165,7 @@ export function mockAdminOverview(): AdminOverview {
         moderatorId: "222222222222222222",
         reason: "Sample staff note for review",
         createdAt: new Date(now.getTime() - 5 * 86_400_000).toISOString(),
+        staffLogUrl: null,
       },
     ],
   };

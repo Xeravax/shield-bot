@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   createHostEvent,
+  deleteHostEvent,
   fetchEvents,
   fetchHostEvents,
   HANDBOOK_LINKS,
@@ -14,13 +15,16 @@ import {
 import {
   formatClock,
   formatNaturalDayTime,
+  rangesOverlap,
   startOfMonth,
+  startOfWeek,
   zonedDate,
 } from "../calendarUtils";
 import { mockCalendarEvents } from "../mockData";
 import { ExternalLink } from "./HandbookSection";
 import { MonthCalendar } from "./MonthCalendar";
 import { PreviewNotice } from "./PreviewNotice";
+import { WeekCalendar } from "./WeekCalendar";
 
 interface Props {
   token: string;
@@ -79,6 +83,8 @@ export function HostPanel({
     defaultDatetimeLocal(user.timezone),
   );
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
+  const [boardDay, setBoardDay] = useState<Date>(() => new Date());
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [duty, setDuty] = useState<"ON_DUTY" | "OFF_DUTY">("ON_DUTY");
   const [duration, setDuration] = useState(120);
   const [eventType, setEventType] = useState("");
@@ -124,7 +130,7 @@ export function HostPanel({
     if (preview || !token || !user.timezoneStored) {
       return;
     }
-    fetchEvents(token, range.from, range.to)
+    fetchEvents(token, range.from, range.to, { planning: true })
       .then((data) => setPublished(data.events))
       .catch(() => setPublished([]));
     void refreshManaged();
@@ -180,6 +186,41 @@ export function HostPanel({
 
   const displayPublished = preview ? mockCalendarEvents() : published;
 
+  const proposed = useMemo(() => {
+    const [datePart, timePart] = startsAt.split("T");
+    if (!datePart) {
+      return null;
+    }
+    const [y, m, d] = datePart.split("-").map(Number);
+    const [hh, mm] = (timePart ?? "20:00").split(":").map(Number);
+    const start = new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0);
+    const end = new Date(start.getTime() + duration * 60_000);
+    return { start, end, title: title.trim() || "New event" };
+  }, [startsAt, duration, title]);
+
+  const collidingIds = useMemo(() => {
+    if (!proposed) {
+      return new Set<number>();
+    }
+    const ids = new Set<number>();
+    for (const event of displayPublished) {
+      if (editingId != null && event.id === editingId) {
+        continue;
+      }
+      if (
+        rangesOverlap(
+          proposed.start.getTime(),
+          proposed.end.getTime(),
+          new Date(event.startTime).getTime(),
+          new Date(event.endTime).getTime(),
+        )
+      ) {
+        ids.add(event.id);
+      }
+    }
+    return ids;
+  }, [displayPublished, proposed, editingId]);
+
   function eventBody() {
     return {
       title,
@@ -211,6 +252,7 @@ export function HostPanel({
     setDuty(event.duty === "OFF_DUTY" ? "OFF_DUTY" : "ON_DUTY");
     setDuration(event.durationMinutes);
     setEventType(event.eventType ?? "");
+    setWeekStart(startOfWeek(local));
     setMessage(null);
     setError(null);
     setRules([]);
@@ -264,8 +306,40 @@ export function HostPanel({
       }
       resetForm();
       await refreshManaged();
+      const data = await fetchEvents(token, range.from, range.to, {
+        planning: true,
+      });
+      setPublished(data.events);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save event");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeEvent(event: CalendarEvent) {
+    if (preview || event.canDelete === false) {
+      return;
+    }
+    if (!window.confirm(`Delete “${event.title}”? This cannot be undone.`)) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await deleteHostEvent(token, event.id);
+      setMessage(result.message);
+      if (editingId === event.id) {
+        resetForm();
+      }
+      await refreshManaged();
+      const data = await fetchEvents(token, range.from, range.to, {
+        planning: true,
+      });
+      setPublished(data.events);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete event");
     } finally {
       setBusy(false);
     }
@@ -285,7 +359,7 @@ export function HostPanel({
             {
               id: "board" as const,
               label: "Board",
-              hint: "Published + guides",
+              hint: "Roster + pending",
             },
           ] as const
         ).map((s) => (
@@ -333,6 +407,8 @@ export function HostPanel({
               <PreviewNotice message="Event scheduling unavailable in sample mode." />
             )}
 
+            <div className="schedule-split">
+              <div className="schedule-form">
             <div className="form-row">
               <label htmlFor="title">Title</label>
               <input
@@ -350,7 +426,14 @@ export function HostPanel({
                 id="starts"
                 type="datetime-local"
                 value={startsAt}
-                onChange={(e) => setStartsAt(e.target.value)}
+                onChange={(e) => {
+                  setStartsAt(e.target.value);
+                  const [datePart] = e.target.value.split("T");
+                  const [y, m, d] = datePart.split("-").map(Number);
+                  if (y && m && d) {
+                    setWeekStart(startOfWeek(new Date(y, m - 1, d)));
+                  }
+                }}
                 disabled={preview}
               />
               <div className="chip-row" style={{ marginTop: "0.5rem" }}>
@@ -446,17 +529,22 @@ export function HostPanel({
             </div>
 
             {user.canForceSchedule && (
-              <label className="force-toggle">
-                <input
-                  type="checkbox"
-                  checked={force}
+              <div className="force-switch-row">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={force}
+                  className={`force-switch${force ? " on" : ""}`}
                   disabled={preview}
-                  onChange={(e) => setForce(e.target.checked)}
-                />
-                <span>
-                  Force schedule (bypass week / collision rules — team lead)
-                </span>
-              </label>
+                  onClick={() => setForce((v) => !v)}
+                >
+                  <span className="force-switch-knob" />
+                </button>
+                <div>
+                  <strong>Force</strong>
+                  <p>Bypass week and collision rules (team lead).</p>
+                </div>
+              </div>
             )}
 
             <div className="btn-row">
@@ -477,14 +565,30 @@ export function HostPanel({
                 {editingId != null ? "Save changes" : "Create draft"}
               </button>
               {editingId != null && (
-                <button
-                  type="button"
-                  className="btn secondary"
-                  disabled={busy}
-                  onClick={resetForm}
-                >
-                  Cancel edit
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={busy}
+                    onClick={resetForm}
+                  >
+                    Cancel edit
+                  </button>
+                  <button
+                    type="button"
+                    className="btn secondary danger"
+                    disabled={preview || busy}
+                    onClick={() => {
+                      const current = displayPublished.find((e) => e.id === editingId)
+                        ?? managed.find((e) => e.id === editingId);
+                      if (current) {
+                        void removeEvent(current);
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
               )}
             </div>
 
@@ -504,6 +608,35 @@ export function HostPanel({
             )}
             {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
             {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+              </div>
+
+              <div className="schedule-week">
+                {collidingIds.size > 0 && (
+                  <p className="collision-banner">
+                    Collision with {collidingIds.size} existing event
+                    {collidingIds.size === 1 ? "" : "s"} — red overlay on the
+                    week board.
+                  </p>
+                )}
+                <WeekCalendar
+                  weekStart={weekStart}
+                  onWeekChange={setWeekStart}
+                  events={displayPublished.filter((e) => e.id !== editingId)}
+                  timezone={user.timezone}
+                  proposed={proposed}
+                  collidingIds={collidingIds}
+                  onSelectSlot={(local) => {
+                    setStartsAt(toDatetimeLocal(local));
+                    setWeekStart(startOfWeek(local));
+                  }}
+                  onSelectEvent={(event) => {
+                    if (event.canEdit !== false) {
+                      loadEventIntoForm(event);
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </section>
         )}
 
@@ -519,6 +652,8 @@ export function HostPanel({
                 </p>
               </div>
             </div>
+            {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
+            {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
             {managed.length === 0 ? (
               <p>No events in the queue.</p>
             ) : (
@@ -538,14 +673,26 @@ export function HostPanel({
                       </div>
                     </div>
                     {event.canEdit !== false && (
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        disabled={preview}
-                        onClick={() => loadEventIntoForm(event)}
-                      >
-                        Edit
-                      </button>
+                      <div className="btn-row">
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          disabled={preview}
+                          onClick={() => loadEventIntoForm(event)}
+                        >
+                          Edit
+                        </button>
+                        {event.canDelete !== false && (
+                          <button
+                            type="button"
+                            className="btn secondary danger"
+                            disabled={preview || busy}
+                            onClick={() => void removeEvent(event)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     )}
                   </li>
                 ))}
@@ -556,19 +703,99 @@ export function HostPanel({
 
         {hostSection === "board" && (
           <>
-            <section className={`dossier${preview ? " preview" : ""}`}>
+            <section className={`dossier board-panel${preview ? " preview" : ""}`}>
               <div className="dossier-head">
                 <div>
-                  <h2>Published calendar</h2>
-                  <p>Read-only view of live Discord events (for conflicts).</p>
+                  <h2>Event board</h2>
+                  <p>
+                    Published roster plus drafts waiting to be accepted. Click a
+                    day or event to inspect, edit, or delete.
+                  </p>
                 </div>
               </div>
+              {message && <p style={{ color: "var(--ok)" }}>{message}</p>}
+              {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
               <MonthCalendar
                 viewMonth={viewMonth}
-                onViewMonthChange={setViewMonth}
+                onViewMonthChange={(month) => {
+                  setViewMonth(month);
+                  setBoardDay(new Date(month));
+                }}
                 events={displayPublished}
                 timezone={user.timezone}
+                selectedDay={boardDay}
+                onSelectDay={setBoardDay}
+                selectable
               />
+              <div className="day-detail">
+                <h3>
+                  {boardDay.toLocaleDateString("en-US", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </h3>
+                {displayPublished.filter((event) => {
+                  const local = zonedDate(event.startTime, user.timezone);
+                  return (
+                    local.getFullYear() === boardDay.getFullYear() &&
+                    local.getMonth() === boardDay.getMonth() &&
+                    local.getDate() === boardDay.getDate()
+                  );
+                }).length === 0 ? (
+                  <p>No events this day. Click a slot on Schedule to create one.</p>
+                ) : (
+                  <ul className="event-list">
+                    {displayPublished
+                      .filter((event) => {
+                        const local = zonedDate(event.startTime, user.timezone);
+                        return (
+                          local.getFullYear() === boardDay.getFullYear() &&
+                          local.getMonth() === boardDay.getMonth() &&
+                          local.getDate() === boardDay.getDate()
+                        );
+                      })
+                      .map((event) => (
+                        <li
+                          key={event.id}
+                          className={`event-item ${event.duty === "OFF_DUTY" ? "offduty" : ""} ${event.status === "PENDING" || event.status === "DRAFT" ? "pending" : ""}`}
+                        >
+                          <span className="event-accent" />
+                          <div>
+                            <div className="event-title">{event.title}</div>
+                            <div className="event-meta">
+                              {formatClock(event.startTime, user.timezone)} ·{" "}
+                              {event.status.toLowerCase()}
+                              {event.denialReason ? ` — ${event.denialReason}` : ""}
+                            </div>
+                          </div>
+                          <div className="btn-row">
+                            {event.canEdit !== false && (
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                disabled={preview}
+                                onClick={() => loadEventIntoForm(event)}
+                              >
+                                Edit
+                              </button>
+                            )}
+                            {event.canDelete !== false && (
+                              <button
+                                type="button"
+                                className="btn secondary danger"
+                                disabled={preview || busy}
+                                onClick={() => void removeEvent(event)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </div>
             </section>
 
             <section className="dossier">
