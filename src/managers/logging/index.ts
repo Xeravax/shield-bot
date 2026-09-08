@@ -90,5 +90,7 @@ export {
   formatDiscordUserLine,
   formatVrchatProfileLine,
   getLinkedVrchatAccounts,
+  vrchatAccountTypeEmoji,
+  VRCHAT_ACCOUNT_TYPE_EMOJI,
 } from "./userDisplay.js";
 export type { VrchatAccountDisplay } from "./userDisplay.js";

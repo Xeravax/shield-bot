@@ -7,6 +7,10 @@ import {
 } from "../../utility/vrchat/groups.js";
 import { GuildMember, EmbedBuilder, Colors } from "discord.js";
 import { loggers } from "../../utility/logger.js";
+import {
+  formatVrchatProfileLine,
+  getLinkedVrchatAccounts,
+} from "../logging/userDisplay.js";
 
 /**
  * Result type for role sync operations
@@ -358,6 +362,7 @@ export class GroupRoleSyncManager {
           vrcRolesToAdd,
           vrcRolesToRemove,
           "sync",
+          vrcUserId,
         ).catch((error) =>
           loggers.vrchat.error("Error logging role sync", error),
         );
@@ -434,6 +439,7 @@ export class GroupRoleSyncManager {
     vrcRolesAdded: string[],
     vrcRolesRemoved: string[],
     action: "sync" | "group-joined" | "discord-role-updated",
+    vrcUserId: string,
   ): Promise<void> {
     try {
       const settings = await prisma.guildSettings.findUnique({
@@ -456,6 +462,14 @@ export class GroupRoleSyncManager {
               .map((r) => this.formatVrcRoleLabel(r, namesById))
               .join("\n")
           : "None";
+
+      const accounts = await getLinkedVrchatAccounts(member.id);
+      const syncedAccount = accounts.find((a) => a.vrcUserId === vrcUserId);
+      const vrcAccountLine = formatVrchatProfileLine(
+        vrcUserId,
+        syncedAccount?.vrchatUsername,
+        syncedAccount?.accountType,
+      );
 
       let title = "🔄 VRChat Group Roles Synced";
       let color: number = Colors.Blue;
@@ -480,6 +494,11 @@ export class GroupRoleSyncManager {
             name: "Display Name",
             value: member.displayName || member.user.username,
             inline: true,
+          },
+          {
+            name: "VRChat Account",
+            value: vrcAccountLine,
+            inline: false,
           },
           {
             name: "VRChat Roles Added",

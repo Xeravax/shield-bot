@@ -7,13 +7,34 @@ export type VrchatAccountDisplay = {
   accountType: "MAIN" | "ALT";
 };
 
+/** Guild emojis used in logs to distinguish MAIN vs ALT VRChat accounts. */
+export const VRCHAT_ACCOUNT_TYPE_EMOJI = {
+  MAIN: "<:HappyExite:923018075073302579>",
+  ALT: "<:Elixir:1357029222115446844>",
+} as const;
+
+export function vrchatAccountTypeEmoji(
+  accountType: string | null | undefined,
+): string {
+  if (accountType === "MAIN") {
+    return VRCHAT_ACCOUNT_TYPE_EMOJI.MAIN;
+  }
+  if (accountType === "ALT") {
+    return VRCHAT_ACCOUNT_TYPE_EMOJI.ALT;
+  }
+  return "";
+}
+
 /** Discord markdown profile link that does not unfurl. */
 export function formatVrchatProfileLine(
   vrcUserId: string,
   vrchatUsername?: string | null,
+  accountType?: string | null,
 ): string {
   const label = vrchatUsername?.trim() || vrcUserId;
-  return `[${label}](<https://vrchat.com/home/user/${vrcUserId}>) (\`${vrcUserId}\`)`;
+  const profile = `[${label}](<https://vrchat.com/home/user/${vrcUserId}>) (\`${vrcUserId}\`)`;
+  const emoji = vrchatAccountTypeEmoji(accountType);
+  return emoji ? `${emoji} ${profile}` : profile;
 }
 
 export function formatDiscordUserLine(
@@ -68,8 +89,8 @@ export async function getLinkedVrchatAccounts(
 /**
  * Standard logging identity block:
  * <@id> [`username`] (`id`)
- * [VRChat Name](<profile>) (`usr_…`)
- * …alts on following lines
+ * <:HappyExite:…> [VRChat Name](<profile>) (`usr_…`)
+ * <:Elixir:…> [Alt Name](<profile>) (`usr_…`)
  */
 export async function formatLoggedUser(
   discordId: string,
@@ -78,7 +99,9 @@ export async function formatLoggedUser(
   const lines = [formatDiscordUserLine(discordId, discordUsername)];
   const accounts = await getLinkedVrchatAccounts(discordId);
   for (const acc of accounts) {
-    lines.push(formatVrchatProfileLine(acc.vrcUserId, acc.vrchatUsername));
+    lines.push(
+      formatVrchatProfileLine(acc.vrcUserId, acc.vrchatUsername, acc.accountType),
+    );
   }
   return lines.join("\n").slice(0, 1024);
 }

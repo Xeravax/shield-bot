@@ -6,6 +6,7 @@ import {
   type MessageCreateOptions,
 } from "discord.js";
 import { auditLogManager, prisma } from "../../main.js";
+import { vrchatAccountTypeEmoji } from "../../managers/logging/userDisplay.js";
 import { loggers } from "../logger.js";
 
 export interface WhitelistLogData {
@@ -98,9 +99,9 @@ function buildLogContent(data: WhitelistLogData): string {
 function getAccountTypeBadge(accountType: string): string {
   switch (accountType) {
     case "MAIN":
-      return "**[MAIN <:HappyExite:923018075073302579>]**";
+      return `**[MAIN ${vrchatAccountTypeEmoji("MAIN")}]**`;
     case "ALT":
-      return "**[ALT <:Elixir:1357029222115446844>]**";
+      return `**[ALT ${vrchatAccountTypeEmoji("ALT")}]**`;
     case "IN_VERIFICATION":
       return "**[IN VERIFICATION <a:loading:867923149465980929>]**";
     default:
