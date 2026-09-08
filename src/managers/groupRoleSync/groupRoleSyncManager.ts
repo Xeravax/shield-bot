@@ -385,6 +385,46 @@ export class GroupRoleSyncManager {
   }
 
   /**
+   * Look up VRChat group role names by ID for log display.
+   */
+  private async getVrcRoleNamesById(
+    groupId: string | null | undefined,
+  ): Promise<Map<string, string>> {
+    if (!groupId) {
+      return new Map();
+    }
+
+    try {
+      const allRoles = await this.getGroupRolesWithCache(groupId);
+      return new Map(
+        allRoles.flatMap((role) => {
+          const r = role as { id?: string; name?: string };
+          return typeof r.id === "string" && typeof r.name === "string"
+            ? [[r.id, r.name] as [string, string]]
+            : [];
+        }),
+      );
+    } catch (error) {
+      loggers.vrchat.warn(
+        "Failed to resolve VRChat role names for sync log",
+        error,
+      );
+      return new Map();
+    }
+  }
+
+  /**
+   * Format a VRChat role as "Name (`id`)", falling back to the ID if the name is unknown.
+   */
+  private formatVrcRoleLabel(
+    roleId: string,
+    namesById: Map<string, string>,
+  ): string {
+    const name = namesById.get(roleId);
+    return name ? `${name} (\`${roleId}\`)` : `\`${roleId}\``;
+  }
+
+  /**
    * Log a role sync action to the promotion logs channel only
    * (VRChat group audit actions go to the VRChat Group forum thread via the poller).
    */
@@ -405,14 +445,16 @@ export class GroupRoleSyncManager {
         return;
       }
 
-      // Format VRChat role IDs
+      const namesById = await this.getVrcRoleNamesById(settings.vrcGroupId);
       const addedRoles =
         vrcRolesAdded.length > 0
-          ? vrcRolesAdded.map((r) => `\`${r}\``).join(", ")
+          ? vrcRolesAdded.map((r) => this.formatVrcRoleLabel(r, namesById)).join("\n")
           : "None";
       const removedRoles =
         vrcRolesRemoved.length > 0
-          ? vrcRolesRemoved.map((r) => `\`${r}\``).join(", ")
+          ? vrcRolesRemoved
+              .map((r) => this.formatVrcRoleLabel(r, namesById))
+              .join("\n")
           : "None";
 
       let title = "🔄 VRChat Group Roles Synced";
