@@ -20,6 +20,7 @@ import {
   DEFAULT_DECLINED_COOLDOWN_HOURS,
   getDeclinedCooldownHours,
 } from "../../../../managers/patrol/patrolTimerManager.js";
+import { scrubRoleDisplay } from "../../../../utility/patrol/scrubRoleDisplay.js";
 
 /** Parse patrol-promo:action:guildId:userId:currentRankRoleId:nextRankRoleId */
 function parseCustomId(customId: string): { guildId: string; userId: string; currentRankRoleId: string; nextRankRoleId: string } | null {
@@ -33,11 +34,6 @@ function parseCustomId(customId: string): { guildId: string; userId: string; cur
     currentRankRoleId: parts[4],
     nextRankRoleId: parts[5],
   };
-}
-
-/** Strip to only A-z and . so role names can't inject formatting. */
-function scrubRoleDisplay(name: string): string {
-  return name.replace(/[^a-zA-Z.]/g, "") || name;
 }
 
 async function editPromotionMessage(

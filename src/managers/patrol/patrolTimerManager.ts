@@ -27,6 +27,7 @@ import {
 } from "../../utility/vrchat/promotionAccountInfo.js";
 import { blocksPatrolTracking } from "../loa/loaManager.js";
 import { hasNode } from "../../utility/permissionNodes.js";
+import { scrubRoleDisplay } from "../../utility/patrol/scrubRoleDisplay.js";
 
 /** Single rank-based promotion rule (current rank -> next rank at required hours, optional cooldown) */
 export interface PromotionRule {
@@ -105,11 +106,6 @@ const MONTH_NAMES = [
   "November",
   "December",
 ];
-
-/** Strip to only A-z and . so role names can't inject formatting. */
-function scrubRoleDisplay(name: string): string {
-  return name.replace(/[^a-zA-Z.]/g, "") || name;
-}
 
 function parseStaffRoleIds(guildId: string, staffRoleIds: unknown): string[] {
   if (staffRoleIds === null || staffRoleIds === undefined) {

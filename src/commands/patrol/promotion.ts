@@ -13,11 +13,7 @@ import type { PromotionRule } from "../../managers/patrol/patrolTimerManager.js"
 import { PermissionNodeGuard } from "../../utility/guards.js";
 import { loggers } from "../../utility/logger.js";
 import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
-
-/** Strip to only A-z and . so role names can't inject formatting. */
-function scrubRoleDisplay(name: string): string {
-  return name.replace(/[^a-zA-Z.]/g, "") || name;
-}
+import { scrubRoleDisplay } from "../../utility/patrol/scrubRoleDisplay.js";
 
 function formatRuleCooldownLabel(r: PromotionRule | RuleEligibilityEntry): string {
   const cooldown =
