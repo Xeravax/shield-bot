@@ -134,7 +134,7 @@ export class SettingsRoleTrackingCommands {
             index: i - 1,
             offset: `${i} week${i > 1 ? "s" : ""}`,
             type: "warning",
-            message: `Hello! This is your Week ${i} reminder for the {roleName} role. You have ${weeks - i} week${weeks - i > 1 ? "s" : ""} remaining. Make sure you're getting your patrol time in! If you need extended time, please request a Leave of Absence (LOA).`,
+            message: "__i18n:roleTracking.defaultWeeklyWarning__",
           });
         }
       }

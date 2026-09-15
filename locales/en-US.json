@@ -1,0 +1,284 @@
+{
+  "common": {
+    "enabled": "✅ **Enabled**",
+    "disabled": "❌ **Disabled**",
+    "guildOnly": "This command can only be used in a server.",
+    "failedGeneric": "❌ Something went wrong. Please try again.",
+    "failedUpdate": "❌ Failed to update. Please try again.",
+    "notYours": "❌ These settings are not yours.",
+    "default": "*(default)*",
+    "approve": "Approve",
+    "deny": "Deny",
+    "thread": "Thread",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "reset": "Reset",
+    "language": "Language",
+    "followGuild": "Use server default"
+  },
+  "profile": {
+    "title": "Profile Settings",
+    "description": "Manage your personal bot preferences below.",
+    "timezone": {
+      "name": "Timezone",
+      "help": "Used when you type natural-language times (e.g. \"Saturday 8pm\"). Unix timestamps are always absolute. Natural-language parsing is English-centric.",
+      "change": "Change timezone",
+      "reset": "Reset timezone to default",
+      "modalTitle": "Change timezone",
+      "modalLabel": "IANA timezone",
+      "failedOpen": "❌ Could not open the timezone form.",
+      "failedReset": "❌ Failed to reset timezone."
+    },
+    "language": {
+      "name": "Language",
+      "help": "Overrides the server language for your DMs and ephemeral replies. Public channel posts always use the server language.",
+      "change": "Change language",
+      "reset": "Reset language to server default",
+      "selectPlaceholder": "Choose your language",
+      "updated": "✅ Language set to {{label}}.",
+      "resetDone": "✅ Language reset to server default.",
+      "failed": "❌ Failed to update language."
+    },
+    "patrolDm": {
+      "name": "Patrol completion DMs",
+      "on": "✅ **Enabled** - you receive a DM when a patrol session completes.",
+      "off": "❌ **Disabled** - no completion DMs.",
+      "buttonOn": "Patrol DMs: On",
+      "buttonOff": "Patrol DMs: Off"
+    },
+    "joinReminders": {
+      "name": "Patrol join reminders",
+      "on": "✅ **Enabled** - you may be DM'd when joining patrol without the Shield Member role.",
+      "off": "❌ **Disabled** - no join reminders.",
+      "buttonOn": "Join reminders: On",
+      "buttonOff": "Join reminders: Off"
+    },
+    "eventStatus": {
+      "name": "Event status updates",
+      "on": "✅ **Enabled** - you receive DMs when your planned events are submitted, approved, denied, or cancelled.",
+      "off": "❌ **Disabled** - no event status DMs.",
+      "buttonOn": "Event status: On",
+      "buttonOff": "Event status: Off"
+    },
+    "modReasonPing": {
+      "name": "Moderation reason pings",
+      "on": "✅ **Enabled** - you get pinged in mod logs when a reason is missing.",
+      "off": "❌ **Disabled** - you will not be pinged; you are responsible for providing reasons yourself.",
+      "buttonOn": "Mod reason pings: On",
+      "buttonOff": "Mod reason pings: Off",
+      "disableWarning": "⚠️ By disabling mod reason pings, **you become responsible** for providing reasons for your own moderating actions. Failure to do so may result in punishment by higher staff."
+    },
+    "memberCard": {
+      "name": "Public member card",
+      "on": "✅ **Enabled** - other members can see your verified MAIN VRChat account, patrol hours this month, and whether you are on leave (end date only, never the reason).",
+      "off": "❌ **Disabled** - `/user lookup` shows only your Discord identity to others. You can still preview the full card yourself.",
+      "buttonOn": "Public card: On",
+      "buttonOff": "Public card: Off"
+    },
+    "footer": "Event scheduling rules (Monday ban, weekly limits) always use EST.",
+    "openFailed": "❌ Failed to open profile settings. Please try again.",
+    "prefUpdateFailed": "❌ Failed to update preference.",
+    "slashDescription": "View and change your personal bot preferences"
+  },
+  "settings": {
+    "locale": {
+      "slashDescription": "Set the default language for this server",
+      "optionDescription": "Server default language (public posts and fallback)",
+      "set": "✅ Server language set to {{label}}.",
+      "cleared": "✅ Server language reset to English (US).",
+      "failed": "❌ Failed to set server language.",
+      "current": "Current server language: **{{label}}**.",
+      "invalid": "❌ That language is not available. Add a matching file under `locales/`."
+    },
+    "slashDescription": "Bot configuration and settings commands"
+  },
+  "patrol": {
+    "dm": {
+      "completedTitle": "✅ Patrol Session Completed",
+      "completedBody": "Your patrol session has ended.\n\n**Duration:** {{duration}}\n**Channel:** {{channel}}",
+      "thisYear": "This Year ({{year}})",
+      "allTime": "All-Time Total",
+      "footer": "S.H.I.E.L.D. Bot - Patrol System",
+      "disableButton": "Disable Patrol DM"
+    },
+    "alone": {
+      "title": "Alone in patrol channel"
+    },
+    "noShield": {
+      "title": "Patrol Channel - Hours Not Recorded",
+      "dontRemind": "Don't remind me about this"
+    },
+    "loa": {
+      "pausedTitle": "⚠️ LOA Time Tracking Paused",
+      "alertTitle": "⚠️ LOA Alert"
+    },
+    "promotion": {
+      "approve": "Approve",
+      "deny": "Deny",
+      "thread": "Thread"
+    },
+    "commandUsageTitle": "⚙️ Bot Command Usage",
+    "removeTime": "Remove time",
+    "currentEmpty": "No users currently tracked.",
+    "slash": {
+      "groupDescription": "Patrol timer",
+      "currentDescription": "Show tracked users in voice",
+      "topDescription": "Patrol time leaderboard",
+      "timeDescription": "Check patrol time"
+    }
+  },
+  "logging": {
+    "threads": {
+      "messages": "Messages",
+      "channels": "Channels",
+      "roles": "Roles",
+      "members": "Members",
+      "voice": "Voice",
+      "server": "Server",
+      "moderation": "Moderation",
+      "reactions": "Reactions",
+      "events": "Events",
+      "automod": "AutoMod",
+      "integrations": "Integrations",
+      "bot": "Bot Log",
+      "patrol": "Patrol Hours",
+      "whitelist": "Whitelist",
+      "vrchatGroup": "VRChat Group",
+      "dashboard": "Dashboard Log"
+    },
+    "welcome": "Welcome {{member}}!",
+    "claim": "Claim",
+    "provideReason": "Provide reason"
+  },
+  "serverStats": {
+    "goal": "Current Goal",
+    "members": "Members",
+    "deputies": "Deputies",
+    "boosts": "Boosts",
+    "channelName": "🔰 | {{label}}: {{value}}"
+  },
+  "permissions": {
+    "patrol.command.current": "/patrol current - show tracked users in voice",
+    "patrol.command.top": "/patrol top - patrol time leaderboard",
+    "patrol.command.manage": "/patrol manage - manage patrol time (add/remove/wipe)",
+    "patrol.command.time": "/patrol time - check patrol time (shield members)",
+    "patrol.manage.view-others": "View other members' patrol time and sessions",
+    "patrol.manage.wipe": "Confirm patrol wipe actions (buttons)",
+    "patrol.manage.promotion": "Approve/deny patrol promotion suggestions (buttons)",
+    "patrol.manage.session-remove": "Remove individual patrol sessions (buttons)",
+    "patrol.tracked": "Member is eligible for patrol voice time tracking and SHIELD-only dashboard content (Recruit+)",
+    "settings.command.attendance": "/settings attendance - attendance channel settings",
+    "settings.command.events": "/settings events - event scheduling and reminder settings",
+    "settings.command.group": "/group config - VRChat group settings",
+    "settings.command.loa": "/settings loa - LOA settings",
+    "settings.command.patrol": "/settings patrol - patrol channel/category and promotion rule settings",
+    "settings.command.promotion": "/settings patrol promotion rules/channels and /patrol promotion actions",
+    "settings.command.role-tracking": "/role-tracking config - role tracking configuration",
+    "settings.command.server-stats": "/settings server-stats and /server-stats - member/deputy/boost display channels",
+    "settings.command.logging": "/settings logging - audit forum, welcome channel, retention, invite filter",
+    "settings.command.vrchat": "/settings vrchat - VRChat world settings",
+    "settings.command.whitelist": "/settings whitelist - whitelist GitHub settings",
+    "settings.command.locale": "/settings locale - set server default language"
+  },
+  "roleTracking": {
+    "defaultWeeklyWarning": "Hello! This is your Week {{week}} reminder for the {{roleName}} role. You have {{remaining}} week(s) remaining. Make sure you're getting your patrol time in! If you need extended time, please request a Leave of Absence (LOA).",
+    "defaultWeeklyWarning_one": "Hello! This is your Week {{week}} reminder for the {{roleName}} role. You have {{remaining}} week remaining. Make sure you're getting your patrol time in! If you need extended time, please request a Leave of Absence (LOA).",
+    "defaultWeeklyWarning_other": "Hello! This is your Week {{week}} reminder for the {{roleName}} role. You have {{remaining}} weeks remaining. Make sure you're getting your patrol time in! If you need extended time, please request a Leave of Absence (LOA).",
+    "useCatalogMarker": "__i18n:roleTracking.defaultWeeklyWarning__"
+  },
+  "slash": {
+    "profile": {
+      "settings": "View and change your personal bot preferences"
+    },
+    "settings": {
+      "root": "Bot configuration and settings commands",
+      "locale": "Set the default language for this server",
+      "localeOption": "Server default language"
+    },
+    "patrol": {
+      "group": "Patrol timer",
+      "current": "Show tracked users in voice"
+    }
+  },
+  "loa": {
+    "embed": {
+      "title": "Leave of Absence Request",
+      "description": "**User:** <@{{userId}}>\n{{status}}",
+      "statusPending": "**Status:** Pending Approval",
+      "statusApproved": "**Status:** ✅ Approved",
+      "statusActive": "**Status:** ✅ Active",
+      "statusDenied": "**Status:** ❌ Denied",
+      "statusExpired": "**Status:** ⏰ Ended (scheduled end reached)",
+      "statusEndedEarly": "**Status:** ⚠️ Ended Early",
+      "duration": "Duration",
+      "startDate": "Start Date",
+      "endDate": "End Date",
+      "type": "Type",
+      "endedEarlyAt": "Ended Early At",
+      "cooldownUntil": "Cooldown Until",
+      "reason": "Reason",
+      "approvedBy": "Approved By",
+      "deniedBy": "Denied By",
+      "denialReason": "Denial Reason",
+      "na": "N/A"
+    },
+    "type": {
+      "attendable": "Attendable",
+      "blocking": "Blocking"
+    },
+    "buttons": {
+      "approve": "Approve",
+      "deny": "Deny",
+      "endEarly": "End Early"
+    },
+    "dm": {
+      "viewRequest": "[View your LOA request]({{link}})",
+      "expired": "⏰ Your LOA has expired and the LOA role has been removed.{{linkLine}}",
+      "endedEarly": "⚠️ Your LOA has ended early and the LOA role has been removed.{{cooldownLine}}{{linkLine}}",
+      "cooldownLine": "\n\nYou are in a cooldown period until <t:{{timestamp}}:F>.",
+      "linkLine": "\n\n{{viewLink}}",
+      "activated": "✅ Your LOA is now **active**. {{patrolNote}}{{linkLine}}",
+      "patrolNoteAttendable": "Your promotion cooldown is paused until your LOA ends. You can still attend events and accrue patrol time.",
+      "patrolNoteBlocking": "Your patrol time and promotion cooldowns are paused until your LOA ends."
+    },
+    "errors": {
+      "parseTime": "Failed to parse time",
+      "cooldown": "You are in a cooldown period until {{cooldownEnd}}. You cannot request a new LOA until then.",
+      "minDuration": "LOA duration must be at least {{minimumDays}} day(s). Your requested duration is approximately {{requestedDays}} day(s).",
+      "notFound": "LOA not found",
+      "notPending": "LOA is not pending approval",
+      "notOwner": "You don't own this LOA",
+      "notActive": "LOA is not active",
+      "unknown": "Unknown error",
+      "roleNotConfigured": "LOA role not configured for this guild",
+      "userNotInGuild": "User not found in guild",
+      "roleNotFound": "LOA role not found in guild",
+      "userNotFound": "User not found",
+      "noCooldown": "No active cooldown found for this user",
+      "removeRoleFailed": "Failed to remove LOA role"
+    },
+    "blockingAttendance": "User has an active blocking leave of absence and cannot participate in event attendance."
+  },
+  "dashboard": {
+    "loading": "Loading…",
+    "hours": "Hours",
+    "calendar": "Calendar",
+    "admin": "Admin",
+    "trainer": "Trainer",
+    "host": "Host",
+    "preview": "Preview mode",
+    "language": "Language",
+    "handbook": "Handbook",
+    "error": "Something went wrong.",
+    "tabs": {
+      "homeTitle": "Duty briefing",
+      "homeSubtitle": "Patrol hours, the published roster, and essential handbooks.",
+      "adminTitle": "Staff briefing",
+      "adminSubtitle": "Server pulse, member lookup, and recent cases.",
+      "hostTitle": "Hosting desk",
+      "hostSubtitle": "Submit events for the roster in your timezone.",
+      "trainerTitle": "Trainer assignments",
+      "trainerSubtitle": "Handbooks for the desks you cover."
+    }
+  }
+}

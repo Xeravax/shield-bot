@@ -13,9 +13,11 @@ import { loggers } from "../../utility/logger.js";
 import {
   LOGGING_THREAD_KEYS,
   LOGGING_THREAD_NAMES,
+  loggingThreadName,
   parseLoggingThreadIds,
   type LoggingThreadKey,
 } from "./loggingTypes.js";
+import { resolveGuildLocale } from "../../i18n/resolveLocale.js";
 
 export type LoggingSetupResult = {
   forumChannelId: string;
@@ -267,12 +269,14 @@ export class LoggingSetupManager {
       throw new Error("Logging forum channel is missing or not a forum.");
     }
 
+    const locale = await resolveGuildLocale(guild.id);
     const threadsByName = await this.listForumThreads(forum);
     const claimedIds = new Set<string>();
     const result = {} as Record<LoggingThreadKey, string>;
 
     for (const key of LOGGING_THREAD_KEYS) {
-      const expectedName = LOGGING_THREAD_NAMES[key];
+      const expectedName = loggingThreadName(key, locale);
+      const englishName = LOGGING_THREAD_NAMES[key];
       const existingId = existing[key];
 
       if (existingId) {
@@ -284,6 +288,9 @@ export class LoggingSetupManager {
           !claimedIds.has(thread.id)
         ) {
           await this.adoptThread(thread);
+          if (thread.name !== expectedName) {
+            await thread.setName(expectedName).catch(() => null);
+          }
           result[key] = thread.id;
           claimedIds.add(thread.id);
           threadsByName.delete(normalizeChannelName(thread.name));
@@ -291,12 +298,19 @@ export class LoggingSetupManager {
         }
       }
 
-      const byName = threadsByName.get(normalizeChannelName(expectedName));
+      const byName =
+        threadsByName.get(normalizeChannelName(expectedName)) ??
+        threadsByName.get(normalizeChannelName(englishName));
       if (byName && !claimedIds.has(byName.id)) {
         await this.adoptThread(byName);
+        if (byName.name !== expectedName) {
+          await byName.setName(expectedName).catch(() => null);
+        }
         result[key] = byName.id;
         claimedIds.add(byName.id);
+        threadsByName.delete(normalizeChannelName(byName.name));
         threadsByName.delete(normalizeChannelName(expectedName));
+        threadsByName.delete(normalizeChannelName(englishName));
         loggers.bot.info(`Reusing logging thread ${key} in ${guild.id}`, {
           threadId: byName.id,
         });

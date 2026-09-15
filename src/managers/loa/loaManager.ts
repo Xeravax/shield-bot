@@ -11,11 +11,21 @@ import { formatDuration, parseRelativeTime } from "../../utility/timeParser.js";
 import { loggers } from "../../utility/logger.js";
 import type { LeaveOfAbsence } from "../../generated/prisma/client.js";
 import { LeaveOfAbsenceStatus, LeaveOfAbsenceType } from "../../generated/prisma/client.js";
+import { DEFAULT_LOCALE, t } from "../../i18n/index.js";
 
 const DEFAULT_LOA_COOLDOWN_DAYS = 14;
 const DEFAULT_MINIMUM_REQUEST_TIME_DAYS = 30;
 
 export type LOAEmbedStatus = "pending" | "approved" | "active" | "denied" | "expired" | "ended_early";
+
+const STATUS_KEY: Record<LOAEmbedStatus, string> = {
+  pending: "loa.embed.statusPending",
+  approved: "loa.embed.statusApproved",
+  active: "loa.embed.statusActive",
+  denied: "loa.embed.statusDenied",
+  expired: "loa.embed.statusExpired",
+  ended_early: "loa.embed.statusEndedEarly",
+};
 
 export function isBlockingLOA(loa: { type: LeaveOfAbsenceType } | null | undefined): boolean {
   return loa?.type === LeaveOfAbsenceType.BLOCKING;
@@ -25,8 +35,13 @@ export function blocksPatrolTracking(loa: { type: LeaveOfAbsenceType } | null | 
   return isBlockingLOA(loa);
 }
 
-export function formatLOATypeLabel(type: LeaveOfAbsenceType): string {
-  return type === LeaveOfAbsenceType.ATTENDABLE ? "Attendable" : "Blocking";
+export function formatLOATypeLabel(
+  type: LeaveOfAbsenceType,
+  locale: string = DEFAULT_LOCALE,
+): string {
+  return type === LeaveOfAbsenceType.ATTENDABLE
+    ? t(locale, "loa.type.attendable")
+    : t(locale, "loa.type.blocking");
 }
 
 export const BLOCKING_LOA_ATTENDANCE_MESSAGE =
@@ -52,22 +67,21 @@ export function buildLOARequestEmbed(
     cooldownEndDate?: Date | null;
   },
   status: LOAEmbedStatus,
+  locale: string = DEFAULT_LOCALE,
 ): EmbedBuilder {
   const reasonDisplay = loa.reason.length > 1024 ? loa.reason.slice(0, 1021) + "…" : loa.reason;
-  const statusLabels: Record<LOAEmbedStatus, string> = {
-    pending: "**Status:** Pending Approval",
-    approved: "**Status:** ✅ Approved",
-    active: "**Status:** ✅ Active",
-    denied: "**Status:** ❌ Denied",
-    expired: "**Status:** ⏰ Ended (scheduled end reached)",
-    ended_early: "**Status:** ⚠️ Ended Early",
-  };
+  const statusLabel = t(locale, STATUS_KEY[status]);
 
   const embed = new EmbedBuilder()
-    .setTitle("Leave of Absence Request")
-    .setDescription(`**User:** <@${loa.user.discordId}>\n${statusLabels[status]}`)
+    .setTitle(t(locale, "loa.embed.title"))
+    .setDescription(
+      t(locale, "loa.embed.description", {
+        userId: loa.user.discordId,
+        status: statusLabel,
+      }),
+    )
     .addFields({
-      name: "Duration",
+      name: t(locale, "loa.embed.duration"),
       value: formatDuration(loa.endDate.getTime() - loa.startDate.getTime()),
       inline: true,
     });
@@ -75,12 +89,12 @@ export function buildLOARequestEmbed(
   if (status === "expired" || status === "pending" || status === "approved" || status === "active" || status === "denied") {
     embed.addFields(
       {
-        name: "Start Date",
+        name: t(locale, "loa.embed.startDate"),
         value: `<t:${Math.floor(loa.startDate.getTime() / 1000)}:F>`,
         inline: true,
       },
       {
-        name: "End Date",
+        name: t(locale, "loa.embed.endDate"),
         value: `<t:${Math.floor(loa.endDate.getTime() / 1000)}:F>`,
         inline: true,
       },
@@ -89,32 +103,33 @@ export function buildLOARequestEmbed(
 
   if (loa.type) {
     embed.addFields({
-      name: "Type",
-      value: formatLOATypeLabel(loa.type),
+      name: t(locale, "loa.embed.type"),
+      value: formatLOATypeLabel(loa.type, locale),
       inline: true,
     });
   }
 
   if (status === "ended_early") {
+    const na = t(locale, "loa.embed.na");
     embed.addFields(
       {
-        name: "Ended Early At",
-        value: loa.endedEarlyAt ? `<t:${Math.floor(loa.endedEarlyAt.getTime() / 1000)}:F>` : "N/A",
+        name: t(locale, "loa.embed.endedEarlyAt"),
+        value: loa.endedEarlyAt ? `<t:${Math.floor(loa.endedEarlyAt.getTime() / 1000)}:F>` : na,
         inline: true,
       },
       {
-        name: "Cooldown Until",
-        value: loa.cooldownEndDate ? `<t:${Math.floor(loa.cooldownEndDate.getTime() / 1000)}:F>` : "N/A",
+        name: t(locale, "loa.embed.cooldownUntil"),
+        value: loa.cooldownEndDate ? `<t:${Math.floor(loa.cooldownEndDate.getTime() / 1000)}:F>` : na,
         inline: true,
       },
     );
   }
 
-  embed.addFields({ name: "Reason", value: reasonDisplay });
+  embed.addFields({ name: t(locale, "loa.embed.reason"), value: reasonDisplay });
 
   if (loa.approvedBy && (status === "approved" || status === "active" || status === "expired" || status === "ended_early")) {
     embed.addFields({
-      name: "Approved By",
+      name: t(locale, "loa.embed.approvedBy"),
       value: `<@${loa.approvedBy}>`,
       inline: true,
     });
@@ -122,14 +137,14 @@ export function buildLOARequestEmbed(
 
   if (loa.deniedBy && status === "denied") {
     embed.addFields({
-      name: "Denied By",
+      name: t(locale, "loa.embed.deniedBy"),
       value: `<@${loa.deniedBy}>`,
       inline: true,
     });
   }
 
   if (loa.denialReason && status === "denied") {
-    embed.addFields({ name: "Denial Reason", value: loa.denialReason });
+    embed.addFields({ name: t(locale, "loa.embed.denialReason"), value: loa.denialReason });
   }
 
   const colorMap: Record<LOAEmbedStatus, number> = {
@@ -179,6 +194,16 @@ export class LOAManager {
     return patrolTimer;
   }
 
+  private async resolveUserLocale(guildId: string, userId: string) {
+    const { resolveLocale } = await import("../../i18n/resolveLocale.js");
+    return resolveLocale({ userId, guildId });
+  }
+
+  /** Public channel LOA embeds/buttons stay English so the whole server shares one language. */
+  private resolvePublicLocale(_guildId?: string) {
+    return DEFAULT_LOCALE;
+  }
+
   /**
    * Request a new LOA
    */
@@ -189,13 +214,14 @@ export class LOAManager {
     reason: string,
     type: LeaveOfAbsenceType,
   ): Promise<LOARequestResult> {
+    const locale = await this.resolveUserLocale(guildId, discordId);
     try {
       // Parse time string
       const parseResult = parseRelativeTime(timeString);
       if (!parseResult.success || !parseResult.endDate) {
         return {
           success: false,
-          error: parseResult.error || "Failed to parse time",
+          error: parseResult.error || t(locale, "loa.errors.parseTime"),
         };
       }
 
@@ -208,7 +234,7 @@ export class LOAManager {
         const cooldownEnd = `<t:${Math.floor(cooldown.cooldownEndDate.getTime() / 1000)}:F>`;
         return {
           success: false,
-          error: `You are in a cooldown period until ${cooldownEnd}. You cannot request a new LOA until then.`,
+          error: t(locale, "loa.errors.cooldown", { cooldownEnd }),
         };
       }
 
@@ -224,7 +250,10 @@ export class LOAManager {
       if (durationDays < minimumDays) {
         return {
           success: false,
-          error: `LOA duration must be at least ${minimumDays} day${minimumDays !== 1 ? "s" : ""}. Your requested duration is approximately ${Math.round(durationDays * 10) / 10} day${Math.round(durationDays * 10) / 10 !== 1 ? "s" : ""}.`,
+          error: t(locale, "loa.errors.minDuration", {
+            minimumDays,
+            requestedDays: Math.round(durationDays * 10) / 10,
+          }),
         };
       }
 
@@ -300,7 +329,7 @@ export class LOAManager {
       loggers.bot.error("Error requesting LOA", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(locale, "loa.errors.unknown"),
       };
     }
   }
@@ -315,12 +344,16 @@ export class LOAManager {
         include: { user: true },
       });
 
+      const locale = loa
+        ? await this.resolveUserLocale(loa.guildId, staffDiscordId)
+        : DEFAULT_LOCALE;
+
       if (!loa) {
-        return { success: false, error: "LOA not found" };
+        return { success: false, error: t(locale, "loa.errors.notFound") };
       }
 
       if (loa.status !== "PENDING") {
-        return { success: false, error: "LOA is not pending approval" };
+        return { success: false, error: t(locale, "loa.errors.notPending") };
       }
 
       // Update LOA status
@@ -347,7 +380,7 @@ export class LOAManager {
       loggers.bot.error("Error approving LOA", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(DEFAULT_LOCALE, "loa.errors.unknown"),
       };
     }
   }
@@ -365,12 +398,16 @@ export class LOAManager {
         where: { id: loaId },
       });
 
+      const locale = loa
+        ? await this.resolveUserLocale(loa.guildId, staffDiscordId)
+        : DEFAULT_LOCALE;
+
       if (!loa) {
-        return { success: false, error: "LOA not found" };
+        return { success: false, error: t(locale, "loa.errors.notFound") };
       }
 
       if (loa.status !== "PENDING") {
-        return { success: false, error: "LOA is not pending approval" };
+        return { success: false, error: t(locale, "loa.errors.notPending") };
       }
 
       await prisma.leaveOfAbsence.update({
@@ -387,7 +424,7 @@ export class LOAManager {
       loggers.bot.error("Error denying LOA", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(DEFAULT_LOCALE, "loa.errors.unknown"),
       };
     }
   }
@@ -402,16 +439,20 @@ export class LOAManager {
         include: { user: true },
       });
 
+      const locale = loa
+        ? await this.resolveUserLocale(loa.guildId, discordId)
+        : DEFAULT_LOCALE;
+
       if (!loa) {
-        return { success: false, error: "LOA not found" };
+        return { success: false, error: t(locale, "loa.errors.notFound") };
       }
 
       if (loa.user.discordId !== discordId) {
-        return { success: false, error: "You don't own this LOA" };
+        return { success: false, error: t(locale, "loa.errors.notOwner") };
       }
 
       if (loa.status !== "ACTIVE" && loa.status !== "APPROVED") {
-        return { success: false, error: "LOA is not active" };
+        return { success: false, error: t(locale, "loa.errors.notActive") };
       }
 
       const now = new Date();
@@ -443,7 +484,7 @@ export class LOAManager {
       loggers.bot.error("Error ending LOA early", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(DEFAULT_LOCALE, "loa.errors.unknown"),
       };
     }
   }
@@ -486,19 +527,21 @@ export class LOAManager {
         where: { guildId },
       });
 
+      const locale = this.resolvePublicLocale(guildId);
+
       if (!settings?.loaRoleId) {
-        return { success: false, error: "LOA role not configured for this guild" };
+        return { success: false, error: t(locale, "loa.errors.roleNotConfigured") };
       }
 
       const guild = await this.client.guilds.fetch(guildId);
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) {
-        return { success: false, error: "User not found in guild" };
+        return { success: false, error: t(locale, "loa.errors.userNotInGuild") };
       }
       const role = await guild.roles.fetch(settings.loaRoleId);
 
       if (!role) {
-        return { success: false, error: "LOA role not found in guild" };
+        return { success: false, error: t(locale, "loa.errors.roleNotFound") };
       }
 
       await member.roles.add(role);
@@ -509,7 +552,7 @@ export class LOAManager {
       loggers.bot.error("Error assigning LOA role", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(DEFAULT_LOCALE, "loa.errors.unknown"),
       };
     }
   }
@@ -552,7 +595,7 @@ export class LOAManager {
       loggers.bot.error("Error removing LOA role", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(DEFAULT_LOCALE, "loa.errors.unknown"),
       };
     }
   }
@@ -596,7 +639,12 @@ export class LOAManager {
         return;
       }
 
-      const embed = buildLOARequestEmbed(loa, kind === "expired" ? "expired" : "ended_early");
+      const locale = this.resolvePublicLocale(loa.guildId);
+      const embed = buildLOARequestEmbed(
+        loa,
+        kind === "expired" ? "expired" : "ended_early",
+        locale,
+      );
 
       await message.edit({
         embeds: [embed],
@@ -627,10 +675,11 @@ export class LOAManager {
         return;
       }
 
-      const embed = buildLOARequestEmbed(loa, "active");
+      const locale = this.resolvePublicLocale(loa.guildId);
+      const embed = buildLOARequestEmbed(loa, "active", locale);
       const endEarlyButton = new ButtonBuilder()
         .setCustomId(`loa:end-early:${loa.id}`)
-        .setLabel("End Early")
+        .setLabel(t(locale, "loa.buttons.endEarly").slice(0, 80))
         .setStyle(ButtonStyle.Danger);
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(endEarlyButton);
 
@@ -653,17 +702,23 @@ export class LOAManager {
   ): Promise<void> {
     await this.updateAnnouncementToClosedState(loa, kind, messageOverride);
 
+    const locale = await this.resolveUserLocale(loa.guildId, loa.user.discordId);
     const messageLink = getLOAMessageLink(loa);
-    const linkLine = messageLink ? `\n\n[View your LOA request](${messageLink})` : "";
+    const viewLink = messageLink
+      ? t(locale, "loa.dm.viewRequest", { link: messageLink })
+      : "";
+    const linkLine = viewLink ? t(locale, "loa.dm.linkLine", { viewLink }) : "";
 
     let dmContent: string;
     if (kind === "expired") {
-      dmContent = `⏰ Your LOA has expired and the LOA role has been removed.${linkLine}`;
+      dmContent = t(locale, "loa.dm.expired", { linkLine });
     } else {
       const cooldownLine = loa.cooldownEndDate
-        ? `\n\nYou are in a cooldown period until <t:${Math.floor(loa.cooldownEndDate.getTime() / 1000)}:F>.`
+        ? t(locale, "loa.dm.cooldownLine", {
+            timestamp: Math.floor(loa.cooldownEndDate.getTime() / 1000),
+          })
         : "";
-      dmContent = `⚠️ Your LOA has ended early and the LOA role has been removed.${cooldownLine}${linkLine}`;
+      dmContent = t(locale, "loa.dm.endedEarly", { cooldownLine, linkLine });
     }
 
     try {
@@ -788,13 +843,14 @@ export class LOAManager {
    * Remove cooldown for a user (staff only)
    */
   async removeCooldown(guildId: string, discordId: string): Promise<{ success: boolean; error?: string }> {
+    const locale = await this.resolveUserLocale(guildId, discordId);
     try {
       const user = await prisma.user.findUnique({
         where: { discordId },
       });
 
       if (!user) {
-        return { success: false, error: "User not found" };
+        return { success: false, error: t(locale, "loa.errors.userNotFound") };
       }
 
       // Find the LOA with active cooldown
@@ -813,7 +869,7 @@ export class LOAManager {
       });
 
       if (!loa) {
-        return { success: false, error: "No active cooldown found for this user" };
+        return { success: false, error: t(locale, "loa.errors.noCooldown") };
       }
 
       // Clear the cooldown
@@ -829,7 +885,7 @@ export class LOAManager {
       loggers.bot.error(`Error removing cooldown for user ${discordId} in guild ${guildId}`, error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(locale, "loa.errors.unknown"),
       };
     }
   }
@@ -844,7 +900,7 @@ export class LOAManager {
       });
 
       if (!loa) {
-        return { success: false, error: "LOA not found" };
+        return { success: false, error: t(DEFAULT_LOCALE, "loa.errors.notFound") };
       }
 
       const updated = await prisma.leaveOfAbsence.update({
@@ -862,7 +918,7 @@ export class LOAManager {
       loggers.bot.error("Error pausing notifications", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(DEFAULT_LOCALE, "loa.errors.unknown"),
       };
     }
   }
@@ -924,13 +980,16 @@ export class LOAManager {
       });
 
       if (!loa) {
-        return { success: false, error: "LOA not found" };
+        return { success: false, error: t(DEFAULT_LOCALE, "loa.errors.notFound") };
       }
 
       // Remove LOA role first
       const removeResult = await this.removeLOARole(loa.guildId, loa.user.discordId);
       if (!removeResult.success) {
-        return { success: false, error: removeResult.error || "Failed to remove LOA role" };
+        return {
+          success: false,
+          error: removeResult.error || t(DEFAULT_LOCALE, "loa.errors.removeRoleFailed"),
+        };
       }
 
       // Update status to EXPIRED in a transaction
@@ -956,7 +1015,7 @@ export class LOAManager {
       loggers.bot.error(`Error expiring LOA ${loaId}`, error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : t(DEFAULT_LOCALE, "loa.errors.unknown"),
       };
     }
   }
@@ -1010,18 +1069,22 @@ export class LOAManager {
    * DM user when their approved LOA becomes active via cron.
    */
   async notifyLOAActivated(loa: LOAWithUser): Promise<void> {
+    const locale = await this.resolveUserLocale(loa.guildId, loa.user.discordId);
     const messageLink = getLOAMessageLink(loa);
-    const linkLine = messageLink ? `\n\n[View your LOA request](${messageLink})` : "";
+    const viewLink = messageLink
+      ? t(locale, "loa.dm.viewRequest", { link: messageLink })
+      : "";
+    const linkLine = viewLink ? t(locale, "loa.dm.linkLine", { viewLink }) : "";
 
     try {
       const user = await this.client.users.fetch(loa.user.discordId);
-      const embed = buildLOARequestEmbed(loa, "active");
+      const embed = buildLOARequestEmbed(loa, "active", locale);
       const patrolNote =
         loa.type === LeaveOfAbsenceType.ATTENDABLE
-          ? "Your promotion cooldown is paused until your LOA ends. You can still attend events and accrue patrol time."
-          : "Your patrol time and promotion cooldowns are paused until your LOA ends.";
+          ? t(locale, "loa.dm.patrolNoteAttendable")
+          : t(locale, "loa.dm.patrolNoteBlocking");
       await user.send({
-        content: `✅ Your LOA is now **active**. ${patrolNote}${linkLine}`,
+        content: t(locale, "loa.dm.activated", { patrolNote, linkLine }),
         embeds: [embed],
       });
     } catch (_error) {

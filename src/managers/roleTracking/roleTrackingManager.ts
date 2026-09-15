@@ -1478,7 +1478,42 @@ export class RoleTrackingManager {
                   if (warning.customMessage) {
                     messageToSend = this.parseEmbedTemplate(warning.customMessage, warningVariables);
                   } else {
-                    messageToSend = this.parseMessageTemplate(warning.message, warningVariables);
+                    const { DEFAULT_LOCALE } = await import("../../i18n/index.js");
+                    const {
+                      resolveRoleTrackingWarningMessage,
+                      weekNumberFromWarning,
+                    } = await import("../../utility/roleTracking/warningI18n.js");
+                    // Warning DMs use the recipient's locale; default warning
+                    // text for catalog markers falls back via resolveLocale-style prefs
+                    // when sending — use guild user prefs through resolveLocale.
+                    const { resolveLocale } = await import("../../i18n/resolveLocale.js");
+                    const locale = await resolveLocale({
+                      userId: member.id,
+                      guildId,
+                    });
+                    const week = weekNumberFromWarning(warning);
+                    const totalWeeks = Math.max(
+                      1,
+                      Math.floor(deadlineMs / (7 * 24 * 60 * 60 * 1000)),
+                    );
+                    let remaining = Math.max(1, totalWeeks - week);
+                    const remFromMsg =
+                      typeof warning.message === "string"
+                        ? warning.message.match(/You have (\d+) week/)
+                        : null;
+                    if (remFromMsg) {
+                      remaining = Number(remFromMsg[1]);
+                    }
+                    const resolved = resolveRoleTrackingWarningMessage(
+                      warning.message,
+                      locale ?? DEFAULT_LOCALE,
+                      {
+                        week,
+                        remaining,
+                        roleName: roleConfig.roleName,
+                      },
+                    );
+                    messageToSend = this.parseMessageTemplate(resolved, warningVariables);
                   }
 
                   const dmResult = await this.sendWarningDM(member.id, messageToSend);

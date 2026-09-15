@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { fetchMe, SITE_LINKS, type DashboardUser } from "./api";
 import {
   getAccessToken,
@@ -21,29 +22,11 @@ import { HoursPanel } from "./components/HoursPanel";
 import { PipPresence } from "./components/PipPresence";
 import { PreviewNotice } from "./components/PreviewNotice";
 import { TrainerPanel } from "./components/TrainerPanel";
+import i18n from "./i18n";
 
 type Tab = "home" | "admin" | "host" | "trainer";
 
 const MIN_BOOT_MS = 3000;
-
-const TAB_COPY: Record<Tab, { title: string; subtitle: string }> = {
-  home: {
-    title: "Duty briefing",
-    subtitle: "Patrol hours, the published roster, and essential handbooks.",
-  },
-  admin: {
-    title: "Staff briefing",
-    subtitle: "Server pulse, member lookup, and recent cases.",
-  },
-  host: {
-    title: "Hosting desk",
-    subtitle: "Submit events for the roster in your timezone.",
-  },
-  trainer: {
-    title: "Trainer assignments",
-    subtitle: "Handbooks for the desks you cover.",
-  },
-};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -52,6 +35,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export default function App() {
+  const { t } = useTranslation();
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [tab, setTab] = useState<Tab>("home");
   const [flipDir, setFlipDir] = useState<"fwd" | "back">("fwd");
@@ -62,9 +46,31 @@ export default function App() {
     LayoutMode.FOCUSED,
   );
 
+  const TAB_COPY: Record<Tab, { title: string; subtitle: string }> = {
+    home: {
+      title: t("dashboard.tabs.homeTitle"),
+      subtitle: t("dashboard.tabs.homeSubtitle"),
+    },
+    admin: {
+      title: t("dashboard.tabs.adminTitle"),
+      subtitle: t("dashboard.tabs.adminSubtitle"),
+    },
+    host: {
+      title: t("dashboard.tabs.hostTitle"),
+      subtitle: t("dashboard.tabs.hostSubtitle"),
+    },
+    trainer: {
+      title: t("dashboard.tabs.trainerTitle"),
+      subtitle: t("dashboard.tabs.trainerSubtitle"),
+    },
+  };
+
   const loadUser = useCallback(async (token: string) => {
     const me = await fetchMe(token);
     setUser(me);
+    if (me.locale) {
+      void i18n.changeLanguage(me.locale);
+    }
   }, []);
 
   const revealApp = useCallback(() => {

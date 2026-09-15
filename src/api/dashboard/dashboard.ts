@@ -53,6 +53,12 @@ import {
   updateUserPreferences,
 } from "../../utility/userPreferences.js";
 import { loggers } from "../../utility/logger.js";
+import {
+  DEFAULT_LOCALE,
+  getLocalePickerOptions,
+  isAvailableLocale,
+} from "../../i18n/index.js";
+import { resolveLocale } from "../../i18n/resolveLocale.js";
 
 function jsonError(
   ctx: Context,
@@ -291,6 +297,8 @@ export class DashboardAPI {
         avatarUrl: session.avatarUrl,
         timezone: session.timezone,
         timezoneStored: session.timezoneStored,
+        locale: session.locale,
+        localeStored: session.localeStored,
         guildId: session.guildId,
         shieldMember: session.shieldMember,
         deputy: session.deputy,
@@ -443,6 +451,66 @@ export class DashboardAPI {
       ctx.body = {
         timezone: prefs.timezone,
         timezoneStored: prefs.timezoneStored,
+      };
+    });
+  }
+
+  @Put("/api/dashboard/me/locale")
+  async setLocale(ctx: Context): Promise<void> {
+    await withDashboardAuth(ctx, async (session) => {
+      const body = ctx.request.body as { locale?: string | null } | undefined;
+      const input = body?.locale;
+
+      if (input === null || input === "" || input === "reset") {
+        const prefs = await updateUserPreferences(session.user.id, {
+          locale: null,
+        });
+        const locale = await resolveLocale({
+          userId: session.user.id,
+          guildId: session.guildId,
+        });
+        logDashboardSessionAction(
+          session,
+          "Locale reset",
+          "User language reset to server default.",
+        );
+        ctx.body = {
+          locale,
+          localeStored: prefs.localeStored,
+        };
+        return;
+      }
+
+      if (typeof input !== "string" || !isAvailableLocale(input)) {
+        jsonError(ctx, 400, "Invalid or unavailable locale.");
+        return;
+      }
+
+      const prefs = await updateUserPreferences(session.user.id, {
+        locale: input,
+      });
+      logDashboardSessionAction(
+        session,
+        "Locale updated",
+        `Set language to \`${input}\`.`,
+        [{ name: "Locale", value: `\`${input}\``, inline: true }],
+      );
+      ctx.body = {
+        locale: prefs.localeStored ?? input,
+        localeStored: prefs.localeStored,
+      };
+    });
+  }
+
+  @Get("/api/dashboard/locales")
+  async listLocales(ctx: Context): Promise<void> {
+    await withDashboardAuth(ctx, async () => {
+      ctx.body = {
+        locales: getLocalePickerOptions().map((o) => ({
+          code: o.code,
+          label: o.label,
+        })),
+        defaultLocale: DEFAULT_LOCALE,
       };
     });
   }

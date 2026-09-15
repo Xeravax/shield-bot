@@ -1,0 +1,284 @@
+{
+  "common": {
+    "enabled": "✅ **Ingeschakeld**",
+    "disabled": "❌ **Uitgeschakeld**",
+    "guildOnly": "Dit commando kan alleen in een server worden gebruikt.",
+    "failedGeneric": "❌ Er ging iets mis. Probeer het opnieuw.",
+    "failedUpdate": "❌ Bijwerken mislukt. Probeer het opnieuw.",
+    "notYours": "❌ Deze instellingen zijn niet van jou.",
+    "default": "*(standaard)*",
+    "approve": "Goedkeuren",
+    "deny": "Weigeren",
+    "thread": "Thread",
+    "cancel": "Annuleren",
+    "confirm": "Bevestigen",
+    "reset": "Resetten",
+    "language": "Taal",
+    "followGuild": "Serverstandaard gebruiken"
+  },
+  "profile": {
+    "title": "Profielinstellingen",
+    "description": "Beheer hieronder je persoonlijke botvoorkeuren.",
+    "timezone": {
+      "name": "Tijdzone",
+      "help": "Gebruikt wanneer je tijden in natuurlijke taal typt (bijv. \"Saturday 8pm\"). Unix-tijdstempels zijn altijd absoluut. Parsen van natuurlijke taal is Engels-gericht.",
+      "change": "Tijdzone wijzigen",
+      "reset": "Tijdzone terugzetten naar standaard",
+      "modalTitle": "Tijdzone wijzigen",
+      "modalLabel": "IANA-tijdzone",
+      "failedOpen": "❌ Kon het tijdzoneformulier niet openen.",
+      "failedReset": "❌ Tijdzone resetten mislukt."
+    },
+    "language": {
+      "name": "Taal",
+      "help": "Overschrijft de servertaal voor je DM's en ephemeral antwoorden. Berichten in openbare kanalen gebruiken altijd de servertaal.",
+      "change": "Taal wijzigen",
+      "reset": "Taal terugzetten naar serverstandaard",
+      "selectPlaceholder": "Kies je taal",
+      "updated": "✅ Taal ingesteld op {{label}}.",
+      "resetDone": "✅ Taal teruggezet naar serverstandaard.",
+      "failed": "❌ Taal bijwerken mislukt."
+    },
+    "patrolDm": {
+      "name": "Patrouille-afrondings-DM's",
+      "on": "✅ **Ingeschakeld** - je ontvangt een DM wanneer een patrouillesessie eindigt.",
+      "off": "❌ **Uitgeschakeld** - geen afrondings-DM's.",
+      "buttonOn": "Patrouille-DM's: Aan",
+      "buttonOff": "Patrouille-DM's: Uit"
+    },
+    "joinReminders": {
+      "name": "Patrouille-joinherinneringen",
+      "on": "✅ **Ingeschakeld** - je kunt een DM krijgen wanneer je patrouille join zonder de Shield Member-rol.",
+      "off": "❌ **Uitgeschakeld** - geen joinherinneringen.",
+      "buttonOn": "Joinherinneringen: Aan",
+      "buttonOff": "Joinherinneringen: Uit"
+    },
+    "eventStatus": {
+      "name": "Evenementstatusupdates",
+      "on": "✅ **Ingeschakeld** - je ontvangt DM's wanneer je geplande evenementen worden ingediend, goedgekeurd, geweigerd of geannuleerd.",
+      "off": "❌ **Uitgeschakeld** - geen evenementstatus-DM's.",
+      "buttonOn": "Evenementstatus: Aan",
+      "buttonOff": "Evenementstatus: Uit"
+    },
+    "modReasonPing": {
+      "name": "Moderatiereden-pings",
+      "on": "✅ **Ingeschakeld** - je wordt gepingd in mod-logs wanneer een reden ontbreekt.",
+      "off": "❌ **Uitgeschakeld** - je wordt niet gepingd; je bent zelf verantwoordelijk voor het opgeven van redenen.",
+      "buttonOn": "Mod-redenpings: Aan",
+      "buttonOff": "Mod-redenpings: Uit",
+      "disableWarning": "⚠️ Door moderatiereden-pings uit te schakelen, **word jij verantwoordelijk** voor het opgeven van redenen bij je eigen moderatieacties. Niet doen kan leiden tot straf door hogere staff."
+    },
+    "memberCard": {
+      "name": "Openbaar ledencard",
+      "on": "✅ **Ingeschakeld** - andere leden kunnen je geverifieerde MAIN VRChat-account, patrouille-uren deze maand en of je met verlof bent zien (alleen einddatum, nooit de reden).",
+      "off": "❌ **Uitgeschakeld** - `/user lookup` toont anderen alleen je Discord-identiteit. Je kunt de volledige card zelf nog wel bekijken.",
+      "buttonOn": "Openbare card: Aan",
+      "buttonOff": "Openbare card: Uit"
+    },
+    "footer": "Evenementplanningsregels (maandagverbod, wekelijkse limieten) gebruiken altijd EST.",
+    "openFailed": "❌ Profielinstellingen openen mislukt. Probeer het opnieuw.",
+    "prefUpdateFailed": "❌ Voorkeur bijwerken mislukt.",
+    "slashDescription": "Bekijk en wijzig je persoonlijke botvoorkeuren"
+  },
+  "settings": {
+    "locale": {
+      "slashDescription": "Stel de standaardtaal voor deze server in",
+      "optionDescription": "Serverstandaardtaal (openbare berichten en fallback)",
+      "set": "✅ Servertaal ingesteld op {{label}}.",
+      "cleared": "✅ Servertaal teruggezet naar Engels (VS).",
+      "failed": "❌ Servertaal instellen mislukt.",
+      "current": "Huidige servertaal: **{{label}}**.",
+      "invalid": "❌ Die taal is niet beschikbaar. Voeg een bijbehorend bestand toe onder `locales/`."
+    },
+    "slashDescription": "Botconfiguratie- en instellingencommando's"
+  },
+  "patrol": {
+    "dm": {
+      "completedTitle": "✅ Patrouillesessie voltooid",
+      "completedBody": "Je patrouillesessie is beëindigd.\n\n**Duur:** {{duration}}\n**Kanaal:** {{channel}}",
+      "thisYear": "Dit jaar ({{year}})",
+      "allTime": "Totaal aller tijden",
+      "footer": "S.H.I.E.L.D. Bot - Patrouillesysteem",
+      "disableButton": "Patrouille-DM uitschakelen"
+    },
+    "alone": {
+      "title": "Alleen in patrouiliekanaal"
+    },
+    "noShield": {
+      "title": "Patrouiliekanaal - Uren niet geregistreerd",
+      "dontRemind": "Herinner me hier niet meer aan"
+    },
+    "loa": {
+      "pausedTitle": "⚠️ LOA-tijdregistratie gepauzeerd",
+      "alertTitle": "⚠️ LOA-melding"
+    },
+    "promotion": {
+      "approve": "Goedkeuren",
+      "deny": "Weigeren",
+      "thread": "Thread"
+    },
+    "commandUsageTitle": "⚙️ Botcommando-gebruik",
+    "removeTime": "Tijd verwijderen",
+    "currentEmpty": "Geen gebruikers momenteel gevolgd.",
+    "slash": {
+      "groupDescription": "Patrouilletimer",
+      "currentDescription": "Toon gevolgde gebruikers in voice",
+      "topDescription": "Patrouilletijd-ranglijst",
+      "timeDescription": "Bekijk patrouilletijd"
+    }
+  },
+  "logging": {
+    "threads": {
+      "messages": "Berichten",
+      "channels": "Kanalen",
+      "roles": "Rollen",
+      "members": "Leden",
+      "voice": "Voice",
+      "server": "Server",
+      "moderation": "Moderatie",
+      "reactions": "Reacties",
+      "events": "Evenementen",
+      "automod": "AutoMod",
+      "integrations": "Integraties",
+      "bot": "Botlog",
+      "patrol": "Patrouille-uren",
+      "whitelist": "Whitelist",
+      "vrchatGroup": "VRChat-groep",
+      "dashboard": "Dashboardlog"
+    },
+    "welcome": "Welkom {{member}}!",
+    "claim": "Claimen",
+    "provideReason": "Reden opgeven"
+  },
+  "serverStats": {
+    "goal": "Huidig doel",
+    "members": "Leden",
+    "deputies": "Deputies",
+    "boosts": "Boosts",
+    "channelName": "🔰 | {{label}}: {{value}}"
+  },
+  "permissions": {
+    "patrol.command.current": "/patrol current - toon gevolgde gebruikers in voice",
+    "patrol.command.top": "/patrol top - patrouilletijd-ranglijst",
+    "patrol.command.manage": "/patrol manage - patrouilletijd beheren (toevoegen/verwijderen/wissen)",
+    "patrol.command.time": "/patrol time - patrouilletijd bekijken (shield members)",
+    "patrol.manage.view-others": "Patrouilletijd en sessies van anderen bekijken",
+    "patrol.manage.wipe": "Patrouille-wisacties bevestigen (knoppen)",
+    "patrol.manage.promotion": "Patrouillepromotievoorstellen goedkeuren/weigeren (knoppen)",
+    "patrol.manage.session-remove": "Individuele patrouillesessies verwijderen (knoppen)",
+    "patrol.tracked": "Lid komt in aanmerking voor patrouille voice-tijdregistratie en SHIELD-only dashboardinhoud (Recruit+)",
+    "settings.command.attendance": "/settings attendance - attendance-kanaalinstellingen",
+    "settings.command.events": "/settings events - evenementplanning en herinneringsinstellingen",
+    "settings.command.group": "/group config - VRChat-groepinstellingen",
+    "settings.command.loa": "/settings loa - LOA-instellingen",
+    "settings.command.patrol": "/settings patrol - patrouiliekanaal/categorie en promotieregels",
+    "settings.command.promotion": "/settings patrol promotieregels/kanalen en /patrol promotion-acties",
+    "settings.command.role-tracking": "/role-tracking config - roltrackingconfiguratie",
+    "settings.command.server-stats": "/settings server-stats en /server-stats - leden/deputy/boost-weergavekanalen",
+    "settings.command.logging": "/settings logging - auditforum, welkomstkanaal, retentie, invitefilter",
+    "settings.command.vrchat": "/settings vrchat - VRChat-wereldinstellingen",
+    "settings.command.whitelist": "/settings whitelist - whitelist GitHub-instellingen",
+    "settings.command.locale": "/settings locale - serverstandaardtaal instellen"
+  },
+  "roleTracking": {
+    "defaultWeeklyWarning": "Hallo! Dit is je week {{week}}-herinnering voor de rol {{roleName}}. Je hebt nog {{remaining}} week/weken. Zorg dat je je patrouilletijd maakt! Heb je meer tijd nodig, vraag dan Leave of Absence (LOA) aan.",
+    "defaultWeeklyWarning_one": "Hallo! Dit is je week {{week}}-herinnering voor de rol {{roleName}}. Je hebt nog {{remaining}} week. Zorg dat je je patrouilletijd maakt! Heb je meer tijd nodig, vraag dan Leave of Absence (LOA) aan.",
+    "defaultWeeklyWarning_other": "Hallo! Dit is je week {{week}}-herinnering voor de rol {{roleName}}. Je hebt nog {{remaining}} weken. Zorg dat je je patrouilletijd maakt! Heb je meer tijd nodig, vraag dan Leave of Absence (LOA) aan.",
+    "useCatalogMarker": "__i18n:roleTracking.defaultWeeklyWarning__"
+  },
+  "slash": {
+    "profile": {
+      "settings": "Bekijk en wijzig je persoonlijke botvoorkeuren"
+    },
+    "settings": {
+      "root": "Botconfiguratie- en instellingencommando's",
+      "locale": "Stel de standaardtaal voor deze server in",
+      "localeOption": "Serverstandaardtaal"
+    },
+    "patrol": {
+      "group": "Patrouilletimer",
+      "current": "Toon gevolgde gebruikers in voice"
+    }
+  },
+  "loa": {
+    "embed": {
+      "title": "Verlofaanvraag (LOA)",
+      "description": "**Gebruiker:** <@{{userId}}>\n{{status}}",
+      "statusPending": "**Status:** Wacht op goedkeuring",
+      "statusApproved": "**Status:** ✅ Goedgekeurd",
+      "statusActive": "**Status:** ✅ Actief",
+      "statusDenied": "**Status:** ❌ Geweigerd",
+      "statusExpired": "**Status:** ⏰ Beëindigd (geplande einddatum bereikt)",
+      "statusEndedEarly": "**Status:** ⚠️ Vroeg beëindigd",
+      "duration": "Duur",
+      "startDate": "Startdatum",
+      "endDate": "Einddatum",
+      "type": "Type",
+      "endedEarlyAt": "Vroeg beëindigd op",
+      "cooldownUntil": "Cooldown tot",
+      "reason": "Reden",
+      "approvedBy": "Goedgekeurd door",
+      "deniedBy": "Geweigerd door",
+      "denialReason": "Reden van weigering",
+      "na": "N.v.t."
+    },
+    "type": {
+      "attendable": "Bijwoonbaar",
+      "blocking": "Blokkerend"
+    },
+    "buttons": {
+      "approve": "Goedkeuren",
+      "deny": "Weigeren",
+      "endEarly": "Vroeg beëindigen"
+    },
+    "dm": {
+      "viewRequest": "[Bekijk je LOA-aanvraag]({{link}})",
+      "expired": "⏰ Je LOA is verlopen en de LOA-rol is verwijderd.{{linkLine}}",
+      "endedEarly": "⚠️ Je LOA is vroeg beëindigd en de LOA-rol is verwijderd.{{cooldownLine}}{{linkLine}}",
+      "cooldownLine": "\n\nJe zit in een cooldownperiode tot <t:{{timestamp}}:F>.",
+      "linkLine": "\n\n{{viewLink}}",
+      "activated": "✅ Je LOA is nu **actief**. {{patrolNote}}{{linkLine}}",
+      "patrolNoteAttendable": "Je promotie-cooldown is gepauzeerd tot je LOA eindigt. Je kunt nog steeds evenementen bijwonen en patrouilletijd opbouwen.",
+      "patrolNoteBlocking": "Je patrouilletijd en promotie-cooldowns zijn gepauzeerd tot je LOA eindigt."
+    },
+    "errors": {
+      "parseTime": "Tijd kon niet worden geparsed",
+      "cooldown": "Je zit in een cooldownperiode tot {{cooldownEnd}}. Je kunt tot die tijd geen nieuwe LOA aanvragen.",
+      "minDuration": "LOA-duur moet minstens {{minimumDays}} dag(en) zijn. Je aangevraagde duur is ongeveer {{requestedDays}} dag(en).",
+      "notFound": "LOA niet gevonden",
+      "notPending": "LOA wacht niet op goedkeuring",
+      "notOwner": "Deze LOA is niet van jou",
+      "notActive": "LOA is niet actief",
+      "unknown": "Onbekende fout",
+      "roleNotConfigured": "LOA-rol is niet geconfigureerd voor deze server",
+      "userNotInGuild": "Gebruiker niet gevonden in de server",
+      "roleNotFound": "LOA-rol niet gevonden in de server",
+      "userNotFound": "Gebruiker niet gevonden",
+      "noCooldown": "Geen actieve cooldown gevonden voor deze gebruiker",
+      "removeRoleFailed": "LOA-rol verwijderen mislukt"
+    },
+    "blockingAttendance": "Gebruiker heeft een actieve blokkerende leave of absence en kan niet deelnemen aan evenement-attendance."
+  },
+  "dashboard": {
+    "loading": "Laden…",
+    "hours": "Uren",
+    "calendar": "Kalender",
+    "admin": "Admin",
+    "trainer": "Trainer",
+    "host": "Host",
+    "preview": "Voorbeeldmodus",
+    "language": "Taal",
+    "handbook": "Handboek",
+    "error": "Er ging iets mis.",
+    "tabs": {
+      "homeTitle": "Dienstbriefing",
+      "homeSubtitle": "Patrouille-uren, het gepubliceerde rooster en essentiële handboeken.",
+      "adminTitle": "Staffbriefing",
+      "adminSubtitle": "Serverstatus, ledenopzoeking en recente cases.",
+      "hostTitle": "Hostdesk",
+      "hostSubtitle": "Dien evenementen in voor het rooster in jouw tijdzone.",
+      "trainerTitle": "Traineropdrachten",
+      "trainerSubtitle": "Handboeken voor de desks die je dekt."
+    }
+  }
+}

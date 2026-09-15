@@ -13,6 +13,8 @@ import { PermissionNodeGuard } from "../../utility/guards.js";
 import { loaManager, patrolTimer } from "../../main.js";
 import { buildLOARequestEmbed } from "../../managers/loa/loaManager.js";
 import { LeaveOfAbsenceType } from "../../generated/prisma/client.js";
+import { t, DEFAULT_LOCALE } from "../../i18n/index.js";
+import { resolveLocale } from "../../i18n/resolveLocale.js";
 
 @Discord()
 @SlashGroup({
@@ -61,9 +63,13 @@ export class LOACommands {
     // Check cooldown first (fast check, can reply immediately if error)
     const cooldown = await loaManager.checkCooldown(guildId, interaction.user.id);
     if (cooldown.inCooldown && cooldown.cooldownEndDate) {
-      const cooldownEnd = cooldown.cooldownEndDate.toLocaleString();
+      const locale = await resolveLocale({
+        userId: interaction.user.id,
+        guildId,
+      });
+      const cooldownEnd = `<t:${Math.floor(cooldown.cooldownEndDate.getTime() / 1000)}:F>`;
       await interaction.reply({
-        content: `❌ You are in a cooldown period until ${cooldownEnd}. You cannot request a new LOA until then.`,
+        content: `❌ ${t(locale, "loa.errors.cooldown", { cooldownEnd })}`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -93,20 +99,21 @@ export class LOACommands {
 
     const loa = result.loa;
 
+    // Public LOA posts stay English so the whole server shares one message language.
     const embed = buildLOARequestEmbed(
       { ...loa, user: { discordId: interaction.user.id } },
       "pending",
+      DEFAULT_LOCALE,
     );
 
-    // Create buttons
     const approveButton = new ButtonBuilder()
       .setCustomId(`loa:approve:${loa.id}`)
-      .setLabel("Approve")
+      .setLabel(t(DEFAULT_LOCALE, "loa.buttons.approve").slice(0, 80))
       .setStyle(ButtonStyle.Success);
 
     const denyButton = new ButtonBuilder()
       .setCustomId(`loa:deny:${loa.id}`)
-      .setLabel("Deny")
+      .setLabel(t(DEFAULT_LOCALE, "loa.buttons.deny").slice(0, 80))
       .setStyle(ButtonStyle.Danger);
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(approveButton, denyButton);

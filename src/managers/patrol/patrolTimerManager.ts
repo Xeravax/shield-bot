@@ -1387,25 +1387,47 @@ export class PatrolTimerManager {
       const yearlyStr = this.formatDuration(yearlyTotal);
       const overallStr = this.formatDuration(overallTotal);
 
+      const { resolveLocale } = await import("../../i18n/resolveLocale.js");
+      const { t, formatMonthName } = await import("../../i18n/index.js");
+      const locale = await resolveLocale({
+        userId: member.id,
+        guildId: guild.id,
+      });
+
       // Create embed
       const embed = new EmbedBuilder()
-        .setTitle("✅ Patrol Session Completed")
+        .setTitle(t(locale, "patrol.dm.completedTitle"))
         .setDescription(
-          `Your patrol session has ended.\n\n**Duration:** ${durationStr}\n**Channel:** ${channelName}`,
+          t(locale, "patrol.dm.completedBody", {
+            duration: durationStr,
+            channel: channelName,
+          }),
         )
         .addFields(
-          { name: `${MONTH_NAMES[currentMonth - 1]} ${currentYear}`, value: monthlyStr, inline: true },
-          { name: `This Year (${currentYear})`, value: yearlyStr, inline: true },
-          { name: "All-Time Total", value: overallStr, inline: true },
+          {
+            name: `${formatMonthName(locale, currentMonth, currentYear)} ${currentYear}`,
+            value: monthlyStr,
+            inline: true,
+          },
+          {
+            name: t(locale, "patrol.dm.thisYear", { year: currentYear }),
+            value: yearlyStr,
+            inline: true,
+          },
+          {
+            name: t(locale, "patrol.dm.allTime"),
+            value: overallStr,
+            inline: true,
+          },
         )
         .setColor(Colors.Green)
-        .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
+        .setFooter({ text: t(locale, "patrol.dm.footer") })
         .setTimestamp();
 
       // Add button to disable DMs
       const disableButton = new ButtonBuilder()
         .setCustomId(`patrol-dm-disable:${member.id}`)
-        .setLabel("Disable Patrol DM")
+        .setLabel(t(locale, "patrol.dm.disableButton").slice(0, 80))
         .setStyle(ButtonStyle.Secondary);
 
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(disableButton);
@@ -1796,8 +1818,11 @@ export class PatrolTimerManager {
     const aloneSinceUnix = Math.floor(watch.aloneSince.getTime() / 1000);
     const staffMentions = staffRoleIds.map((id) => roleMention(id)).join(" ");
 
+    const { t, DEFAULT_LOCALE } = await import("../../i18n/index.js");
+    const locale = DEFAULT_LOCALE;
+
     const embed = new EmbedBuilder()
-      .setTitle("Alone in patrol channel")
+      .setTitle(t(locale, "patrol.alone.title"))
       .setDescription(
         `<@${watch.userId}> has been alone in <#${watch.channelId}> for **${minutesAlone} minutes**.`,
       )
@@ -2049,10 +2074,12 @@ export class PatrolTimerManager {
         const approveId = `patrol-promo:approve:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
         const denyId = `patrol-promo:deny:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
         const threadId = `patrol-promo:thread:${guildId}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
+        const { t, DEFAULT_LOCALE } = await import("../../i18n/index.js");
+        const locale = DEFAULT_LOCALE;
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder().setCustomId(approveId).setLabel("Approve").setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(denyId).setLabel("Deny").setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId(threadId).setLabel("Thread").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(approveId).setLabel(t(locale, "patrol.promotion.approve")).setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(denyId).setLabel(t(locale, "patrol.promotion.deny")).setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(threadId).setLabel(t(locale, "patrol.promotion.thread")).setStyle(ButtonStyle.Secondary),
         );
         const container = new ContainerBuilder()
           .setAccentColor(Colors.Grey)
@@ -2364,10 +2391,12 @@ export class PatrolTimerManager {
       const approveId = `patrol-promo:approve:${guild.id}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
       const denyId = `patrol-promo:deny:${guild.id}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
       const threadId = `patrol-promo:thread:${guild.id}:${member.id}:${rule.currentRankRoleId}:${rule.nextRankRoleId}`;
+      const { t, DEFAULT_LOCALE } = await import("../../i18n/index.js");
+      const locale = DEFAULT_LOCALE;
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(approveId).setLabel("Approve").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(denyId).setLabel("Deny").setStyle(ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId(threadId).setLabel("Thread").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId(approveId).setLabel(t(locale, "patrol.promotion.approve")).setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(denyId).setLabel(t(locale, "patrol.promotion.deny")).setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(threadId).setLabel(t(locale, "patrol.promotion.thread")).setStyle(ButtonStyle.Secondary),
       );
       const container = new ContainerBuilder()
         .setAccentColor(Colors.Grey)
@@ -2532,8 +2561,15 @@ export class PatrolTimerManager {
         channelName = channel.name;
       }
 
+      const { resolveLocale } = await import("../../i18n/resolveLocale.js");
+      const { t } = await import("../../i18n/index.js");
+      const locale = await resolveLocale({
+        userId: member.id,
+        guildId: guild.id,
+      });
+
       const embed = new EmbedBuilder()
-        .setTitle("Patrol Channel - Hours Not Recorded")
+        .setTitle(t(locale, "patrol.noShield.title"))
         .setDescription(
           `You joined **${channelName}**, which is a patrol channel. This can happen if a staff member moved you here, or your current roles allow access to these channels.`,
         )
@@ -2550,12 +2586,12 @@ export class PatrolTimerManager {
           },
         )
         .setColor(Colors.Orange)
-        .setFooter({ text: "S.H.I.E.L.D. Bot - Patrol System" })
+        .setFooter({ text: t(locale, "patrol.dm.footer") })
         .setTimestamp();
 
       const ignoreButton = new ButtonBuilder()
         .setCustomId(`patrol-no-shield-member-dm-ignore:${member.id}`)
-        .setLabel("Don't remind me about this")
+        .setLabel(t(locale, "patrol.noShield.dontRemind").slice(0, 80))
         .setStyle(ButtonStyle.Secondary);
 
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(

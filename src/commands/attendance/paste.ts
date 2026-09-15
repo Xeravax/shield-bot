@@ -8,6 +8,8 @@ import {
 } from "discord.js";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
 import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
+import { formatDate } from "../../i18n/index.js";
+import { resolveLocale } from "../../i18n/resolveLocale.js";
 
 const attendanceManager = new AttendanceManager();
 
@@ -43,12 +45,16 @@ export class VRChatAttendancePasteCommand {
         void await attendanceManager.findOrCreateUserByDiscordId(
           autoInteraction.user.id,
         );
+        const locale = await resolveLocale({
+          userId: autoInteraction.user.id,
+          guildId: autoInteraction.guildId,
+        });
         const events = await attendanceManager.getAllEvents();
         const query = focused.value.toString().toLowerCase();
         const choices = events
           .filter((event: { id: number; date: Date; host?: { discordId: string | null } | null }) => {
             const idStr = `${event.id}`;
-            const dateStr = event.date.toLocaleDateString();
+            const dateStr = formatDate(locale, event.date);
             const hostId = event.host?.discordId || "";
             return (
               !query ||
@@ -65,7 +71,7 @@ export class VRChatAttendancePasteCommand {
             staff: Array<{ userId: number }>; 
             host?: { discordId: string | null } | null 
           }) => {
-            const dateStr = event.date.toLocaleDateString();
+            const dateStr = formatDate(locale, event.date);
             const hostId = event.host?.discordId || "Unknown";
             
             // Calculate total attendees
@@ -117,13 +123,17 @@ export class VRChatAttendancePasteCommand {
       return;
     }
 
-    const formatDate = eventSummary.date.toLocaleDateString("en-US", {
+    const locale = await resolveLocale({
+      userId: cmdInteraction.user.id,
+      guildId: cmdInteraction.guildId,
+    });
+    const formatDateStr = formatDate(locale, eventSummary.date, {
       year: "numeric",
       month: "long",
       day: "numeric",
     });
 
-    let text = `Attendance for ${formatDate}\n\n`;
+    let text = `Attendance for ${formatDateStr}\n\n`;
 
     // Host and Co-Host
     text += `Host: ${eventSummary.host ? `<@${eventSummary.host.discordId}>` : "None"}\n`;

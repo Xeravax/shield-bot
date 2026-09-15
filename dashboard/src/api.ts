@@ -6,6 +6,8 @@ export interface DashboardUser {
   avatarUrl: string | null;
   timezone: string;
   timezoneStored: boolean;
+  locale: string;
+  localeStored: string | null;
   guildId: string;
   shieldMember: boolean;
   deputy: boolean;
@@ -192,6 +194,21 @@ export function setTimezone(token: string, timezone: string) {
     token,
     { method: "PUT", body: JSON.stringify({ timezone }) },
   );
+}
+
+export function setLocale(token: string, locale: string | null) {
+  return apiFetch<{ locale: string; localeStored: string | null }>(
+    "/me/locale",
+    token,
+    { method: "PUT", body: JSON.stringify({ locale }) },
+  );
+}
+
+export function fetchLocales(token: string) {
+  return apiFetch<{
+    locales: Array<{ code: string; label: string }>;
+    defaultLocale: string;
+  }>("/locales", token);
 }
 
 export function validateHostEvent(

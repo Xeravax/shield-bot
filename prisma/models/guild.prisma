@@ -80,6 +80,8 @@ model GuildSettings {
   inviteFilterAction           String? // log | delete | delete_timeout
   modCaseCounter               Int     @default(0) // Last allocated ModCase.caseNumber for this guild
   loggingLastAuditEntryId      String? // Cursor for guildAuditLogEntryCreate catch-up (snowflake)
+  /** Discord locale code (e.g. en-US, nl). Null = en-US. Used for public posts and as user fallback. */
+  locale                       String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 }

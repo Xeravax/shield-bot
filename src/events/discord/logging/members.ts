@@ -39,10 +39,11 @@ export class LoggingMemberEvents {
           .fetch(settings.welcomeChannelId)
           .catch(() => null);
         if (channel?.isTextBased()) {
+          const { t, DEFAULT_LOCALE } = await import("../../../i18n/index.js");
           const embed = new EmbedBuilder()
             .setColor(LOGGING_COLORS.success)
             .setTitle(member.user.bot ? "Bot Added" : "Member Joined")
-            .setDescription(`Welcome ${member}!`)
+            .setDescription(t(DEFAULT_LOCALE, "logging.welcome", { member: `${member}` }))
             .addFields(
               {
                 name: "User",

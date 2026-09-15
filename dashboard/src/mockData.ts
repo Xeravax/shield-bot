@@ -14,6 +14,8 @@ export const MOCK_USER: DashboardUser = {
   avatarUrl: null,
   timezone: "America/New_York",
   timezoneStored: true,
+  locale: "en-US",
+  localeStored: null,
   guildId: "000000000000000000",
   shieldMember: true,
   deputy: true,

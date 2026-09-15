@@ -1,4 +1,5 @@
 import { ColorResolvable } from "discord.js";
+import { DEFAULT_LOCALE, t } from "../../i18n/index.js";
 
 /** Persistent forum thread category keys (stored in GuildSettings.loggingThreadIds). */
 export const LOGGING_THREAD_KEYS = [
@@ -40,6 +41,14 @@ export const LOGGING_THREAD_NAMES: Record<LoggingThreadKey, string> = {
   vrchatGroup: "VRChat Group",
   dashboard: "Dashboard Log",
 };
+
+/** Localized logging thread name. */
+export function loggingThreadName(
+  key: LoggingThreadKey,
+  locale?: string | null,
+): string {
+  return t(locale ?? DEFAULT_LOCALE, `logging.threads.${key}`);
+}
 
 export type LoggingSeverity = "info" | "warn" | "danger" | "success" | "mod";
 

@@ -23,6 +23,8 @@ import {
 } from "../../utility/permissionNodes.js";
 import { PermissionNodeGuard } from "../../utility/guards.js";
 import { prisma } from "../../main.js";
+import { descriptionLocalizationsForKey, t } from "../../i18n/index.js";
+import { resolveLocale } from "../../i18n/resolveLocale.js";
 
 const MONTH_NAMES = [
   "January",
@@ -43,12 +45,14 @@ const MONTH_NAMES = [
 @SlashGroup({
   name: "patrol",
   description: "Patrol timer",
+  descriptionLocalizations: descriptionLocalizationsForKey("slash.patrol.group"),
 })
 @SlashGroup("patrol")
 export class PatrolTimerCommands {
   @Slash({
     name: "current",
     description: "Show tracked users in voice",
+    descriptionLocalizations: descriptionLocalizationsForKey("slash.patrol.current"),
   })
   @Guard(PermissionNodeGuard("patrol.command.current"))
   async current(
@@ -65,8 +69,12 @@ export class PatrolTimerCommands {
     const list = await patrolTimer.getCurrentTrackedList(interaction.guildId);
     
     if (list.length === 0) {
+      const locale = await resolveLocale({
+        userId: interaction.user.id,
+        guildId: interaction.guildId,
+      });
       await interaction.reply({
-        content: "No users currently tracked.",
+        content: t(locale, "patrol.currentEmpty"),
         flags: ephemeral ? MessageFlags.Ephemeral : undefined,
       });
       return;

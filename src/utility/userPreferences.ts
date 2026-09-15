@@ -30,6 +30,8 @@ export interface ResolvedUserPreferences {
   timezone: string;
   /** Raw stored value, null when using the default. */
   timezoneStored: string | null;
+  /** Stored Discord locale; null = follow guild default. */
+  localeStored: string | null;
 }
 
 export type UserPreferenceUpdate = Partial<
@@ -41,6 +43,7 @@ export type UserPreferenceUpdate = Partial<
     | "modReasonPingDisabled"
     | "memberCardPublic"
     | "timezone"
+    | "locale"
   >
 >;
 
@@ -320,6 +323,7 @@ function resolvePreferences(
     memberCardPublic: prefs?.memberCardPublic ?? false,
     timezone,
     timezoneStored: stored,
+    localeStored: prefs?.locale ?? null,
   };
 }
 

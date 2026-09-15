@@ -268,6 +268,9 @@ bot.on("messageCreate", async (message: Message) => {
 });
 
 async function run() {
+  const { initI18n } = await import("./i18n/index.js");
+  await initI18n();
+
   await importx(
     `${dirname(import.meta.url)}/{events,commands,api}/**/*.{ts,js}`,
   );

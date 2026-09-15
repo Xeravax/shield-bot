@@ -21,6 +21,8 @@ import {
 } from "../../utility/guardData.js";
 import { prisma, loaManager } from "../../main.js";
 import { isBlockingLOA } from "../../managers/loa/loaManager.js";
+import { formatDate } from "../../i18n/index.js";
+import { resolveLocale } from "../../i18n/resolveLocale.js";
 
 const attendanceManager = new AttendanceManager();
 
@@ -283,14 +285,18 @@ export class VRChatAttendanceAutofillCommand {
       }
     }
 
-    const formatDate = event.date.toLocaleDateString("en-US", {
+    const locale = await resolveLocale({
+      userId: interaction.user.id,
+      guildId: interaction.guildId,
+    });
+    const formatDateStr = formatDate(locale, event.date, {
       year: "numeric",
       month: "long",
       day: "numeric",
     });
 
     const summary = [
-      `**Attendance autofill complete for ${formatDate} (Event ID: ${eventId})**`,
+      `**Attendance autofill complete for ${formatDateStr} (Event ID: ${eventId})**`,
       "",
       `✅ Added: ${addedCount} members`,
       `🔄 Split: ${splitCount} members`,

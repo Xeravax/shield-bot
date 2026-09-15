@@ -11,6 +11,8 @@ import { ensureGuildMembersFetched } from "../guildMemberCache.js";
 import { bot } from "../../main.js";
 import { dashboardGuildId, DashboardForbiddenError } from "./auth.js";
 import type { DiscordOAuthUser } from "./auth.js";
+import { resolveLocale } from "../../i18n/resolveLocale.js";
+
 
 export type TrainerType = "emt" | "tru" | "cadet";
 
@@ -22,6 +24,10 @@ export interface DashboardSession {
   avatarUrl: string | null;
   timezone: string;
   timezoneStored: boolean;
+  /** Resolved locale for UI (user override → guild → en-US). */
+  locale: string;
+  /** Raw stored user locale; null = follow guild. */
+  localeStored: string | null;
   shieldMember: boolean;
   deputy: boolean;
   staff: boolean;
@@ -118,6 +124,8 @@ export async function buildDashboardSession(
     ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
     : null;
 
+  const locale = await resolveLocale({ userId: user.id, guildId });
+
   return {
     user,
     member,
@@ -126,6 +134,8 @@ export async function buildDashboardSession(
     avatarUrl,
     timezone: prefs.timezone,
     timezoneStored,
+    locale,
+    localeStored: prefs.localeStored,
     shieldMember,
     deputy,
     staff,

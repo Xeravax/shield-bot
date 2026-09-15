@@ -5,6 +5,7 @@ import {
 import { prisma } from "../main.js";
 import { getEnv } from "../config/env.js";
 import { loggers } from "./logger.js";
+import { DEFAULT_LOCALE, t } from "../i18n/index.js";
 export {
   PermissionNodeGuard,
   PermissionNodeGuardAny,
@@ -86,6 +87,7 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "settings.command.events", description: "/settings events - event scheduling and reminder settings" },
     { node: "settings.command.group", description: "/group config - VRChat group settings" },
     { node: "settings.command.loa", description: "/settings loa - LOA settings" },
+    { node: "settings.command.locale", description: "/settings locale - set server default language" },
     { node: "settings.command.patrol", description: "/settings patrol - patrol channel/category and promotion rule settings" },
     { node: "settings.command.promotion", description: "/settings patrol promotion rules/channels and /patrol promotion actions" },
     { node: "settings.command.role-tracking", description: "/role-tracking config - role tracking configuration" },
@@ -354,5 +356,24 @@ export async function getMemberNodeGrants(
     loggers.bot.error("Failed to get member node grants", error);
     return [];
   }
+}
+
+/**
+ * Localized description for a permission node (falls back to registry English).
+ */
+export function permissionNodeDescription(
+  node: string,
+  locale?: string | null,
+): string {
+  const key = `permissions.${node}`;
+  const translated = t(locale ?? DEFAULT_LOCALE, key);
+  if (translated && translated !== key) {
+    return translated;
+  }
+  for (const defs of Object.values(PERMISSION_NODE_REGISTRY)) {
+    const found = defs.find((d) => d.node === node);
+    if (found) return found.description;
+  }
+  return node;
 }
 

@@ -9,6 +9,9 @@ import {
   MessageActionRowComponentBuilder,
   MessageFlags,
   ModalSubmitInteraction,
+  StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
+  StringSelectMenuOptionBuilder,
 } from "discord.js";
 import {
   formatTimezoneDisplay,
@@ -21,99 +24,145 @@ import {
   type ResolvedUserPreferences,
 } from "../../utility/userPreferences.js";
 import { EVENT_TIMEZONE } from "../../utility/estTime.js";
+import {
+  DEFAULT_LOCALE,
+  getLocalePickerOptions,
+  localePickerLabel,
+  t,
+} from "../../i18n/index.js";
+import { resolveLocale } from "../../i18n/resolveLocale.js";
 
-type ProfileSettingsInteraction = ButtonInteraction | ModalSubmitInteraction;
+type ProfileSettingsInteraction =
+  | ButtonInteraction
+  | ModalSubmitInteraction
+  | StringSelectMenuInteraction;
 
+export function modReasonPingDisableWarning(locale: string): string {
+  return t(locale, "profile.modReasonPing.disableWarning");
+}
+
+/** @deprecated Use modReasonPingDisableWarning(locale) */
 export const MOD_REASON_PING_DISABLE_WARNING =
   "⚠️ By disabling mod reason pings, **you become responsible** for providing reasons for your own moderating actions. Failure to do so may result in punishment by higher staff.";
 
 export function buildProfileSettingsEmbed(
   prefs: ResolvedUserPreferences,
+  locale: string,
+  guildLocaleLabel: string,
 ): EmbedBuilder {
   const timezoneLine = prefs.timezoneStored
     ? formatTimezoneDisplay(prefs.timezone)
-    : `${formatTimezoneDisplay(EVENT_TIMEZONE)} *(default)*`;
+    : `${formatTimezoneDisplay(EVENT_TIMEZONE)} ${t(locale, "common.default")}`;
+
+  const languageLine = prefs.localeStored
+    ? localePickerLabel(prefs.localeStored)
+    : `${guildLocaleLabel} ${t(locale, "common.default")}`;
 
   return new EmbedBuilder()
-    .setTitle("Profile Settings")
+    .setTitle(t(locale, "profile.title"))
     .setColor(Colors.Blurple)
-    .setDescription("Manage your personal bot preferences below.")
+    .setDescription(t(locale, "profile.description"))
     .addFields(
       {
-        name: "Timezone",
-        value:
-          `${timezoneLine}\n` +
-          "Used when you type natural-language times (e.g. \"Saturday 8pm\"). Unix timestamps are always absolute.",
+        name: t(locale, "profile.language.name"),
+        value: `${languageLine}\n${t(locale, "profile.language.help")}`,
         inline: false,
       },
       {
-        name: "Patrol completion DMs",
+        name: t(locale, "profile.timezone.name"),
+        value: `${timezoneLine}\n${t(locale, "profile.timezone.help")}`,
+        inline: false,
+      },
+      {
+        name: t(locale, "profile.patrolDm.name"),
         value: patrolDmEnabled(prefs)
-          ? "✅ **Enabled** - you receive a DM when a patrol session completes."
-          : "❌ **Disabled** - no completion DMs.",
+          ? t(locale, "profile.patrolDm.on")
+          : t(locale, "profile.patrolDm.off"),
         inline: false,
       },
       {
-        name: "Patrol join reminders",
+        name: t(locale, "profile.joinReminders.name"),
         value: noShieldMemberDmEnabled(prefs)
-          ? "✅ **Enabled** - you may be DM'd when joining patrol without the Shield Member role."
-          : "❌ **Disabled** - no join reminders.",
+          ? t(locale, "profile.joinReminders.on")
+          : t(locale, "profile.joinReminders.off"),
         inline: false,
       },
       {
-        name: "Event status updates",
+        name: t(locale, "profile.eventStatus.name"),
         value: eventStatusDmEnabled(prefs)
-          ? "✅ **Enabled** - you receive DMs when your planned events are submitted, approved, denied, or cancelled."
-          : "❌ **Disabled** - no event status DMs.",
+          ? t(locale, "profile.eventStatus.on")
+          : t(locale, "profile.eventStatus.off"),
         inline: false,
       },
       {
-        name: "Moderation reason pings",
+        name: t(locale, "profile.modReasonPing.name"),
         value: modReasonPingEnabled(prefs)
-          ? "✅ **Enabled** - you get pinged in mod logs when a reason is missing."
-          : "❌ **Disabled** - you will not be pinged; you are responsible for providing reasons yourself.",
+          ? t(locale, "profile.modReasonPing.on")
+          : t(locale, "profile.modReasonPing.off"),
         inline: false,
       },
       {
-        name: "Public member card",
+        name: t(locale, "profile.memberCard.name"),
         value: memberCardPublicEnabled(prefs)
-          ? "✅ **Enabled** - other members can see your verified MAIN VRChat account, patrol hours this month, and whether you are on leave (end date only, never the reason)."
-          : "❌ **Disabled** - `/user lookup` shows only your Discord identity to others. You can still preview the full card yourself.",
+          ? t(locale, "profile.memberCard.on")
+          : t(locale, "profile.memberCard.off"),
         inline: false,
       },
     )
-    .setFooter({ text: "Event scheduling rules (Monday ban, weekly limits) always use EST." });
+    .setFooter({ text: t(locale, "profile.footer") });
 }
 
 export function buildProfileSettingsComponents(
   discordId: string,
   prefs: ResolvedUserPreferences,
+  locale: string,
 ): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
-  const patrolLabel = patrolDmEnabled(prefs) ? "Patrol DMs: On" : "Patrol DMs: Off";
+  const patrolLabel = patrolDmEnabled(prefs)
+    ? t(locale, "profile.patrolDm.buttonOn")
+    : t(locale, "profile.patrolDm.buttonOff");
   const shieldLabel = noShieldMemberDmEnabled(prefs)
-    ? "Join reminders: On"
-    : "Join reminders: Off";
+    ? t(locale, "profile.joinReminders.buttonOn")
+    : t(locale, "profile.joinReminders.buttonOff");
   const eventStatusLabel = eventStatusDmEnabled(prefs)
-    ? "Event status: On"
-    : "Event status: Off";
+    ? t(locale, "profile.eventStatus.buttonOn")
+    : t(locale, "profile.eventStatus.buttonOff");
   const modReasonPingLabel = modReasonPingEnabled(prefs)
-    ? "Mod reason pings: On"
-    : "Mod reason pings: Off";
+    ? t(locale, "profile.modReasonPing.buttonOn")
+    : t(locale, "profile.modReasonPing.buttonOff");
   const memberCardLabel = memberCardPublicEnabled(prefs)
-    ? "Public card: On"
-    : "Public card: Off";
+    ? t(locale, "profile.memberCard.buttonOn")
+    : t(locale, "profile.memberCard.buttonOff");
+
+  const languageSelect = new StringSelectMenuBuilder()
+    .setCustomId(`profile-settings:locale:${discordId}`)
+    .setPlaceholder(t(locale, "profile.language.selectPlaceholder"))
+    .addOptions(
+      new StringSelectMenuOptionBuilder()
+        .setLabel(t(locale, "common.followGuild").slice(0, 100))
+        .setValue("reset")
+        .setDefault(!prefs.localeStored),
+      ...getLocalePickerOptions().map((o) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(o.label.slice(0, 100))
+          .setValue(o.code)
+          .setDefault(prefs.localeStored === o.code),
+      ),
+    );
 
   return [
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+      languageSelect,
+    ),
+    new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`profile-settings:toggle-patrol-dm:${discordId}`)
-        .setLabel(patrolLabel)
+        .setLabel(patrolLabel.slice(0, 80))
         .setStyle(
           patrolDmEnabled(prefs) ? ButtonStyle.Success : ButtonStyle.Secondary,
         ),
       new ButtonBuilder()
         .setCustomId(`profile-settings:toggle-no-shield-dm:${discordId}`)
-        .setLabel(shieldLabel)
+        .setLabel(shieldLabel.slice(0, 80))
         .setStyle(
           noShieldMemberDmEnabled(prefs)
             ? ButtonStyle.Success
@@ -121,7 +170,7 @@ export function buildProfileSettingsComponents(
         ),
       new ButtonBuilder()
         .setCustomId(`profile-settings:toggle-event-status-dm:${discordId}`)
-        .setLabel(eventStatusLabel)
+        .setLabel(eventStatusLabel.slice(0, 80))
         .setStyle(
           eventStatusDmEnabled(prefs)
             ? ButtonStyle.Success
@@ -129,7 +178,7 @@ export function buildProfileSettingsComponents(
         ),
       new ButtonBuilder()
         .setCustomId(`profile-settings:toggle-mod-reason-ping:${discordId}`)
-        .setLabel(modReasonPingLabel)
+        .setLabel(modReasonPingLabel.slice(0, 80))
         .setStyle(
           modReasonPingEnabled(prefs)
             ? ButtonStyle.Success
@@ -139,18 +188,16 @@ export function buildProfileSettingsComponents(
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`profile-settings:timezone:${discordId}`)
-        .setLabel("Change timezone")
+        .setLabel(t(locale, "profile.timezone.change").slice(0, 80))
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`profile-settings:reset-timezone:${discordId}`)
-        .setLabel("Reset timezone to default")
+        .setLabel(t(locale, "profile.timezone.reset").slice(0, 80))
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(!prefs.timezoneStored),
-    ),
-    new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`profile-settings:toggle-member-card:${discordId}`)
-        .setLabel(memberCardLabel)
+        .setLabel(memberCardLabel.slice(0, 80))
         .setStyle(
           memberCardPublicEnabled(prefs)
             ? ButtonStyle.Success
@@ -160,21 +207,32 @@ export function buildProfileSettingsComponents(
   ];
 }
 
-export async function buildProfileSettingsPanel(discordId: string): Promise<{
+export async function buildProfileSettingsPanel(
+  discordId: string,
+  guildId?: string | null,
+): Promise<{
   embed: EmbedBuilder;
   components: ActionRowBuilder<MessageActionRowComponentBuilder>[];
+  locale: string;
 }> {
   const prefs = await getResolvedUserPreferences(discordId);
+  const locale = await resolveLocale({ userId: discordId, guildId });
+  const guildLocale = await resolveLocale({ guildId: guildId ?? null });
+  const guildLocaleLabel = localePickerLabel(guildLocale || DEFAULT_LOCALE);
   return {
-    embed: buildProfileSettingsEmbed(prefs),
-    components: buildProfileSettingsComponents(discordId, prefs),
+    embed: buildProfileSettingsEmbed(prefs, locale, guildLocaleLabel),
+    components: buildProfileSettingsComponents(discordId, prefs, locale),
+    locale,
   };
 }
 
 export async function replyWithProfileSettings(
   interaction: CommandInteraction,
 ): Promise<void> {
-  const { embed, components } = await buildProfileSettingsPanel(interaction.user.id);
+  const { embed, components } = await buildProfileSettingsPanel(
+    interaction.user.id,
+    interaction.guildId,
+  );
   await interaction.reply({
     embeds: [embed],
     components,
@@ -185,7 +243,10 @@ export async function replyWithProfileSettings(
 export async function editProfileSettingsMessage(
   interaction: ProfileSettingsInteraction,
 ): Promise<void> {
-  const { embed, components } = await buildProfileSettingsPanel(interaction.user.id);
+  const { embed, components } = await buildProfileSettingsPanel(
+    interaction.user.id,
+    interaction.guildId,
+  );
   const payload = { embeds: [embed], components, content: null };
 
   if (interaction.deferred || interaction.replied) {
@@ -212,8 +273,12 @@ export async function assertProfileSettingsOwner(
   if (isProfileSettingsOwner(interaction, discordId)) {
     return true;
   }
+  const locale = await resolveLocale({
+    userId: interaction.user.id,
+    guildId: interaction.guildId,
+  });
   await interaction.reply({
-    content: "❌ These settings are not yours.",
+    content: t(locale, "common.notYours"),
     flags: MessageFlags.Ephemeral,
   });
   return false;

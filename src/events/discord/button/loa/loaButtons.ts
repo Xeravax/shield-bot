@@ -14,6 +14,7 @@ import { formatDuration } from "../../../../utility/timeParser.js";
 import { loggers } from "../../../../utility/logger.js";
 import { buildLOARequestEmbed, getLOAMessageLink } from "../../../../managers/loa/loaManager.js";
 import { matchComponentId } from "../../../../utility/componentId.js";
+import { t, DEFAULT_LOCALE } from "../../../../i18n/index.js";
 
 @Discord()
 export class LOAButtonHandlers {
@@ -66,9 +67,11 @@ export class LOAButtonHandlers {
         return;
       }
 
+      // Public channel post stays English.
       const embed = buildLOARequestEmbed(
         loa,
         loa.status === "ACTIVE" ? "active" : "approved",
+        DEFAULT_LOCALE,
       );
 
       // Add "End Early" button if active
@@ -76,7 +79,7 @@ export class LOAButtonHandlers {
       if (loa.status === "ACTIVE") {
         const endEarlyButton = new ButtonBuilder()
           .setCustomId(`loa:end-early:${loa.id}`)
-          .setLabel("End Early")
+          .setLabel(t(DEFAULT_LOCALE, "loa.buttons.endEarly").slice(0, 80))
           .setStyle(ButtonStyle.Danger);
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(endEarlyButton);
@@ -167,7 +170,7 @@ export class LOAButtonHandlers {
         return;
       }
 
-      const embed = buildLOARequestEmbed(loa, "denied");
+      const embed = buildLOARequestEmbed(loa, "denied", DEFAULT_LOCALE);
 
       await interaction.editReply({
         embeds: [embed],

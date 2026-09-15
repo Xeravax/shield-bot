@@ -12,6 +12,8 @@ import { Pagination } from "@discordx/pagination";
 import { AttendanceManager } from "../../managers/attendance/attendanceManager.js";
 import { GuildGuard } from "../../utility/guards.js";
 import { PermissionNodeGuard } from "../../utility/permissionNodes.js";
+import { formatDate } from "../../i18n/index.js";
+import { resolveLocale } from "../../i18n/resolveLocale.js";
 
 const attendanceManager = new AttendanceManager();
 
@@ -86,13 +88,17 @@ export class VRChatAttendanceEventCommand {
         void await attendanceManager.findOrCreateUserByDiscordId(
           autoInteraction.user.id,
         );
+        const locale = await resolveLocale({
+          userId: autoInteraction.user.id,
+          guildId: autoInteraction.guildId,
+        });
         const events = await attendanceManager.getAllEvents();
 
         const choices = await Promise.all(
           events
             .filter((event: { id: number; date: Date }) => {
               const eventStr = `${event.id}`;
-              const dateStr = event.date.toLocaleDateString();
+              const dateStr = formatDate(locale, event.date);
               return (
                 eventStr.includes(focused.value.toString()) ||
                 dateStr.includes(focused.value.toString())
@@ -128,7 +134,7 @@ export class VRChatAttendanceEventCommand {
               }
 
               return {
-                name: `${event.date.toLocaleDateString()} (ID: ${event.id}) - ${attendeeCount} attendee${attendeeCount !== 1 ? 's' : ''} - Host: ${hostName}`,
+                name: `${formatDate(locale, event.date)} (ID: ${event.id}) - ${attendeeCount} attendee${attendeeCount !== 1 ? 's' : ''} - Host: ${hostName}`,
                 value: event.id,
               };
             })
@@ -140,6 +146,10 @@ export class VRChatAttendanceEventCommand {
     }
 
     const cmdInteraction = interaction as CommandInteraction;
+    const locale = await resolveLocale({
+      userId: cmdInteraction.user.id,
+      guildId: cmdInteraction.guildId,
+    });
 
     // Handle list action
     if (action === "list") {
@@ -168,7 +178,7 @@ export class VRChatAttendanceEventCommand {
         let description = "";
         
         for (const event of pageEvents) {
-          const formatDate = event.date.toLocaleDateString("en-US", {
+          const formatDateStr = formatDate(locale, event.date, {
             year: "numeric",
             month: "long",
             day: "numeric",
@@ -197,7 +207,7 @@ export class VRChatAttendanceEventCommand {
             }
           }
 
-          description += `**${formatDate}** (ID: ${event.id})${isActive}${isHost}${isCohost}\n`;
+          description += `**${formatDateStr}** (ID: ${event.id})${isActive}${isHost}${isCohost}\n`;
           description += `  Host: ${hostName} | Attendees: ${attendeeCount}\n\n`;
         }
 
@@ -246,14 +256,14 @@ export class VRChatAttendanceEventCommand {
 
       await attendanceManager.setActiveEventForUser(user.id, eventId);
 
-      const formatDate = event.date.toLocaleDateString("en-US", {
+      const formatDateStr = formatDate(locale, event.date, {
         year: "numeric",
         month: "long",
         day: "numeric",
       });
 
       await cmdInteraction.reply({
-        content: `Selected event for ${formatDate} (ID: ${eventId}) as your active event.`,
+        content: `Selected event for ${formatDateStr} (ID: ${eventId}) as your active event.`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -307,14 +317,14 @@ export class VRChatAttendanceEventCommand {
 
       await attendanceManager.deleteEventData(eventId);
 
-      const formatDate = event.date.toLocaleDateString("en-US", {
+      const formatDateStr = formatDate(locale, event.date, {
         year: "numeric",
         month: "long",
         day: "numeric",
       });
 
       await cmdInteraction.reply({
-        content: `Successfully deleted attendance event for ${formatDate} (ID: ${eventId}).`,
+        content: `Successfully deleted attendance event for ${formatDateStr} (ID: ${eventId}).`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -366,7 +376,7 @@ export class VRChatAttendanceEventCommand {
       );
       await attendanceManager.setActiveEventForUser(creator.id, event.id);
 
-      const formatDate = eventDate.toLocaleDateString("en-US", {
+      const formatDateStr = formatDate(locale, eventDate, {
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -374,7 +384,7 @@ export class VRChatAttendanceEventCommand {
 
       await cmdInteraction.reply({
         content:
-          `Created attendance event for ${formatDate}\n` +
+          `Created attendance event for ${formatDateStr}\n` +
           `Host: <@${hostUser.id}>\n` +
           `${cohostUser ? `Co-Host: <@${cohostUser.id}>\n` : ""}` +
           `Event ID: ${event.id}\n\n` +

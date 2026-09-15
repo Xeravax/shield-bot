@@ -9,6 +9,8 @@ import { prisma } from "../../main.js";
 import { getRoleIdsWithNode } from "../../utility/permissionNodes.js";
 import { loggers } from "../../utility/logger.js";
 import { ensureGuildMembersFetched } from "../../utility/guildMemberCache.js";
+import { DEFAULT_LOCALE, t } from "../../i18n/index.js";
+import { resolveGuildLocale } from "../../i18n/resolveLocale.js";
 
 export type ServerStatsKind = "goal" | "members" | "deputies" | "boosts";
 
@@ -34,11 +36,11 @@ const CHANNEL_FIELD_BY_KIND: Record<
   boosts: "serverStatsBoostsChannelId",
 };
 
-const LABEL_BY_KIND: Record<ServerStatsKind, string> = {
-  goal: "Current Goal",
-  members: "Members",
-  deputies: "Deputies",
-  boosts: "Boosts",
+const LABEL_KEY_BY_KIND: Record<ServerStatsKind, string> = {
+  goal: "serverStats.goal",
+  members: "serverStats.members",
+  deputies: "serverStats.deputies",
+  boosts: "serverStats.boosts",
 };
 
 export function computeMemberGoal(members: number): number {
@@ -52,8 +54,10 @@ export function computeMemberGoal(members: number): number {
 export function formatServerStatsChannelName(
   kind: ServerStatsKind,
   value: number,
+  locale: string = DEFAULT_LOCALE,
 ): string {
-  return `🔰 | ${LABEL_BY_KIND[kind]}: ${value}`;
+  const label = t(locale, LABEL_KEY_BY_KIND[kind]);
+  return t(locale, "serverStats.channelName", { label, value });
 }
 
 export class ServerStatsManager {
@@ -123,6 +127,7 @@ export class ServerStatsManager {
       }
 
       const stats = await this.computeStats(guild);
+      const locale = await resolveGuildLocale(guildId);
       const updates: Array<{ kind: ServerStatsKind; channelId: string; value: number }> =
         [];
 
@@ -134,7 +139,7 @@ export class ServerStatsManager {
       }
 
       for (const { kind, channelId, value } of updates) {
-        await this.renameIfNeeded(guild, channelId, kind, value);
+        await this.renameIfNeeded(guild, channelId, kind, value, locale);
       }
 
       return stats;
@@ -173,6 +178,7 @@ export class ServerStatsManager {
     stats: ServerStatsValues;
   }> {
     const stats = await this.computeStats(guild);
+    const locale = await resolveGuildLocale(guild.id);
     const everyoneId = guild.roles.everyone.id;
 
     const category = await guild.channels.create({
@@ -189,7 +195,7 @@ export class ServerStatsManager {
 
     const createVoice = async (kind: ServerStatsKind) =>
       guild.channels.create({
-        name: formatServerStatsChannelName(kind, stats[kind]),
+        name: formatServerStatsChannelName(kind, stats[kind], locale),
         type: ChannelType.GuildVoice,
         parent: category.id,
         permissionOverwrites: [
@@ -271,8 +277,9 @@ export class ServerStatsManager {
     channelId: string,
     kind: ServerStatsKind,
     value: number,
+    locale: string = DEFAULT_LOCALE,
   ): Promise<void> {
-    const desired = formatServerStatsChannelName(kind, value);
+    const desired = formatServerStatsChannelName(kind, value, locale);
     let channel: GuildChannel | null;
     try {
       const fetched = await guild.channels.fetch(channelId);
