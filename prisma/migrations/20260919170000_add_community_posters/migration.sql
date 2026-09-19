@@ -5,8 +5,6 @@ CREATE TABLE `community_posters` (
     `slot` INTEGER NOT NULL,
     `slug` VARCHAR(191) NOT NULL DEFAULT '',
     `title` VARCHAR(191) NOT NULL DEFAULT '',
-    `imageFile` VARCHAR(191) NOT NULL DEFAULT '',
-    `groupId` VARCHAR(191) NOT NULL DEFAULT '',
     `enabled` BOOLEAN NOT NULL DEFAULT false,
     `updatedBy` VARCHAR(191) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
