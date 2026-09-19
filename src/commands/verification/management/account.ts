@@ -10,7 +10,12 @@ import {
   ButtonStyle,
 } from "discord.js";
 import { VRChatLoginGuard, GuildGuard } from "../../../utility/guards.js";
-import { getUserById, searchUsers, isValidVRChatUserId } from "../../../utility/vrchat.js";
+import {
+  getUserById,
+  searchUsers,
+  isValidVRChatUserId,
+  resolveUserAvatarUrls,
+} from "../../../utility/vrchat.js";
 import type { VRChatUser } from "../../../utility/vrchat/types.js";
 
 @Discord()
@@ -75,19 +80,15 @@ export class VRChatVerifyAccountCommand {
       return;
     }
 
+    const avatarUrls = await resolveUserAvatarUrls(userInfo);
     const embed = new EmbedBuilder()
       .setTitle(`Is this your VRChat account?`)
       .setDescription(
         `**${userInfo.displayName}** (${userInfo.id})\n\nConfirm to start verification. Verified accounts are protected from takeover.`,
       )
       .setColor(Colors.Blue)
-      .setImage(
-        userInfo.profilePicOverride ||
-        userInfo.currentAvatarImageUrl ||
-        userInfo.currentAvatarThumbnailImageUrl ||
-        null,
-      )
-      .setThumbnail(userInfo.userIcon || userInfo.profilePicOverride || null)
+      .setImage(avatarUrls.image)
+      .setThumbnail(avatarUrls.thumbnail)
       .setFooter({ text: "VRChat Account Binding" });
 
     // Use the discord and VRChat IDs in the confirm button's custom_id

@@ -16,6 +16,24 @@ export interface VRChatUser {
   [key: string]: unknown; // Allow additional properties
 }
 
+/** Fields from GET /profile/{userId} used for avatar/icon URLs. */
+export interface VRChatPublicProfile {
+  id?: string;
+  displayName?: string;
+  userIcon?: string;
+  iconUrl?: string;
+  profilePicOverride?: string;
+  currentAvatarImageUrl?: string;
+  currentAvatarThumbnailImageUrl?: string;
+  bannerUrl?: string;
+  [key: string]: unknown;
+}
+
+export type VRChatUserAvatarUrls = {
+  image: string | null;
+  thumbnail: string | null;
+};
+
 // Type guard for VRChatUser
 export function isVRChatUser(obj: unknown): obj is VRChatUser {
   return typeof obj === "object" && obj !== null && "id" in obj && typeof (obj as { id: unknown }).id === "string";

@@ -1,10 +1,20 @@
 // User-related VRChat API methods using vrc-ts
 
-import { RequestError, NotificationIdType } from "vrc-ts";
+import { RequestError, NotificationIdType, VRChatAPI } from "vrc-ts";
 import { vrchatApi } from "./index.js";
 import { prisma } from "../../main.js";
 import { loggers } from "../logger.js";
-import type { VRChatUser } from "./types.js";
+import type {
+  VRChatPublicProfile,
+  VRChatUser,
+  VRChatUserAvatarUrls,
+} from "./types.js";
+import {
+  pickUserAvatarUrls,
+  userHasCompleteAvatarUrls,
+} from "./userAvatarUrls.js";
+
+export { pickUserAvatarUrls } from "./userAvatarUrls.js";
 
 /**
  * Validate that a string is a valid VRChat user ID format
@@ -216,6 +226,90 @@ export async function getUserById(userId: string): Promise<VRChatUser | null> {
       return null;
     }
     throw error;
+  }
+}
+
+function sessionCookieHeader(): string {
+  return [
+    vrchatApi.instanceCookie.getAuthCookie(),
+    vrchatApi.instanceCookie.getTwoFactorAuthCookie(),
+  ]
+    .filter((part) => typeof part === "string" && part.trim())
+    .join(" ");
+}
+
+/**
+ * GET /profile/{userId} — bio, icon, banner, and (with asSelf) current avatar.
+ * vrc-ts 1.0.17 does not wrap this endpoint.
+ */
+export async function getPublicProfile(
+  userId: string,
+): Promise<VRChatPublicProfile | null> {
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+  if (!isValidVRChatUserId(userId)) {
+    throw new Error(`Invalid VRChat user ID format: "${userId}"`);
+  }
+
+  const url = `${VRChatAPI.ApiBaseUrl}/profile/${encodeURIComponent(userId)}`;
+  const cookie = sessionCookieHeader();
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "User-Agent": vrchatApi.headerAgent,
+      "Content-Type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    let extraMessage = "";
+    try {
+      const body = (await response.json()) as {
+        error?: { message?: string };
+      };
+      extraMessage = body.error?.message ?? "";
+    } catch {
+      extraMessage = "";
+    }
+    throw new RequestError(
+      response.status,
+      `${response.statusText} | Extra message: ${extraMessage}`,
+    );
+  }
+
+  const result: unknown = await response.json();
+  if (typeof result !== "object" || result === null) {
+    return null;
+  }
+  return result as VRChatPublicProfile;
+}
+
+/**
+ * Avatar URLs for Discord embeds. Uses leftover getUser fields when present,
+ * otherwise fetches getPublicProfile. Failures leave URLs empty; they do not throw.
+ */
+export async function resolveUserAvatarUrls(
+  user: VRChatUser,
+): Promise<VRChatUserAvatarUrls> {
+  if (userHasCompleteAvatarUrls(user)) {
+    return pickUserAvatarUrls(user, null);
+  }
+
+  try {
+    const profile = await getPublicProfile(user.id);
+    return pickUserAvatarUrls(user, profile);
+  } catch (error) {
+    loggers.vrchat.warn(
+      `Failed to fetch public profile for ${user.id}; using getUser image fields only`,
+      error,
+    );
+    return pickUserAvatarUrls(user, null);
   }
 }
 
