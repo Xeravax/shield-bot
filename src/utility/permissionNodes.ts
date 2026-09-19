@@ -137,11 +137,12 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "rooftop.command.spinthebottle", description: "/rooftop spin-the-bottle - add a spin the bottle response" },
   ],
   posters: [
-    { node: "posters.command.set", description: "/poster set - upload/replace a community board poster slot" },
+    { node: "posters.command.set", description: "/poster set|set-group - upload/replace a poster or set its VRChat group id" },
     { node: "posters.command.disable", description: "/poster disable - disable a poster slot without deleting the JPEG" },
     { node: "posters.command.enable", description: "/poster enable - re-enable a poster slot" },
     { node: "posters.command.list", description: "/poster list - list poster slots and public URLs" },
     { node: "posters.command.force-update", description: "/poster force-update - republish station/poster.json to GitHub" },
+    { node: "posters.command.seed-frames", description: "/poster seed-frames - enable official FRAME_*.jpg slots (JSON only, no image upload)" },
   ],
   phantomcompiler: [
     { node: "phantomcompiler.command.panel", description: "/phantomcompiler panel - post the phantom compiler panel" },

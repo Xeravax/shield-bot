@@ -51,6 +51,7 @@ export function AdminPanel({ token, preview = false }: Props) {
   const [editSlot, setEditSlot] = useState(0);
   const [editTitle, setEditTitle] = useState("");
   const [editId, setEditId] = useState("");
+  const [editGroupId, setEditGroupId] = useState("");
   const [editFile, setEditFile] = useState<File | null>(null);
   const [posterBusy, setPosterBusy] = useState(false);
 
@@ -81,6 +82,7 @@ export function AdminPanel({ token, preview = false }: Props) {
           setEditSlot(data.posters[0].slot);
           setEditTitle(data.posters[0].title);
           setEditId(data.posters[0].id);
+          setEditGroupId(data.posters[0].groupId ?? "");
         }
       })
       .catch((e: Error) => setError(e.message))
@@ -199,6 +201,7 @@ export function AdminPanel({ token, preview = false }: Props) {
     if (row) {
       setEditTitle(row.title);
       setEditId(row.id);
+      setEditGroupId(row.groupId ?? "");
     }
     setEditFile(null);
   }
@@ -229,6 +232,7 @@ export function AdminPanel({ token, preview = false }: Props) {
       const result = await uploadPoster(token, editSlot, editFile, {
         title: editTitle.trim(),
         id: editId.trim() || undefined,
+        groupId: editGroupId.trim() || undefined,
       });
       await reloadPosters();
       setEditFile(null);
@@ -237,6 +241,30 @@ export function AdminPanel({ token, preview = false }: Props) {
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setPosterBusy(false);
+    }
+  }
+
+  async function savePosterMeta() {
+    if (preview || posterBusy) {
+      return;
+    }
+    setPosterBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await patchPoster(token, editSlot, {
+        title: editTitle.trim(),
+        id: editId.trim() || undefined,
+        groupId: editGroupId.trim(),
+      });
+      await reloadPosters();
+      setMessage(
+        `Updated slot ${result.poster.slot} metadata (v${result.version}).`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
     } finally {
       setPosterBusy(false);
     }
@@ -596,6 +624,7 @@ export function AdminPanel({ token, preview = false }: Props) {
                     <tr>
                       <th>Slot</th>
                       <th>Preview</th>
+                      <th>File</th>
                       <th>Id</th>
                       <th>Title</th>
                       <th>Status</th>
@@ -623,6 +652,9 @@ export function AdminPanel({ token, preview = false }: Props) {
                                 "hidden";
                             }}
                           />
+                        </td>
+                        <td>
+                          <code>{p.file}</code>
                         </td>
                         <td>
                           <code>{p.id}</code>
@@ -689,8 +721,24 @@ export function AdminPanel({ token, preview = false }: Props) {
                       placeholder="optional"
                     />
                   </label>
+                  <label>
+                    VRChat group id
+                    <input
+                      value={editGroupId}
+                      onChange={(e) => setEditGroupId(e.target.value)}
+                      placeholder="grp_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    />
+                  </label>
                 </div>
                 <div className="form-row">
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={posterBusy}
+                    onClick={() => void savePosterMeta()}
+                  >
+                    Save metadata
+                  </button>
                   <label>
                     Image
                     <input

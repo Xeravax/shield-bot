@@ -4,7 +4,11 @@ model CommunityPoster {
   slot      Int
   slug      String   @default("")
   title     String   @default("")
-  enabled   Boolean  @default(false)
+  /** Filename under station/posters/ (e.g. FRAME_COBALT.jpg). Official names preferred. */
+  imageFile String  @default("")
+  /** VRChat group id (grp_…) for Open Group on the board. Empty = none. */
+  groupId   String  @default("")
+  enabled   Boolean @default(false)
   updatedBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

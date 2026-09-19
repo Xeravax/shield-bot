@@ -6,7 +6,10 @@ import {
   PosterFrameError,
 } from "./posterFrame.js";
 import {
+  assertValidPosterGroupId,
   buildPosterManifest,
+  DEFAULT_STATION_FRAME_POSTERS,
+  defaultImageFileForSlot,
   posterImagePublicUrl,
   posterJsonPublicUrl,
   POSTERS_MAX_SLOTS,
@@ -20,6 +23,28 @@ export class PosterValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "PosterValidationError";
+  }
+}
+
+function parseOptionalGroupId(
+  input: string | null | undefined,
+  opts?: { allowClear?: boolean },
+): string | undefined {
+  if (input === undefined) {
+    return undefined;
+  }
+  if (input === null || input.trim() === "") {
+    if (opts?.allowClear === false) {
+      throw new PosterValidationError("Group id cannot be empty.");
+    }
+    return "";
+  }
+  try {
+    return assertValidPosterGroupId(input);
+  } catch (error) {
+    throw new PosterValidationError(
+      error instanceof Error ? error.message : "Invalid group id.",
+    );
   }
 }
 
@@ -53,15 +78,23 @@ export class PosterManager {
       update: {},
     });
 
+    const defaultsBySlot = new Map<
+      number,
+      (typeof DEFAULT_STATION_FRAME_POSTERS)[number]
+    >(DEFAULT_STATION_FRAME_POSTERS.map((p) => [p.slot, p]));
+
     for (let slot = 0; slot < POSTERS_MAX_SLOTS; slot++) {
+      const defaults = defaultsBySlot.get(slot);
       await prisma.communityPoster.upsert({
         where: { guildId_slot: { guildId: gid, slot } },
         create: {
           guildId: gid,
           slot,
-          slug: `slot-${slot}`,
-          title: `Slot ${slot}`,
-          enabled: false,
+          slug: defaults?.slug ?? `slot-${slot}`,
+          title: defaults?.title ?? `Slot ${slot}`,
+          imageFile: defaults?.imageFile ?? "",
+          // Existing FRAME_*.jpg files are already on GitHub — enable by default.
+          enabled: Boolean(defaults),
         },
         update: {},
       });
@@ -88,6 +121,8 @@ export class PosterManager {
         slug: p.slug,
         title: p.title,
         enabled: p.enabled,
+        imageFile: p.imageFile,
+        groupId: p.groupId,
       })),
     );
   }
@@ -96,21 +131,15 @@ export class PosterManager {
     return `${JSON.stringify(await this.getManifest(guildId), null, 2)}\n`;
   }
 
-  async getPublicUrls(guildId: string): Promise<{
+  private async resolveRepo(guildId: string): Promise<{
     owner: string;
     repo: string;
-    jsonUrl: string;
-    imageUrl: (slot: number) => string;
   }> {
-    const gid = assertGuildId(guildId);
-    const { owner, repo } =
-      await this.githubPublisher.getPosterRepoSettings(gid);
-    return {
-      owner,
-      repo,
-      jsonUrl: posterJsonPublicUrl(owner, repo),
-      imageUrl: (slot: number) => posterImagePublicUrl(owner, repo, slot),
-    };
+    return this.githubPublisher.getPosterRepoSettings(guildId);
+  }
+
+  imagePublicUrl(owner: string, repo: string, imageFile: string): string {
+    return posterImagePublicUrl(owner, repo, imageFile);
   }
 
   async listForStaff(guildId: string): Promise<{
@@ -122,22 +151,26 @@ export class PosterManager {
       id: string;
       title: string;
       enabled: boolean;
+      file: string;
       imageUrl: string;
+      groupId: string | null;
     }>;
   }> {
     const gid = assertGuildId(guildId);
     const manifest = await this.getManifest(gid);
-    const urls = await this.getPublicUrls(gid);
+    const { owner, repo } = await this.resolveRepo(gid);
     return {
       version: manifest.version,
       updatedAt: manifest.updatedAt,
-      jsonUrl: urls.jsonUrl,
+      jsonUrl: posterJsonPublicUrl(owner, repo),
       posters: manifest.posters.map((p) => ({
         slot: p.slot,
         id: p.id,
         title: p.title,
         enabled: p.enabled,
-        imageUrl: urls.imageUrl(p.slot),
+        file: p.file,
+        imageUrl: posterImagePublicUrl(owner, repo, p.file),
+        groupId: p.groupId ?? null,
       })),
     };
   }
@@ -155,6 +188,7 @@ export class PosterManager {
     slot: number;
     title: string;
     id?: string | null;
+    groupId?: string | null;
     image: Buffer;
     mimeType?: string | null;
     updatedBy: string;
@@ -172,10 +206,20 @@ export class PosterManager {
     }
 
     const slug = slugifyPosterId(options.id?.trim() || title);
+    const groupIdUpdate = parseOptionalGroupId(options.groupId);
     const jpeg = await createFramedPosterJpeg(options.image, options.mimeType);
 
     return withPublishLock(async () => {
       await this.ensureSeeded(gid);
+
+      const existing = await prisma.communityPoster.findUnique({
+        where: { guildId_slot: { guildId: gid, slot: options.slot } },
+      });
+
+      // Keep official FRAME_* name when replacing a known slot; otherwise FRAME_{SLUG}.jpg
+      const imageFile =
+        existing?.imageFile ||
+        defaultImageFileForSlot(options.slot, slug);
 
       await prisma.communityPoster.upsert({
         where: { guildId_slot: { guildId: gid, slot: options.slot } },
@@ -184,12 +228,16 @@ export class PosterManager {
           slot: options.slot,
           slug,
           title,
+          imageFile,
+          groupId: groupIdUpdate ?? "",
           enabled: true,
           updatedBy: options.updatedBy,
         },
         update: {
           slug,
           title,
+          imageFile,
+          ...(groupIdUpdate !== undefined ? { groupId: groupIdUpdate } : {}),
           enabled: true,
           updatedBy: options.updatedBy,
         },
@@ -206,21 +254,22 @@ export class PosterManager {
       const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
         guildId: gid,
         posterJson,
-        jpegSlot: options.slot,
+        imageFile,
         jpegBytes: jpeg,
         commitMessage:
           options.commitMessage ??
-          `chore(posters): set slot ${options.slot} (${slug}) v${state.version}`,
+          `chore(posters): set ${imageFile} (slot ${options.slot}) v${state.version}`,
       });
 
-      const urls = await this.getPublicUrls(gid);
+      const { owner, repo } = await this.resolveRepo(gid);
+      const imageUrl = posterImagePublicUrl(owner, repo, imageFile);
       loggers.bot.info(
-        `Poster slot ${options.slot} published for guild ${gid} (v${state.version}, commit ${publish.commitSha})`,
+        `Poster ${imageFile} published for guild ${gid} (v${state.version}, commit ${publish.commitSha})`,
       );
 
       return {
         manifest,
-        imageUrl: urls.imageUrl(options.slot),
+        imageUrl,
         commitSha: publish.commitSha,
       };
     });
@@ -232,6 +281,8 @@ export class PosterManager {
     enabled?: boolean;
     title?: string;
     id?: string | null;
+    /** Set to a grp_ UUID, or empty string / null to clear. */
+    groupId?: string | null;
     updatedBy: string;
     commitMessage?: string;
   }): Promise<{
@@ -265,10 +316,13 @@ export class PosterManager {
             ? slugifyPosterId(title)
             : existing.slug;
 
+      const groupIdUpdate = parseOptionalGroupId(options.groupId);
+
       const data: {
         enabled?: boolean;
         title?: string;
         slug?: string;
+        groupId?: string;
         updatedBy: string;
       } = { updatedBy: options.updatedBy };
 
@@ -281,6 +335,9 @@ export class PosterManager {
       }
       if (options.id !== undefined && options.id !== null) {
         data.slug = slugifyPosterId(options.id.trim() || title);
+      }
+      if (groupIdUpdate !== undefined) {
+        data.groupId = groupIdUpdate;
       }
 
       await prisma.communityPoster.update({
@@ -296,6 +353,7 @@ export class PosterManager {
       const manifest = await this.getManifest(gid);
       const posterJson = `${JSON.stringify(manifest, null, 2)}\n`;
 
+      // Metadata only — never touch existing JPEG files.
       const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
         guildId: gid,
         posterJson,
@@ -304,10 +362,13 @@ export class PosterManager {
           `chore(posters): update slot ${options.slot} metadata v${state.version}`,
       });
 
-      const urls = await this.getPublicUrls(gid);
+      const file =
+        existing.imageFile ||
+        defaultImageFileForSlot(options.slot, existing.slug);
+      const { owner, repo } = await this.resolveRepo(gid);
       return {
         manifest,
-        imageUrl: urls.imageUrl(options.slot),
+        imageUrl: posterImagePublicUrl(owner, repo, file),
         commitSha: publish.commitSha,
       };
     });
@@ -328,6 +389,7 @@ export class PosterManager {
       const manifest = await this.getManifest(gid);
       const posterJson = `${JSON.stringify(manifest, null, 2)}\n`;
 
+      // JSON only — existing FRAME_*.jpg stay as-is on GitHub.
       const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
         guildId: gid,
         posterJson,
@@ -336,11 +398,81 @@ export class PosterManager {
           `chore(posters): force update poster.json v${manifest.version}`,
       });
 
-      const urls = await this.getPublicUrls(gid);
+      const { owner, repo } = await this.resolveRepo(gid);
       return {
         manifest,
         commitSha: publish.commitSha,
-        jsonUrl: urls.jsonUrl,
+        jsonUrl: posterJsonPublicUrl(owner, repo),
+      };
+    });
+  }
+
+  /**
+   * Point DB slots at existing FRAME_*.jpg names and publish poster.json only.
+   * Does not upload or rewrite any JPEG files.
+   */
+  async seedOfficialFrames(
+    guildId: string,
+    updatedBy: string,
+  ): Promise<{
+    manifest: PosterManifest;
+    commitSha?: string;
+    posters: Array<{ slot: number; file: string; imageUrl: string }>;
+  }> {
+    const gid = assertGuildId(guildId);
+
+    return withPublishLock(async () => {
+      await this.ensureSeeded(gid);
+
+      for (const frame of DEFAULT_STATION_FRAME_POSTERS) {
+        await prisma.communityPoster.upsert({
+          where: { guildId_slot: { guildId: gid, slot: frame.slot } },
+          create: {
+            guildId: gid,
+            slot: frame.slot,
+            slug: frame.slug,
+            title: frame.title,
+            imageFile: frame.imageFile,
+            enabled: true,
+            updatedBy,
+          },
+          update: {
+            slug: frame.slug,
+            title: frame.title,
+            imageFile: frame.imageFile,
+            enabled: true,
+            updatedBy,
+          },
+        });
+      }
+
+      const state = await prisma.communityPosterState.update({
+        where: { guildId: gid },
+        data: { version: { increment: 1 } },
+      });
+
+      const manifest = await this.getManifest(gid);
+      const posterJson = `${JSON.stringify(manifest, null, 2)}\n`;
+
+      const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
+        guildId: gid,
+        posterJson,
+        commitMessage: `chore(posters): seed official FRAME_* metadata v${state.version}`,
+      });
+
+      const { owner, repo } = await this.resolveRepo(gid);
+      loggers.bot.info(
+        `Seeded official FRAME posters for guild ${gid} (v${state.version}, JSON only)`,
+      );
+
+      return {
+        manifest,
+        commitSha: publish.commitSha,
+        posters: DEFAULT_STATION_FRAME_POSTERS.map((frame) => ({
+          slot: frame.slot,
+          file: frame.imageFile,
+          imageUrl: posterImagePublicUrl(owner, repo, frame.imageFile),
+        })),
       };
     });
   }

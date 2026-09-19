@@ -134,16 +134,19 @@ export class DashboardPostersAPI {
       }
 
       const body = ctx.request.body as
-        | { title?: string; id?: string }
+        | { title?: string; id?: string; groupId?: string }
         | undefined;
       const title = typeof body?.title === "string" ? body.title : "";
       const id = typeof body?.id === "string" ? body.id : null;
+      const groupId =
+        typeof body?.groupId === "string" ? body.groupId : undefined;
 
       const result = await posterManager.setPoster({
         guildId: session.guildId,
         slot,
         title,
         id,
+        groupId,
         image: file.buffer,
         mimeType: file.mimetype,
         updatedBy: session.user.id,
@@ -174,7 +177,9 @@ export class DashboardPostersAPI {
           id: entry?.id ?? "",
           title: entry?.title ?? title,
           enabled: entry?.enabled ?? true,
+          file: entry?.file ?? "",
           imageUrl: result.imageUrl,
+          groupId: entry?.groupId ?? null,
         },
         commitSha: result.commitSha ?? null,
       };
@@ -197,15 +202,21 @@ export class DashboardPostersAPI {
       }
 
       const body = ctx.request.body as
-        | { enabled?: boolean; title?: string; id?: string }
+        | {
+            enabled?: boolean;
+            title?: string;
+            id?: string;
+            groupId?: string | null;
+          }
         | undefined;
 
       if (
         body?.enabled === undefined &&
         body?.title === undefined &&
-        body?.id === undefined
+        body?.id === undefined &&
+        body?.groupId === undefined
       ) {
-        jsonError(ctx, 400, "Provide enabled, title, and/or id.");
+        jsonError(ctx, 400, "Provide enabled, title, id, and/or groupId.");
         return;
       }
 
@@ -215,6 +226,7 @@ export class DashboardPostersAPI {
         enabled: body?.enabled,
         title: body?.title,
         id: body?.id,
+        groupId: body?.groupId,
         updatedBy: session.user.id,
       });
 
@@ -237,6 +249,13 @@ export class DashboardPostersAPI {
             ),
             inline: true,
           },
+          {
+            name: "Group",
+            value:
+              result.manifest.posters.find((p) => p.slot === slot)?.groupId ??
+              "(none)",
+            inline: true,
+          },
         ],
         "mod",
       );
@@ -250,7 +269,9 @@ export class DashboardPostersAPI {
           id: entry?.id ?? "",
           title: entry?.title ?? "",
           enabled: entry?.enabled ?? false,
+          file: entry?.file ?? "",
           imageUrl: result.imageUrl,
+          groupId: entry?.groupId ?? null,
         },
         commitSha: result.commitSha ?? null,
       };

@@ -608,7 +608,8 @@ export class GitHubPublisher {
     options: {
       guildId?: string;
       posterJson: string;
-      jpegSlot?: number;
+      /** Official filename under station/posters/ (e.g. FRAME_COBALT.jpg). */
+      imageFile?: string;
       jpegBytes?: Buffer;
       ensureNoJekyll?: boolean;
       commitMessage?: string;
@@ -693,13 +694,9 @@ export class GitHubPublisher {
       },
     ];
 
-    if (
-      options.jpegBytes &&
-      options.jpegSlot !== undefined &&
-      Number.isInteger(options.jpegSlot)
-    ) {
+    if (options.jpegBytes && options.imageFile) {
       fileData.push({
-        path: `station/posters/${options.jpegSlot}.jpg`,
+        path: `station/posters/${options.imageFile}`,
         content: options.jpegBytes.toString("base64"),
         encoding: "base64",
       });

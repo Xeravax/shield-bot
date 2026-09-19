@@ -56,6 +56,13 @@ export class PosterCommands {
       type: ApplicationCommandOptionType.String,
     })
     id: string | null,
+    @SlashOption({
+      name: "group_id",
+      description: "Optional VRChat group id (full grp_… UUID)",
+      required: false,
+      type: ApplicationCommandOptionType.String,
+    })
+    groupId: string | null,
     interaction: CommandInteraction,
   ): Promise<void> {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -81,6 +88,7 @@ export class PosterCommands {
         slot,
         title,
         id,
+        groupId,
         image: buffer,
         mimeType: image.contentType,
         updatedBy: interaction.user.id,
@@ -94,6 +102,7 @@ export class PosterCommands {
           `Id: \`${entry?.id ?? "?"}\``,
           `Title: ${entry?.title ?? title}`,
           `Enabled: ${entry?.enabled ? "yes" : "no"}`,
+          entry?.groupId ? `Group: \`${entry.groupId}\`` : "Group: (none)",
           `Image: ${result.imageUrl}`,
           result.commitSha ? `Commit: \`${result.commitSha.slice(0, 7)}\`` : "",
         ]
@@ -202,7 +211,7 @@ export class PosterCommands {
       const list = await posterManager.listForStaff(interaction.guildId);
       const lines = list.posters.map(
         (p) =>
-          `• **${p.slot}** \`${p.id}\` — ${p.title} — ${p.enabled ? "enabled" : "disabled"}\n  ${p.imageUrl}`,
+          `• **${p.slot}** \`${p.id}\` — ${p.title} — ${p.enabled ? "enabled" : "disabled"}${p.groupId ? ` — group \`${p.groupId}\`` : ""}\n  \`${p.file}\`\n  ${p.imageUrl}`,
       );
       await interaction.editReply({
         content: [
@@ -215,6 +224,60 @@ export class PosterCommands {
       });
     } catch (error: unknown) {
       await this.replyError(interaction, "listing posters", error);
+    }
+  }
+
+  @Slash({
+    name: "set-group",
+    description: "Set or clear the VRChat group opened from a poster slot",
+  })
+  @Guard(
+    PermissionNodeGuardAny("posters.command.set", "dashboard.roles.staff"),
+  )
+  async setGroup(
+    @SlashOption({
+      name: "slot",
+      description: `Poster slot index (0-${POSTERS_MAX_SLOTS - 1})`,
+      required: true,
+      type: ApplicationCommandOptionType.Integer,
+      minValue: 0,
+      maxValue: POSTERS_MAX_SLOTS - 1,
+    })
+    slot: number,
+    @SlashOption({
+      name: "group_id",
+      description:
+        "Full grp_… UUID from vrchat.com (omit or empty to clear)",
+      required: false,
+      type: ApplicationCommandOptionType.String,
+    })
+    groupId: string | null,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.guildId) {
+      await interaction.editReply({
+        content: "❌ This command can only be used in a server.",
+      });
+      return;
+    }
+
+    try {
+      const result = await posterManager.updatePosterMeta({
+        guildId: interaction.guildId,
+        slot,
+        groupId: groupId ?? "",
+        updatedBy: interaction.user.id,
+        commitMessage: `chore(posters): set group for slot ${slot}`,
+      });
+      const entry = result.manifest.posters.find((p) => p.slot === slot);
+      await interaction.editReply({
+        content: entry?.groupId
+          ? `✅ Slot **${slot}** group set to \`${entry.groupId}\` (v${result.manifest.version}).`
+          : `✅ Slot **${slot}** group cleared (v${result.manifest.version}).`,
+      });
+    } catch (error: unknown) {
+      await this.replyError(interaction, "setting poster group", error);
     }
   }
 
@@ -250,6 +313,50 @@ export class PosterCommands {
       });
     } catch (error: unknown) {
       await this.replyError(interaction, "force-updating posters", error);
+    }
+  }
+
+  @Slash({
+    name: "seed-frames",
+    description:
+      "Enable official FRAME_*.jpg slots and publish poster.json (does not re-upload images)",
+  })
+  @Guard(
+    PermissionNodeGuardAny(
+      "posters.command.seed-frames",
+      "dashboard.roles.staff",
+    ),
+  )
+  async seedFrames(interaction: CommandInteraction): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.guildId) {
+      await interaction.editReply({
+        content: "❌ This command can only be used in a server.",
+      });
+      return;
+    }
+
+    try {
+      const result = await posterManager.seedOfficialFrames(
+        interaction.guildId,
+        interaction.user.id,
+      );
+      const lines = result.posters.map(
+        (l) => `• **${l.slot}** \`${l.file}\` → ${l.imageUrl}`,
+      );
+      await interaction.editReply({
+        content: [
+          `✅ Seeded official FRAME posters (v${result.manifest.version}).`,
+          `Images were not re-uploaded — URLs keep the existing FRAME_*.jpg names.`,
+          result.commitSha ? `Commit: \`${result.commitSha.slice(0, 7)}\`` : "",
+          "",
+          ...lines,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+    } catch (error: unknown) {
+      await this.replyError(interaction, "seeding FRAME posters", error);
     }
   }
 

@@ -343,7 +343,9 @@ export interface PosterSlot {
   id: string;
   title: string;
   enabled: boolean;
+  file: string;
   imageUrl: string;
+  groupId: string | null;
 }
 
 export interface PostersListResponse {
@@ -361,7 +363,7 @@ export async function uploadPoster(
   token: string,
   slot: number,
   file: File,
-  fields: { title: string; id?: string },
+  fields: { title: string; id?: string; groupId?: string },
 ): Promise<{
   version: number;
   updatedAt: string;
@@ -373,6 +375,9 @@ export async function uploadPoster(
   form.append("title", fields.title);
   if (fields.id) {
     form.append("id", fields.id);
+  }
+  if (fields.groupId) {
+    form.append("groupId", fields.groupId);
   }
 
   // Do not set Content-Type — the browser must add the multipart boundary.
@@ -409,7 +414,7 @@ export async function uploadPoster(
 export function patchPoster(
   token: string,
   slot: number,
-  body: { enabled?: boolean; title?: string; id?: string },
+  body: { enabled?: boolean; title?: string; id?: string; groupId?: string | null },
 ) {
   return apiFetch<{
     version: number;
