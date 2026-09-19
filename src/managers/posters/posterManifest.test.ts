@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertPosterTitle,
   buildPosterManifest,
   DEFAULT_STATION_FRAME_POSTERS,
+  POSTERS_MAX_SLOTS,
+  POSTERS_TITLE_MAX_LENGTH,
   posterImagePublicUrl,
   posterJsonPublicUrl,
   slugifyPosterId,
 } from "./posterManifest.js";
 
 describe("buildPosterManifest", () => {
-  it("pads every slot in order with disabled defaults", () => {
+  it("emits world-consumed fields and pads baked slots", () => {
     const manifest = buildPosterManifest(
       3,
       "2026-09-19T14:00:00.000Z",
@@ -16,7 +19,7 @@ describe("buildPosterManifest", () => {
         {
           slot: 0,
           slug: "cobalt",
-          title: "Cobalt Conclave",
+          title: "Cobalt",
           enabled: true,
           imageFile: "FRAME_COBALT.jpg",
         },
@@ -24,33 +27,16 @@ describe("buildPosterManifest", () => {
       3,
     );
 
-    expect(manifest).toEqual({
-      version: 3,
-      updatedAt: "2026-09-19T14:00:00.000Z",
-      posters: [
-        {
-          id: "cobalt",
-          title: "Cobalt Conclave",
-          enabled: true,
-          slot: 0,
-          file: "FRAME_COBALT.jpg",
-        },
-        {
-          id: "hoppu",
-          title: "Hoppu",
-          enabled: false,
-          slot: 1,
-          file: "FRAME_HOPPU.jpg",
-        },
-        {
-          id: "kus",
-          title: "KUS",
-          enabled: false,
-          slot: 2,
-          file: "FRAME_KUS.jpg",
-        },
-      ],
+    expect(manifest.version).toBe(3);
+    expect(manifest.posters[0]).toMatchObject({
+      slot: 0,
+      enabled: true,
+      title: "Cobalt",
+      file: "FRAME_COBALT.jpg",
     });
+    expect(manifest.posters[0]).not.toHaveProperty("imageUrl");
+    expect(manifest.posters[1].file).toBe("FRAME_HOPPU.jpg");
+    expect(manifest.posters[2].file).toBe("FRAME_KUS.jpg");
   });
 
   it("keeps disabled slots in the array", () => {
@@ -102,7 +88,8 @@ describe("slugifyPosterId", () => {
 });
 
 describe("DEFAULT_STATION_FRAME_POSTERS", () => {
-  it("maps the seven existing FRAME_*.jpg files to slots 0-6", () => {
+  it("maps the seven baked FRAME_*.jpg files to slots 0-6", () => {
+    expect(POSTERS_MAX_SLOTS).toBe(7);
     expect(DEFAULT_STATION_FRAME_POSTERS).toHaveLength(7);
     expect(DEFAULT_STATION_FRAME_POSTERS.map((p) => p.imageFile)).toEqual([
       "FRAME_COBALT.jpg",
@@ -113,11 +100,15 @@ describe("DEFAULT_STATION_FRAME_POSTERS", () => {
       "FRAME_PRIDEVR.jpg",
       "FRAME_PSI.jpg",
     ]);
-    expect(DEFAULT_STATION_FRAME_POSTERS[0]).toMatchObject({
-      slot: 0,
-      slug: "cobalt",
-      imageFile: "FRAME_COBALT.jpg",
-    });
+  });
+});
+
+describe("poster title limits", () => {
+  it("rejects titles longer than Interact limit", () => {
+    expect(assertPosterTitle("Cobalt")).toBe("Cobalt");
+    expect(() =>
+      assertPosterTitle("x".repeat(POSTERS_TITLE_MAX_LENGTH + 1)),
+    ).toThrow(/40/);
   });
 });
 

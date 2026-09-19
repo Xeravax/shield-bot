@@ -6,6 +6,7 @@ import {
   PosterFrameError,
 } from "./posterFrame.js";
 import {
+  assertPosterTitle,
   assertValidPosterGroupId,
   buildPosterManifest,
   DEFAULT_STATION_FRAME_POSTERS,
@@ -178,7 +179,17 @@ export class PosterManager {
   private assertSlot(slot: number): void {
     if (!Number.isInteger(slot) || slot < 0 || slot >= POSTERS_MAX_SLOTS) {
       throw new PosterValidationError(
-        `Slot must be an integer from 0 to ${POSTERS_MAX_SLOTS - 1}.`,
+        `Slot must be an integer from 0 to ${POSTERS_MAX_SLOTS - 1} (baked world slots only).`,
+      );
+    }
+  }
+
+  private assertTitle(title: string): string {
+    try {
+      return assertPosterTitle(title);
+    } catch (error) {
+      throw new PosterValidationError(
+        error instanceof Error ? error.message : "Invalid title.",
       );
     }
   }
@@ -200,10 +211,7 @@ export class PosterManager {
   }> {
     const gid = assertGuildId(options.guildId);
     this.assertSlot(options.slot);
-    const title = options.title.trim();
-    if (!title) {
-      throw new PosterValidationError("Title cannot be empty.");
-    }
+    const title = this.assertTitle(options.title);
 
     const slug = slugifyPosterId(options.id?.trim() || title);
     const groupIdUpdate = parseOptionalGroupId(options.groupId);
@@ -212,14 +220,8 @@ export class PosterManager {
     return withPublishLock(async () => {
       await this.ensureSeeded(gid);
 
-      const existing = await prisma.communityPoster.findUnique({
-        where: { guildId_slot: { guildId: gid, slot: options.slot } },
-      });
-
-      // Keep official FRAME_* name when replacing a known slot; otherwise FRAME_{SLUG}.jpg
-      const imageFile =
-        existing?.imageFile ||
-        defaultImageFileForSlot(options.slot, slug);
+      // Always overwrite the fixed baked FRAME_*.jpg path for this slot.
+      const imageFile = defaultImageFileForSlot(options.slot, slug);
 
       await prisma.communityPoster.upsert({
         where: { guildId_slot: { guildId: gid, slot: options.slot } },
@@ -304,7 +306,9 @@ export class PosterManager {
       }
 
       const title =
-        options.title !== undefined ? options.title.trim() : existing.title;
+        options.title !== undefined
+          ? this.assertTitle(options.title)
+          : existing.title;
       if (options.title !== undefined && !title) {
         throw new PosterValidationError("Title cannot be empty.");
       }

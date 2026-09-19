@@ -594,8 +594,10 @@ export function AdminPanel({ token, preview = false }: Props) {
               <div>
                 <h2>Community Board posters</h2>
                 <p>
-                  Framed JPEGs are stored only on GitHub Pages. Metadata is
-                  dual-written to the API and <code>station/poster.json</code>.
+                  JSON is metadata only (version, slot, enabled, title, groupId).
+                  Images overwrite fixed{" "}
+                  <code>FRAME_*.jpg</code> on GitHub Pages — the world ignores
+                  image URLs in JSON. New slots need a world re-upload.
                 </p>
               </div>
             </div>

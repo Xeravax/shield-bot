@@ -1,17 +1,31 @@
-export const POSTERS_MAX_SLOTS = 8;
+/**
+ * Station Community Board posters — VRChat constraints:
+ *
+ * - JSON is METADATA ONLY. The world ignores image URLs in JSON.
+ * - Images are FIXED baked VRCUrls (FRAME_*.jpg on GitHub Pages).
+ * - Udon cannot build VRCUrl from strings; new slots need a world re-upload.
+ * - api.vrcshield.com is for JSON only — never serve images from it.
+ * - Overwrite FRAME_*.jpg in place + bump version when art changes.
+ */
+
+/** Baked world slots are 0–6 (seven FRAME_*.jpg files). */
+export const POSTERS_MAX_SLOTS = 7;
+/** Keep titles short for VRChat Interact prompts. */
+export const POSTERS_TITLE_MAX_LENGTH = 40;
 export const POSTERS_STATION_PREFIX = "station";
 export const POSTERS_JSON_PATH = `${POSTERS_STATION_PREFIX}/poster.json`;
 export const POSTERS_IMAGE_DIR = `${POSTERS_STATION_PREFIX}/posters`;
 
 /**
- * Existing framed JPEGs already in Station_Whitelists under station/posters/.
- * Use these official filenames as baked VRCUrls — do not rename or re-upload.
+ * Fixed allowlisted image paths already baked into the Station world.
+ * Host: https://izuna-chan.github.io/Station_Whitelists/station/posters/
+ * Bot must overwrite these exact filenames — never invent per-request URLs.
  */
 export const DEFAULT_STATION_FRAME_POSTERS = [
   {
     slot: 0,
     slug: "cobalt",
-    title: "Cobalt Conclave",
+    title: "Cobalt",
     imageFile: "FRAME_COBALT.jpg",
   },
   {
@@ -62,24 +76,29 @@ export interface PosterSlotInput {
   groupId?: string | null;
 }
 
+/**
+ * Public JSON contract consumed by the world:
+ * version, posters[].slot, enabled, title, groupId?
+ * Extra fields (id, file, updatedAt) are ignored by Udon but useful for staff.
+ */
 export interface PosterManifest {
   version: number;
   updatedAt: string;
   posters: Array<{
-    id: string;
-    title: string;
-    enabled: boolean;
     slot: number;
-    /** Filename under station/posters/ — bake matching VRCUrls in the world. */
+    enabled: boolean;
+    title: string;
+    id: string;
+    /** Fixed FRAME_*.jpg filename (world uses baked VRCUrl, not this string). */
     file: string;
-    /** Present when the poster should open a VRChat group page. */
+    /** Present when Interact should open a VRChat group page. */
     groupId?: string;
   }>;
 }
 
 /**
- * Build the public posters.json / station/poster.json payload.
- * Always includes every slot 0..maxSlots-1 in order so indices match baked VRCUrls.
+ * Build posters.json / station/poster.json.
+ * Always includes every baked slot 0..6 in order.
  */
 export function buildPosterManifest(
   version: number,
@@ -95,13 +114,15 @@ export function buildPosterManifest(
     const defaults = DEFAULT_STATION_FRAME_POSTERS.find((p) => p.slot === slot);
     const groupId = normalizePosterGroupId(existing?.groupId);
     const entry: PosterManifest["posters"][number] = {
-      id: existing?.slug ?? defaults?.slug ?? `slot-${slot}`,
-      title: existing?.title ?? defaults?.title ?? `Slot ${slot}`,
-      enabled: existing?.enabled ?? false,
       slot,
+      enabled: existing?.enabled ?? false,
+      title: clampPosterTitle(
+        existing?.title ?? defaults?.title ?? `Slot ${slot}`,
+      ),
+      id: existing?.slug ?? defaults?.slug ?? `slot-${slot}`,
       file:
-        existing?.imageFile ||
         defaults?.imageFile ||
+        existing?.imageFile ||
         frameFileFromSlug(`slot-${slot}`),
     };
     if (groupId) {
@@ -157,6 +178,27 @@ export function isValidPosterGroupId(input: string): boolean {
   }
 }
 
+export function clampPosterTitle(title: string): string {
+  const trimmed = title.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= POSTERS_TITLE_MAX_LENGTH) {
+    return trimmed;
+  }
+  return trimmed.slice(0, POSTERS_TITLE_MAX_LENGTH).trimEnd();
+}
+
+export function assertPosterTitle(title: string): string {
+  const trimmed = title.trim().replace(/\s+/g, " ");
+  if (!trimmed) {
+    throw new Error("Title cannot be empty.");
+  }
+  if (trimmed.length > POSTERS_TITLE_MAX_LENGTH) {
+    throw new Error(
+      `Title must be at most ${POSTERS_TITLE_MAX_LENGTH} characters (Interact prompt limit).`,
+    );
+  }
+  return trimmed;
+}
+
 export function frameFileFromSlug(slug: string): string {
   const part = slugifyPosterId(slug).toUpperCase().replace(/-/g, "_");
   return `FRAME_${part}.jpg`;
@@ -192,6 +234,7 @@ export function slugifyPosterId(input: string): string {
   return slug || "poster";
 }
 
+/** Always the baked FRAME_*.jpg for slots 0–6. */
 export function defaultImageFileForSlot(slot: number, slug: string): string {
   const defaults = DEFAULT_STATION_FRAME_POSTERS.find((p) => p.slot === slot);
   if (defaults) {
