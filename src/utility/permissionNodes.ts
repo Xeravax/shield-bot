@@ -61,7 +61,7 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "patrol.avatar", description: "Deputy+ — may use custom SHIELD avatars; unlocks avatar guidelines on the dashboard" },
   ],
   dashboard: [
-    { node: "dashboard.roles.staff", description: "Dashboard Admin tab — manage hours, modlogs, server overview" },
+    { node: "dashboard.roles.staff", description: "Dashboard Admin tab — manage hours, modlogs, server overview, community board posters" },
     { node: "dashboard.roles.host", description: "Dashboard Host tab — schedule events (also use roles.host / roles.jrhost)" },
     { node: "dashboard.roles.trainer.emt", description: "Dashboard Trainer tab — EMT trainer handbook links" },
     { node: "dashboard.roles.trainer.tru", description: "Dashboard Trainer tab — TRU trainer handbook links" },
@@ -135,6 +135,13 @@ export const PERMISSION_NODE_REGISTRY: Record<
     { node: "rooftop.command.force-update", description: "/rooftop force-update - force update rooftop files on GitHub" },
     { node: "rooftop.command.announcement", description: "/rooftop announcement - add a rooftop announcement" },
     { node: "rooftop.command.spinthebottle", description: "/rooftop spin-the-bottle - add a spin the bottle response" },
+  ],
+  posters: [
+    { node: "posters.command.set", description: "/poster set - upload/replace a community board poster slot" },
+    { node: "posters.command.disable", description: "/poster disable - disable a poster slot without deleting the JPEG" },
+    { node: "posters.command.enable", description: "/poster enable - re-enable a poster slot" },
+    { node: "posters.command.list", description: "/poster list - list poster slots and public URLs" },
+    { node: "posters.command.force-update", description: "/poster force-update - republish station/poster.json to GitHub" },
   ],
   phantomcompiler: [
     { node: "phantomcompiler.command.panel", description: "/phantomcompiler panel - post the phantom compiler panel" },

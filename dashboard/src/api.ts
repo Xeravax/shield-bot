@@ -338,6 +338,90 @@ export function fetchModlogs(token: string, userId: string) {
   );
 }
 
+export interface PosterSlot {
+  slot: number;
+  id: string;
+  title: string;
+  enabled: boolean;
+  imageUrl: string;
+}
+
+export interface PostersListResponse {
+  version: number;
+  updatedAt: string;
+  jsonUrl: string;
+  posters: PosterSlot[];
+}
+
+export function fetchAdminPosters(token: string) {
+  return apiFetch<PostersListResponse>("/admin/posters", token);
+}
+
+export async function uploadPoster(
+  token: string,
+  slot: number,
+  file: File,
+  fields: { title: string; id?: string },
+): Promise<{
+  version: number;
+  updatedAt: string;
+  poster: PosterSlot;
+  commitSha: string | null;
+}> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("title", fields.title);
+  if (fields.id) {
+    form.append("id", fields.id);
+  }
+
+  // Do not set Content-Type — the browser must add the multipart boundary.
+  const res = await fetch(`${API_BASE}/admin/posters/${slot}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+    body: form,
+  });
+
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) {
+        message = body.error;
+      }
+    } catch {
+      // ignore
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  return (await res.json()) as {
+    version: number;
+    updatedAt: string;
+    poster: PosterSlot;
+    commitSha: string | null;
+  };
+}
+
+export function patchPoster(
+  token: string,
+  slot: number,
+  body: { enabled?: boolean; title?: string; id?: string },
+) {
+  return apiFetch<{
+    version: number;
+    updatedAt: string;
+    poster: PosterSlot;
+    commitSha: string | null;
+  }>(`/admin/posters/${slot}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
 export const SITE_LINKS = {
   guides: "https://guides.vrcshield.com",
   main: "https://vrcshield.com",

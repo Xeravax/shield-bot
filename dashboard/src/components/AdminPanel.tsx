@@ -3,11 +3,15 @@ import {
   adjustAdminHours,
   fetchAdminHours,
   fetchAdminOverview,
+  fetchAdminPosters,
   fetchModlogs,
   HANDBOOK_LINKS,
+  patchPoster,
+  uploadPoster,
   type AdminOverview,
   type ModlogCase,
   type ModlogNote,
+  type PosterSlot,
 } from "../api";
 import { openExternalLink } from "../discord";
 import { mockAdminOverview } from "../mockData";
@@ -19,7 +23,7 @@ interface Props {
   preview?: boolean;
 }
 
-type AdminSection = "pulse" | "lookup" | "cases";
+type AdminSection = "pulse" | "lookup" | "cases" | "posters";
 
 export function AdminPanel({ token, preview = false }: Props) {
   const [section, setSection] = useState<AdminSection>("pulse");
@@ -40,6 +44,16 @@ export function AdminPanel({ token, preview = false }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [posters, setPosters] = useState<PosterSlot[]>([]);
+  const [postersVersion, setPostersVersion] = useState(0);
+  const [postersJsonUrl, setPostersJsonUrl] = useState("");
+  const [postersLoading, setPostersLoading] = useState(false);
+  const [editSlot, setEditSlot] = useState(0);
+  const [editTitle, setEditTitle] = useState("");
+  const [editId, setEditId] = useState("");
+  const [editFile, setEditFile] = useState<File | null>(null);
+  const [posterBusy, setPosterBusy] = useState(false);
+
   useEffect(() => {
     if (preview || !token) {
       setOverviewLoading(false);
@@ -51,6 +65,27 @@ export function AdminPanel({ token, preview = false }: Props) {
       .catch((e: Error) => setError(e.message))
       .finally(() => setOverviewLoading(false));
   }, [token, preview]);
+
+  useEffect(() => {
+    if (preview || !token || section !== "posters") {
+      return;
+    }
+    setPostersLoading(true);
+    setError(null);
+    fetchAdminPosters(token)
+      .then((data) => {
+        setPosters(data.posters);
+        setPostersVersion(data.version);
+        setPostersJsonUrl(data.jsonUrl);
+        if (data.posters[0]) {
+          setEditSlot(data.posters[0].slot);
+          setEditTitle(data.posters[0].title);
+          setEditId(data.posters[0].id);
+        }
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setPostersLoading(false));
+  }, [token, preview, section]);
 
   async function lookupMember() {
     if (preview) {
@@ -140,10 +175,13 @@ export function AdminPanel({ token, preview = false }: Props) {
     });
   }, [displayOverview, caseType, caseQuery]);
 
+  const selectedPoster = posters.find((p) => p.slot === editSlot) ?? null;
+
   const sections: Array<{ id: AdminSection; label: string; hint: string }> = [
     { id: "pulse", label: "Server pulse", hint: "Hours & patrols" },
     { id: "lookup", label: "Member lookup", hint: "Hours & mod history" },
     { id: "cases", label: "Recent cases", hint: "Latest moderation" },
+    { id: "posters", label: "Posters", hint: "Community Board" },
   ];
 
   function selectSection(next: AdminSection) {
@@ -153,6 +191,75 @@ export function AdminPanel({ token, preview = false }: Props) {
     const order = sections.map((s) => s.id);
     setFlipDir(order.indexOf(next) >= order.indexOf(section) ? "fwd" : "back");
     setSection(next);
+  }
+
+  function selectPosterSlot(slot: number) {
+    setEditSlot(slot);
+    const row = posters.find((p) => p.slot === slot);
+    if (row) {
+      setEditTitle(row.title);
+      setEditId(row.id);
+    }
+    setEditFile(null);
+  }
+
+  async function reloadPosters() {
+    const data = await fetchAdminPosters(token);
+    setPosters(data.posters);
+    setPostersVersion(data.version);
+    setPostersJsonUrl(data.jsonUrl);
+  }
+
+  async function submitPosterUpload() {
+    if (preview || posterBusy) {
+      return;
+    }
+    if (!editFile) {
+      setError("Choose an image file (PNG, JPEG, or WebP).");
+      return;
+    }
+    if (!editTitle.trim()) {
+      setError("Title is required.");
+      return;
+    }
+    setPosterBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await uploadPoster(token, editSlot, editFile, {
+        title: editTitle.trim(),
+        id: editId.trim() || undefined,
+      });
+      await reloadPosters();
+      setEditFile(null);
+      setMessage(
+        `Uploaded slot ${result.poster.slot} (v${result.version}). Image lives on GitHub Pages.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setPosterBusy(false);
+    }
+  }
+
+  async function togglePosterEnabled(slot: number, enabled: boolean) {
+    if (preview || posterBusy) {
+      return;
+    }
+    setPosterBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await patchPoster(token, slot, { enabled });
+      await reloadPosters();
+      setMessage(
+        `Slot ${slot} ${result.poster.enabled ? "enabled" : "disabled"} (v${result.version}).`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setPosterBusy(false);
+    }
   }
 
   return (
@@ -449,6 +556,161 @@ export function AdminPanel({ token, preview = false }: Props) {
               </table>
             ) : (
               <p>No cases match this filter.</p>
+            )}
+          </section>
+        )}
+
+        {section === "posters" && (
+          <section className="dossier">
+            <div className="dossier-head">
+              <div>
+                <h2>Community Board posters</h2>
+                <p>
+                  Framed JPEGs are stored only on GitHub Pages. Metadata is
+                  dual-written to the API and <code>station/poster.json</code>.
+                </p>
+              </div>
+            </div>
+            {postersLoading ? (
+              <p>Loading posters…</p>
+            ) : (
+              <>
+                <p>
+                  Version <strong>{postersVersion}</strong>
+                  {postersJsonUrl ? (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => void openExternalLink(postersJsonUrl)}
+                      >
+                        Open GitHub JSON
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+
+                <table className="case-table">
+                  <thead>
+                    <tr>
+                      <th>Slot</th>
+                      <th>Preview</th>
+                      <th>Id</th>
+                      <th>Title</th>
+                      <th>Status</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {posters.map((p) => (
+                      <tr key={p.slot}>
+                        <td>{p.slot}</td>
+                        <td>
+                          <img
+                            src={p.imageUrl}
+                            alt=""
+                            width={48}
+                            height={48}
+                            style={{
+                              objectFit: "cover",
+                              borderRadius: 4,
+                              background: "#222",
+                            }}
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.visibility =
+                                "hidden";
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <code>{p.id}</code>
+                        </td>
+                        <td>{p.title}</td>
+                        <td>{p.enabled ? "enabled" : "disabled"}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            onClick={() => selectPosterSlot(p.slot)}
+                          >
+                            Edit
+                          </button>{" "}
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            disabled={posterBusy}
+                            onClick={() =>
+                              void togglePosterEnabled(p.slot, !p.enabled)
+                            }
+                          >
+                            {p.enabled ? "Disable" : "Enable"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <h3 className="pulse-heading">
+                  Upload / replace slot {editSlot}
+                </h3>
+                {selectedPoster && (
+                  <p className="event-meta">Current: {selectedPoster.imageUrl}</p>
+                )}
+                <div className="form-row">
+                  <label>
+                    Slot
+                    <select
+                      value={editSlot}
+                      onChange={(e) => selectPosterSlot(Number(e.target.value))}
+                    >
+                      {posters.map((p) => (
+                        <option key={p.slot} value={p.slot}>
+                          {p.slot}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Title
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="Display title"
+                    />
+                  </label>
+                  <label>
+                    Id (slug)
+                    <input
+                      value={editId}
+                      onChange={(e) => setEditId(e.target.value)}
+                      placeholder="optional"
+                    />
+                  </label>
+                </div>
+                <div className="form-row">
+                  <label>
+                    Image
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={(e) =>
+                        setEditFile(e.target.files?.[0] ?? null)
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={posterBusy}
+                    onClick={() => void submitPosterUpload()}
+                  >
+                    {posterBusy ? "Working…" : "Upload framed JPEG"}
+                  </button>
+                </div>
+              </>
             )}
           </section>
         )}

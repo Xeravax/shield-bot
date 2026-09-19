@@ -295,7 +295,7 @@ async function run() {
     }
     await next();
   });
-  server.use(multer().single("file"));
+  server.use(multer({ storage: multer.memoryStorage() }).single("file"));
   server.use(bodyParser());
   await server.build();
 

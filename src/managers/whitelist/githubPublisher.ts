@@ -586,5 +586,247 @@ export class GitHubPublisher {
       branch,
     };
   }
+
+  /**
+   * Resolve GitHub owner/repo/branch used for poster Pages URLs.
+   * Same credentials as whitelist/rooftop (env or guild DB overrides).
+   */
+  async getPosterRepoSettings(guildId?: string): Promise<{
+    owner: string;
+    repo: string;
+    branch: string;
+  }> {
+    const { owner, repo, branch } = await this.getGitHubSettings(guildId);
+    return { owner, repo, branch };
+  }
+
+  /**
+   * Commit station/poster.json and optionally a framed JPEG for a slot.
+   * JPEG bytes are stored only on GitHub Pages — never in the API/DB.
+   */
+  async updateRepositoryWithPosterFiles(
+    options: {
+      guildId?: string;
+      posterJson: string;
+      jpegSlot?: number;
+      jpegBytes?: Buffer;
+      ensureNoJekyll?: boolean;
+      commitMessage?: string;
+    },
+  ): Promise<{
+    updated: boolean;
+    commitSha?: string;
+    paths?: string[];
+    branch?: string;
+    owner: string;
+    repo: string;
+  }> {
+    const { token, owner, repo, branch } = await this.getGitHubSettings(
+      options.guildId,
+    );
+
+    const apiBase = `https://api.github.com`;
+
+    const gh = async (path: string, init?: RequestInit) => {
+      const res = await fetch(`${apiBase}${path}`, {
+        ...init,
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Type": "application/json",
+          ...(init?.headers || {}),
+        },
+      } as RequestInit);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(
+          `GitHub API error ${res.status} ${res.statusText}: ${text}`,
+        );
+      }
+      return res.json();
+    };
+
+    const ghOptional = async (path: string) => {
+      const res = await fetch(`${apiBase}${path}`, {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      });
+      if (res.status === 404) {
+        return null;
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(
+          `GitHub API error ${res.status} ${res.statusText}: ${text}`,
+        );
+      }
+      return res.json();
+    };
+
+    const ref = await gh(`/repos/${owner}/${repo}/git/refs/heads/${branch}`);
+    const latestCommitSha = (ref as { object?: { sha?: string } })?.object?.sha;
+    if (!latestCommitSha) {
+      throw new Error("Failed to resolve latest commit sha");
+    }
+
+    const latestCommit = await gh(
+      `/repos/${owner}/${repo}/git/commits/${latestCommitSha}`,
+    );
+    const baseTreeSha = (latestCommit as { tree?: { sha?: string } })?.tree?.sha;
+    if (!baseTreeSha) {
+      throw new Error("Failed to resolve base tree sha");
+    }
+
+    type FileEntry =
+      | { path: string; content: string; encoding: "utf-8" }
+      | { path: string; content: string; encoding: "base64" };
+
+    const fileData: FileEntry[] = [
+      {
+        path: "station/poster.json",
+        content: options.posterJson,
+        encoding: "utf-8",
+      },
+    ];
+
+    if (
+      options.jpegBytes &&
+      options.jpegSlot !== undefined &&
+      Number.isInteger(options.jpegSlot)
+    ) {
+      fileData.push({
+        path: `station/posters/${options.jpegSlot}.jpg`,
+        content: options.jpegBytes.toString("base64"),
+        encoding: "base64",
+      });
+    }
+
+    if (options.ensureNoJekyll !== false) {
+      const existing = await ghOptional(
+        `/repos/${owner}/${repo}/contents/.nojekyll?ref=${encodeURIComponent(branch)}`,
+      );
+      if (!existing) {
+        fileData.push({
+          path: ".nojekyll",
+          content: "",
+          encoding: "utf-8",
+        });
+      }
+    }
+
+    const blobShas = await Promise.all(
+      fileData.map((file) =>
+        gh(`/repos/${owner}/${repo}/git/blobs`, {
+          method: "POST",
+          body: JSON.stringify({
+            content: file.content,
+            encoding: file.encoding,
+          }),
+        }).then((blob) => {
+          const sha = (blob as { sha?: string })?.sha;
+          if (!sha) {
+            throw new Error(`Failed to create blob for ${file.path}`);
+          }
+          return { path: file.path, sha };
+        }),
+      ),
+    );
+
+    const newTree = await gh(`/repos/${owner}/${repo}/git/trees`, {
+      method: "POST",
+      body: JSON.stringify({
+        base_tree: baseTreeSha,
+        tree: blobShas.map(({ path, sha }) => ({
+          path,
+          mode: "100644",
+          type: "blob",
+          sha,
+        })),
+      }),
+    });
+    const newTreeSha = (newTree as { sha?: string })?.sha;
+    if (!newTreeSha) {
+      throw new Error("Failed to create new tree");
+    }
+
+    const message =
+      options.commitMessage?.trim() && options.commitMessage.length > 0
+        ? options.commitMessage
+        : `chore(posters): update station posters at ${new Date().toISOString()}`;
+
+    const authorName = process.env.GIT_AUTHOR_NAME || undefined;
+    const authorEmail = process.env.GIT_AUTHOR_EMAIL || undefined;
+    const committerName = process.env.GIT_COMMITTER_NAME || authorName;
+    const committerEmail = process.env.GIT_COMMITTER_EMAIL || authorEmail;
+    const nowIso = new Date().toISOString();
+
+    const author =
+      authorName && authorEmail
+        ? { name: authorName, email: authorEmail, date: nowIso }
+        : undefined;
+    const committer =
+      committerName && committerEmail
+        ? { name: committerName, email: committerEmail, date: nowIso }
+        : undefined;
+
+    const commitBody: {
+      message: string;
+      tree: string;
+      parents: string[];
+      author?: { name: string; email: string; date: string };
+      committer?: { name: string; email: string; date: string };
+    } = {
+      message,
+      tree: newTreeSha,
+      parents: [latestCommitSha],
+    };
+    if (author) {
+      commitBody.author = author;
+    }
+    if (committer) {
+      commitBody.committer = committer;
+    }
+
+    const newCommit = await gh(`/repos/${owner}/${repo}/git/commits`, {
+      method: "POST",
+      body: JSON.stringify(commitBody),
+    });
+    const newCommitSha = (newCommit as { sha?: string })?.sha;
+    if (!newCommitSha) {
+      throw new Error("Failed to create new commit");
+    }
+
+    await gh(`/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
+      method: "PATCH",
+      body: JSON.stringify({ sha: newCommitSha, force: false }),
+    });
+
+    const zoneId = process.env.CLOUDFLARE_ZONE_ID ?? "";
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
+    if (zoneId && apiToken) {
+      try {
+        const apiBaseUrl = getEnv().PUBLIC_API_BASE_URL.replace(/\/$/, "");
+        await purgeCloudflareCache(zoneId, apiToken, [
+          `${apiBaseUrl}/api/vrchat/posters.json`,
+        ]);
+        loggers.bot.info("Purged Cloudflare cache for posters.json");
+      } catch (err) {
+        loggers.bot.warn("Cloudflare purge failed for posters.json", err);
+      }
+    }
+
+    return {
+      updated: true,
+      commitSha: newCommitSha,
+      paths: fileData.map((f) => f.path),
+      branch,
+      owner,
+      repo,
+    };
+  }
 }
 
