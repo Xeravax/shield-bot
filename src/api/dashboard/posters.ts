@@ -136,8 +136,10 @@ export class DashboardPostersAPI {
       const body = ctx.request.body as
         | { title?: string; id?: string; groupId?: string }
         | undefined;
-      const title = typeof body?.title === "string" ? body.title : "";
-      const id = typeof body?.id === "string" ? body.id : null;
+      // Only forward fields the client actually sent so unchanged meta is kept.
+      const title =
+        typeof body?.title === "string" ? body.title : undefined;
+      const id = typeof body?.id === "string" ? body.id : undefined;
       const groupId =
         typeof body?.groupId === "string" ? body.groupId : undefined;
 
@@ -175,7 +177,7 @@ export class DashboardPostersAPI {
         poster: {
           slot,
           id: entry?.id ?? "",
-          title: entry?.title ?? title,
+          title: entry?.title ?? title ?? "",
           enabled: entry?.enabled ?? true,
           file: entry?.file ?? "",
           imageUrl: result.imageUrl,

@@ -905,6 +905,13 @@ textarea {
   height: 100%;
 }
 
+/* Folder tabs (Admin / Host / Trainer) grow with content so workspace can scroll */
+.app-main > .panel.folder-shell {
+  height: auto;
+  min-height: 100%;
+  align-self: start;
+}
+
 .app-main > .panel.home-grid,
 .panel.home-grid {
   display: grid;
@@ -976,7 +983,7 @@ textarea {
 .surface,
 .dossier {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
   border: none;
   border-radius: 0;
@@ -1653,7 +1660,7 @@ textarea {
       transparent 40px
     ),
     rgba(14, 12, 9, 0.55);
-  overflow: visible;
+  overflow: auto;
 }
 
 /* Legacy aliases kept for any leftover markup */

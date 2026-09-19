@@ -36,19 +36,19 @@ export class PosterCommands {
     })
     slot: number,
     @SlashOption({
-      name: "title",
-      description: "Display title",
-      required: true,
-      type: ApplicationCommandOptionType.String,
-    })
-    title: string,
-    @SlashOption({
       name: "image",
       description: "Poster image (PNG, JPEG, or WebP)",
       required: true,
       type: ApplicationCommandOptionType.Attachment,
     })
     image: Attachment,
+    @SlashOption({
+      name: "title",
+      description: "Display title (omit to keep the current title)",
+      required: false,
+      type: ApplicationCommandOptionType.String,
+    })
+    title: string | null,
     @SlashOption({
       name: "id",
       description: "Optional slug id (defaults from title)",
@@ -86,9 +86,9 @@ export class PosterCommands {
       const result = await posterManager.setPoster({
         guildId: interaction.guildId,
         slot,
-        title,
+        title: title ?? undefined,
         id,
-        groupId,
+        groupId: groupId ?? undefined,
         image: buffer,
         mimeType: image.contentType,
         updatedBy: interaction.user.id,
@@ -100,7 +100,7 @@ export class PosterCommands {
           `✅ Poster slot **${slot}** updated.`,
           `Version: **${result.manifest.version}**`,
           `Id: \`${entry?.id ?? "?"}\``,
-          `Title: ${entry?.title ?? title}`,
+          `Title: ${entry?.title ?? title ?? "?"}`,
           `Enabled: ${entry?.enabled ? "yes" : "no"}`,
           entry?.groupId ? `Group: \`${entry.groupId}\`` : "Group: (none)",
           `Image: ${result.imageUrl}`,

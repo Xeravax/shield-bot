@@ -363,7 +363,7 @@ export async function uploadPoster(
   token: string,
   slot: number,
   file: File,
-  fields: { title: string; id?: string; groupId?: string },
+  fields: { title?: string; id?: string; groupId?: string } = {},
 ): Promise<{
   version: number;
   updatedAt: string;
@@ -372,11 +372,13 @@ export async function uploadPoster(
 }> {
   const form = new FormData();
   form.append("file", file);
-  form.append("title", fields.title);
-  if (fields.id) {
+  if (fields.title !== undefined) {
+    form.append("title", fields.title);
+  }
+  if (fields.id !== undefined) {
     form.append("id", fields.id);
   }
-  if (fields.groupId) {
+  if (fields.groupId !== undefined) {
     form.append("groupId", fields.groupId);
   }
 

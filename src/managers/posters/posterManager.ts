@@ -197,7 +197,8 @@ export class PosterManager {
   async setPoster(options: {
     guildId: string;
     slot: number;
-    title: string;
+    /** When omitted, keeps the existing title (required only for a brand-new slot). */
+    title?: string;
     id?: string | null;
     groupId?: string | null;
     image: Buffer;
@@ -211,14 +212,33 @@ export class PosterManager {
   }> {
     const gid = assertGuildId(options.guildId);
     this.assertSlot(options.slot);
-    const title = this.assertTitle(options.title);
-
-    const slug = slugifyPosterId(options.id?.trim() || title);
-    const groupIdUpdate = parseOptionalGroupId(options.groupId);
     const jpeg = await createFramedPosterJpeg(options.image, options.mimeType);
 
     return withPublishLock(async () => {
       await this.ensureSeeded(gid);
+
+      const existing = await prisma.communityPoster.findUnique({
+        where: { guildId_slot: { guildId: gid, slot: options.slot } },
+      });
+
+      const title =
+        options.title !== undefined
+          ? this.assertTitle(options.title)
+          : existing?.title;
+      if (!title) {
+        throw new PosterValidationError(
+          "Title is required when uploading a new poster slot.",
+        );
+      }
+
+      const slug =
+        options.id !== undefined && options.id !== null
+          ? slugifyPosterId(options.id.trim() || title)
+          : options.title !== undefined
+            ? slugifyPosterId(title)
+            : (existing?.slug ?? slugifyPosterId(title));
+
+      const groupIdUpdate = parseOptionalGroupId(options.groupId);
 
       // Always overwrite the fixed baked FRAME_*.jpg path for this slot.
       const imageFile = defaultImageFileForSlot(options.slot, slug);
@@ -236,12 +256,14 @@ export class PosterManager {
           updatedBy: options.updatedBy,
         },
         update: {
-          slug,
-          title,
           imageFile,
-          ...(groupIdUpdate !== undefined ? { groupId: groupIdUpdate } : {}),
           enabled: true,
           updatedBy: options.updatedBy,
+          ...(options.title !== undefined ? { title, slug } : {}),
+          ...(options.id !== undefined && options.id !== null
+            ? { slug: slugifyPosterId(options.id.trim() || title) }
+            : {}),
+          ...(groupIdUpdate !== undefined ? { groupId: groupIdUpdate } : {}),
         },
       });
 
@@ -313,40 +335,48 @@ export class PosterManager {
         throw new PosterValidationError("Title cannot be empty.");
       }
 
-      const slug =
+      const groupIdUpdate = parseOptionalGroupId(options.groupId);
+
+      const nextSlug =
         options.id !== undefined && options.id !== null
           ? slugifyPosterId(options.id.trim() || title)
           : options.title !== undefined
             ? slugifyPosterId(title)
             : existing.slug;
 
-      const groupIdUpdate = parseOptionalGroupId(options.groupId);
+      const nextEnabled =
+        options.enabled !== undefined ? options.enabled : existing.enabled;
+      const nextGroupId =
+        groupIdUpdate !== undefined ? groupIdUpdate : existing.groupId;
 
-      const data: {
-        enabled?: boolean;
-        title?: string;
-        slug?: string;
-        groupId?: string;
-        updatedBy: string;
-      } = { updatedBy: options.updatedBy };
+      const changed =
+        nextEnabled !== existing.enabled ||
+        title !== existing.title ||
+        nextSlug !== existing.slug ||
+        nextGroupId !== existing.groupId;
 
-      if (options.enabled !== undefined) {
-        data.enabled = options.enabled;
-      }
-      if (options.title !== undefined) {
-        data.title = title;
-        data.slug = slug;
-      }
-      if (options.id !== undefined && options.id !== null) {
-        data.slug = slugifyPosterId(options.id.trim() || title);
-      }
-      if (groupIdUpdate !== undefined) {
-        data.groupId = groupIdUpdate;
+      const file =
+        existing.imageFile ||
+        defaultImageFileForSlot(options.slot, existing.slug);
+      const { owner, repo } = await this.resolveRepo(gid);
+      const imageUrl = posterImagePublicUrl(owner, repo, file);
+
+      if (!changed) {
+        const manifest = await this.getManifest(gid);
+        return { manifest, imageUrl };
       }
 
       await prisma.communityPoster.update({
         where: { guildId_slot: { guildId: gid, slot: options.slot } },
-        data,
+        data: {
+          updatedBy: options.updatedBy,
+          ...(options.enabled !== undefined ? { enabled: nextEnabled } : {}),
+          ...(options.title !== undefined ? { title, slug: nextSlug } : {}),
+          ...(options.id !== undefined && options.id !== null
+            ? { slug: nextSlug }
+            : {}),
+          ...(groupIdUpdate !== undefined ? { groupId: nextGroupId } : {}),
+        },
       });
 
       const state = await prisma.communityPosterState.update({
@@ -366,13 +396,9 @@ export class PosterManager {
           `chore(posters): update slot ${options.slot} metadata v${state.version}`,
       });
 
-      const file =
-        existing.imageFile ||
-        defaultImageFileForSlot(options.slot, existing.slug);
-      const { owner, repo } = await this.resolveRepo(gid);
       return {
         manifest,
-        imageUrl: posterImagePublicUrl(owner, repo, file),
+        imageUrl,
         commitSha: publish.commitSha,
       };
     });

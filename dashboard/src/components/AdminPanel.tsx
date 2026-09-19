@@ -221,20 +221,33 @@ export function AdminPanel({ token, preview = false }: Props) {
       setError("Choose an image file (PNG, JPEG, or WebP).");
       return;
     }
-    if (!editTitle.trim()) {
-      setError("Title is required.");
+    const baseline = posters.find((p) => p.slot === editSlot);
+    const title = editTitle.trim();
+    if (!title && !baseline?.title) {
+      setError("Title is required for a new poster slot.");
       return;
     }
+
+    const fields: { title?: string; id?: string; groupId?: string } = {};
+    if (title && title !== (baseline?.title ?? "")) {
+      fields.title = title;
+    }
+    if (editId.trim() !== (baseline?.id ?? "")) {
+      fields.id = editId.trim();
+    }
+    if (editGroupId.trim() !== (baseline?.groupId ?? "")) {
+      fields.groupId = editGroupId.trim();
+    }
+
     setPosterBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const result = await uploadPoster(token, editSlot, editFile, {
-        title: editTitle.trim(),
-        id: editId.trim() || undefined,
-        groupId: editGroupId.trim() || undefined,
-      });
+      const result = await uploadPoster(token, editSlot, editFile, fields);
       await reloadPosters();
+      setEditTitle(result.poster.title);
+      setEditId(result.poster.id);
+      setEditGroupId(result.poster.groupId ?? "");
       setEditFile(null);
       setMessage(
         `Uploaded slot ${result.poster.slot} (v${result.version}). Image lives on GitHub Pages.`,
@@ -250,18 +263,52 @@ export function AdminPanel({ token, preview = false }: Props) {
     if (preview || posterBusy) {
       return;
     }
+    const baseline = posters.find((p) => p.slot === editSlot);
+    if (!baseline) {
+      setError("Select a poster slot first.");
+      return;
+    }
+
+    const patch: {
+      title?: string;
+      id?: string;
+      groupId?: string;
+    } = {};
+    const nextTitle = editTitle.trim();
+    const nextId = editId.trim();
+    const nextGroupId = editGroupId.trim();
+
+    if (nextTitle !== baseline.title) {
+      if (!nextTitle) {
+        setError("Title cannot be empty.");
+        return;
+      }
+      patch.title = nextTitle;
+    }
+    if (nextId !== baseline.id) {
+      patch.id = nextId;
+    }
+    if (nextGroupId !== (baseline.groupId ?? "")) {
+      patch.groupId = nextGroupId;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      setMessage("No metadata changes to save.");
+      return;
+    }
+
     setPosterBusy(true);
     setError(null);
     setMessage(null);
     try {
-      const result = await patchPoster(token, editSlot, {
-        title: editTitle.trim(),
-        id: editId.trim() || undefined,
-        groupId: editGroupId.trim(),
-      });
+      const result = await patchPoster(token, editSlot, patch);
       await reloadPosters();
+      setEditTitle(result.poster.title);
+      setEditId(result.poster.id);
+      setEditGroupId(result.poster.groupId ?? "");
+      const changed = Object.keys(patch).join(", ");
       setMessage(
-        `Updated slot ${result.poster.slot} metadata (v${result.version}).`,
+        `Updated slot ${result.poster.slot} (${changed}) to v${result.version}.`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
@@ -732,6 +779,10 @@ export function AdminPanel({ token, preview = false }: Props) {
                     />
                   </label>
                 </div>
+                <p className="event-meta">
+                  Save metadata only updates fields you changed. Upload replaces
+                  the JPEG and keeps title / id / group unless you edit those too.
+                </p>
                 <div className="form-row">
                   <button
                     type="button"
@@ -739,7 +790,7 @@ export function AdminPanel({ token, preview = false }: Props) {
                     disabled={posterBusy}
                     onClick={() => void savePosterMeta()}
                   >
-                    Save metadata
+                    Save changed fields
                   </button>
                   <label>
                     Image
