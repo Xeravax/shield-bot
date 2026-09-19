@@ -1,6 +1,7 @@
 model CommunityPoster {
   id        Int      @id @default(autoincrement())
-  slot      Int      @unique
+  guildId   String
+  slot      Int
   slug      String   @default("")
   title     String   @default("")
   enabled   Boolean  @default(false)
@@ -8,13 +9,17 @@ model CommunityPoster {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([guildId, slot])
+  @@index([guildId])
   @@map("community_posters")
 }
 
 model CommunityPosterState {
-  id        Int      @id @default(1)
+  id        Int      @id @default(autoincrement())
+  guildId   String   @unique
   version   Int      @default(0)
   updatedAt DateTime @updatedAt
 
+  @@index([guildId])
   @@map("community_poster_state")
 }

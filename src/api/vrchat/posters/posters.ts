@@ -5,10 +5,17 @@ import { posterManager } from "../../../managers/posters/posterManager.js";
 
 @Router()
 export class PostersAPI {
-  @Get("/api/vrchat/posters.json")
+  @Get("/api/vrchat/:guildId/posters.json")
   async getPostersJson(ctx: Context) {
     try {
-      const content = await posterManager.getManifestJson();
+      const guildId = ctx.params.guildId;
+      if (!guildId || !/^\d{17,20}$/.test(guildId)) {
+        ctx.status = 400;
+        ctx.body = { success: false, error: "Invalid guild id" };
+        return;
+      }
+
+      const content = await posterManager.getManifestJson(guildId);
       const etag = crypto.createHash("sha256").update(content).digest("hex");
 
       if (ctx.headers["if-none-match"] === etag) {

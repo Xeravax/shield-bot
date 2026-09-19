@@ -34,20 +34,30 @@ function withPublishLock<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+function assertGuildId(guildId: string | undefined | null): string {
+  if (!guildId || !/^\d{17,20}$/.test(guildId)) {
+    throw new PosterValidationError("A valid guild id is required.");
+  }
+  return guildId;
+}
+
 export class PosterManager {
   private githubPublisher = new GitHubPublisher();
 
-  async ensureSeeded(): Promise<void> {
+  async ensureSeeded(guildId: string): Promise<void> {
+    const gid = assertGuildId(guildId);
+
     await prisma.communityPosterState.upsert({
-      where: { id: 1 },
-      create: { id: 1, version: 0 },
+      where: { guildId: gid },
+      create: { guildId: gid, version: 0 },
       update: {},
     });
 
     for (let slot = 0; slot < POSTERS_MAX_SLOTS; slot++) {
       await prisma.communityPoster.upsert({
-        where: { slot },
+        where: { guildId_slot: { guildId: gid, slot } },
         create: {
+          guildId: gid,
           slot,
           slug: `slot-${slot}`,
           title: `Slot ${slot}`,
@@ -58,11 +68,16 @@ export class PosterManager {
     }
   }
 
-  async getManifest(): Promise<PosterManifest> {
-    await this.ensureSeeded();
+  async getManifest(guildId: string): Promise<PosterManifest> {
+    const gid = assertGuildId(guildId);
+    await this.ensureSeeded(gid);
+
     const [state, posters] = await Promise.all([
-      prisma.communityPosterState.findUniqueOrThrow({ where: { id: 1 } }),
-      prisma.communityPoster.findMany({ orderBy: { slot: "asc" } }),
+      prisma.communityPosterState.findUniqueOrThrow({ where: { guildId: gid } }),
+      prisma.communityPoster.findMany({
+        where: { guildId: gid },
+        orderBy: { slot: "asc" },
+      }),
     ]);
 
     return buildPosterManifest(
@@ -77,18 +92,19 @@ export class PosterManager {
     );
   }
 
-  async getManifestJson(): Promise<string> {
-    return `${JSON.stringify(await this.getManifest(), null, 2)}\n`;
+  async getManifestJson(guildId: string): Promise<string> {
+    return `${JSON.stringify(await this.getManifest(guildId), null, 2)}\n`;
   }
 
-  async getPublicUrls(guildId?: string): Promise<{
+  async getPublicUrls(guildId: string): Promise<{
     owner: string;
     repo: string;
     jsonUrl: string;
     imageUrl: (slot: number) => string;
   }> {
+    const gid = assertGuildId(guildId);
     const { owner, repo } =
-      await this.githubPublisher.getPosterRepoSettings(guildId);
+      await this.githubPublisher.getPosterRepoSettings(gid);
     return {
       owner,
       repo,
@@ -97,7 +113,7 @@ export class PosterManager {
     };
   }
 
-  async listForStaff(guildId?: string): Promise<{
+  async listForStaff(guildId: string): Promise<{
     version: number;
     updatedAt: string;
     jsonUrl: string;
@@ -109,8 +125,9 @@ export class PosterManager {
       imageUrl: string;
     }>;
   }> {
-    const manifest = await this.getManifest();
-    const urls = await this.getPublicUrls(guildId);
+    const gid = assertGuildId(guildId);
+    const manifest = await this.getManifest(gid);
+    const urls = await this.getPublicUrls(gid);
     return {
       version: manifest.version,
       updatedAt: manifest.updatedAt,
@@ -134,7 +151,7 @@ export class PosterManager {
   }
 
   async setPoster(options: {
-    guildId?: string;
+    guildId: string;
     slot: number;
     title: string;
     id?: string | null;
@@ -147,6 +164,7 @@ export class PosterManager {
     imageUrl: string;
     commitSha?: string;
   }> {
+    const gid = assertGuildId(options.guildId);
     this.assertSlot(options.slot);
     const title = options.title.trim();
     if (!title) {
@@ -157,11 +175,12 @@ export class PosterManager {
     const jpeg = await createFramedPosterJpeg(options.image, options.mimeType);
 
     return withPublishLock(async () => {
-      await this.ensureSeeded();
+      await this.ensureSeeded(gid);
 
       await prisma.communityPoster.upsert({
-        where: { slot: options.slot },
+        where: { guildId_slot: { guildId: gid, slot: options.slot } },
         create: {
+          guildId: gid,
           slot: options.slot,
           slug,
           title,
@@ -177,15 +196,15 @@ export class PosterManager {
       });
 
       const state = await prisma.communityPosterState.update({
-        where: { id: 1 },
+        where: { guildId: gid },
         data: { version: { increment: 1 } },
       });
 
-      const manifest = await this.getManifest();
+      const manifest = await this.getManifest(gid);
       const posterJson = `${JSON.stringify(manifest, null, 2)}\n`;
 
       const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
-        guildId: options.guildId,
+        guildId: gid,
         posterJson,
         jpegSlot: options.slot,
         jpegBytes: jpeg,
@@ -194,9 +213,9 @@ export class PosterManager {
           `chore(posters): set slot ${options.slot} (${slug}) v${state.version}`,
       });
 
-      const urls = await this.getPublicUrls(options.guildId);
+      const urls = await this.getPublicUrls(gid);
       loggers.bot.info(
-        `Poster slot ${options.slot} published (v${state.version}, commit ${publish.commitSha})`,
+        `Poster slot ${options.slot} published for guild ${gid} (v${state.version}, commit ${publish.commitSha})`,
       );
 
       return {
@@ -208,7 +227,7 @@ export class PosterManager {
   }
 
   async updatePosterMeta(options: {
-    guildId?: string;
+    guildId: string;
     slot: number;
     enabled?: boolean;
     title?: string;
@@ -220,13 +239,14 @@ export class PosterManager {
     imageUrl: string;
     commitSha?: string;
   }> {
+    const gid = assertGuildId(options.guildId);
     this.assertSlot(options.slot);
 
     return withPublishLock(async () => {
-      await this.ensureSeeded();
+      await this.ensureSeeded(gid);
 
       const existing = await prisma.communityPoster.findUnique({
-        where: { slot: options.slot },
+        where: { guildId_slot: { guildId: gid, slot: options.slot } },
       });
       if (!existing) {
         throw new PosterValidationError(`Slot ${options.slot} does not exist.`);
@@ -264,27 +284,27 @@ export class PosterManager {
       }
 
       await prisma.communityPoster.update({
-        where: { slot: options.slot },
+        where: { guildId_slot: { guildId: gid, slot: options.slot } },
         data,
       });
 
       const state = await prisma.communityPosterState.update({
-        where: { id: 1 },
+        where: { guildId: gid },
         data: { version: { increment: 1 } },
       });
 
-      const manifest = await this.getManifest();
+      const manifest = await this.getManifest(gid);
       const posterJson = `${JSON.stringify(manifest, null, 2)}\n`;
 
       const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
-        guildId: options.guildId,
+        guildId: gid,
         posterJson,
         commitMessage:
           options.commitMessage ??
           `chore(posters): update slot ${options.slot} metadata v${state.version}`,
       });
 
-      const urls = await this.getPublicUrls(options.guildId);
+      const urls = await this.getPublicUrls(gid);
       return {
         manifest,
         imageUrl: urls.imageUrl(options.slot),
@@ -293,25 +313,30 @@ export class PosterManager {
     });
   }
 
-  async forceUpdate(guildId?: string, commitMessage?: string): Promise<{
+  async forceUpdate(
+    guildId: string,
+    commitMessage?: string,
+  ): Promise<{
     manifest: PosterManifest;
     commitSha?: string;
     jsonUrl: string;
   }> {
+    const gid = assertGuildId(guildId);
+
     return withPublishLock(async () => {
-      await this.ensureSeeded();
-      const manifest = await this.getManifest();
+      await this.ensureSeeded(gid);
+      const manifest = await this.getManifest(gid);
       const posterJson = `${JSON.stringify(manifest, null, 2)}\n`;
 
       const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
-        guildId,
+        guildId: gid,
         posterJson,
         commitMessage:
           commitMessage ??
           `chore(posters): force update poster.json v${manifest.version}`,
       });
 
-      const urls = await this.getPublicUrls(guildId);
+      const urls = await this.getPublicUrls(gid);
       return {
         manifest,
         commitSha: publish.commitSha,

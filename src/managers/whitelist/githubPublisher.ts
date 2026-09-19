@@ -807,13 +807,15 @@ export class GitHubPublisher {
 
     const zoneId = process.env.CLOUDFLARE_ZONE_ID ?? "";
     const apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
-    if (zoneId && apiToken) {
+    if (zoneId && apiToken && options.guildId) {
       try {
         const apiBaseUrl = getEnv().PUBLIC_API_BASE_URL.replace(/\/$/, "");
         await purgeCloudflareCache(zoneId, apiToken, [
-          `${apiBaseUrl}/api/vrchat/posters.json`,
+          `${apiBaseUrl}/api/vrchat/${options.guildId}/posters.json`,
         ]);
-        loggers.bot.info("Purged Cloudflare cache for posters.json");
+        loggers.bot.info(
+          `Purged Cloudflare cache for posters.json (guild ${options.guildId})`,
+        );
       } catch (err) {
         loggers.bot.warn("Cloudflare purge failed for posters.json", err);
       }
