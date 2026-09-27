@@ -12,12 +12,12 @@ import {
   type MessageEditOptions,
 } from "discord.js";
 import type { AuditLogManager } from "./auditLogManager.js";
-import { auditLogSeen } from "./auditLogSeen.js";
 import {
   LOGGING_COLORS,
   type LoggingSeverity,
   type LoggingThreadKey,
   provideReasonMsgButtonCustomId,
+  provideReasonPromptButtonCustomId,
   unresolvedClaimButtonCustomId,
 } from "./loggingTypes.js";
 import { prefersModReasonPing } from "../../utility/userPreferences.js";
@@ -59,8 +59,8 @@ function formatFieldsAsV2Body(
 }
 
 /**
- * Components V2 mod log that pings the staff member inside the log body.
- * Mentions only fire when allowedMentions includes them (set on send, cleared on edit).
+ * Legacy Components V2 mod log that pings the staff member inside the log body.
+ * Kept for resolving older in-channel prompts; new prompts go to the Reasons thread.
  */
 export function buildMissingReasonModLogV2(options: {
   title: string;
@@ -116,12 +116,76 @@ export function buildMissingReasonModLogV2(options: {
   return {
     components: [container],
     flags: MessageFlags.IsComponentsV2,
-    // Only the staff who owes a reason - never roles / everyone / other users.
     allowedMentions: { parse: [], users: [options.staffUserId] },
   };
 }
 
-/** Apply a reason to an existing Components V2 reason-prompt log without re-pinging. */
+/**
+ * Reasons-thread prompt: pings staff (when notify), summarizes the action,
+ * links the category log, and carries a button that targets that log.
+ */
+export function buildReasonsThreadPrompt(options: {
+  title: string;
+  severity?: LoggingSeverity;
+  fields: { name: string; value: string }[];
+  staffUserId: string;
+  logChannelId: string;
+  logMessageId: string;
+  logJumpUrl: string;
+  /** When false, mention text is still present but Discord will not notify. */
+  notify: boolean;
+}): MessageCreateOptions {
+  const fieldsWithReason = [...options.fields];
+  if (!fieldsWithReason.some((f) => f.name === "Reason")) {
+    fieldsWithReason.push({
+      name: "Reason",
+      value: "*No reason provided*",
+    });
+  }
+  if (!fieldsWithReason.some((f) => f.name === "Log")) {
+    fieldsWithReason.push({
+      name: "Log",
+      value: `[Jump to log](${options.logJumpUrl})`,
+    });
+  }
+
+  const body = [
+    missingReasonContent(options.staffUserId),
+    "",
+    `### ${options.title}`,
+    "",
+    formatFieldsAsV2Body(fieldsWithReason),
+  ]
+    .join("\n")
+    .slice(0, 3900);
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(
+        provideReasonPromptButtonCustomId(
+          options.logChannelId,
+          options.logMessageId,
+        ),
+      )
+      .setLabel("Provide the reason")
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  const container = new ContainerBuilder()
+    .setAccentColor(accentForSeverity(options.severity ?? "warn"))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(body))
+    .addActionRowComponents(row);
+
+  return {
+    components: [container],
+    flags: MessageFlags.IsComponentsV2,
+    allowedMentions: options.notify
+      ? { parse: [], users: [options.staffUserId] }
+      : { parse: [] },
+  };
+}
+
+/** Apply a reason to an existing Components V2 reason-prompt without re-pinging. */
 export function buildResolvedReasonModLogV2Edit(
   message: Message,
   reason: string,
@@ -198,12 +262,12 @@ export type StaffActionLogOptions = {
   title: string;
   severity?: LoggingSeverity;
   fields: { name: string; value: string; inline?: boolean }[];
-  /** Staff who performed the action - pinged only when reason is missing. */
+  /** Staff who performed the action - prompted when reason is missing. */
   executorId?: string | null;
   reason?: string | null;
-  /** When true, never ping for a reason (any bot / automated executor). */
+  /** When true, never prompt for a reason (any bot / automated executor). */
   executorIsBot?: boolean;
-  /** When true, never ping (e.g. unresolved / forced skip). */
+  /** When true, never prompt (e.g. unresolved / forced skip). */
   skipReasonPrompt?: boolean;
   /** Show Claim when executor is unknown. */
   claimIfUnresolved?: boolean;
@@ -215,10 +279,61 @@ export type StaffActionLogOptions = {
   auditEntryId?: string | null;
 };
 
+function owesReasonPrompt(options: {
+  executorId?: string | null;
+  reason?: string | null;
+  executorIsBot?: boolean;
+  skipReasonPrompt?: boolean;
+}): options is {
+  executorId: string;
+  reason?: string | null;
+  executorIsBot?: boolean;
+  skipReasonPrompt?: boolean;
+} {
+  return (
+    !!options.executorId &&
+    !options.skipReasonPrompt &&
+    !options.executorIsBot &&
+    isMissingModReason(options.reason)
+  );
+}
+
 /**
- * Posts a staff action log.
- * - Missing reason + known human executor who prefers pings → Components V2 with in-log ping
- * - Otherwise → classic embed (no ping)
+ * Post a missing-reason prompt into the Reasons forum thread, linking the
+ * category log. Notification respects the staff member's ping preference;
+ * opted-out staff still appear in the thread without a Discord ping.
+ */
+export async function postMissingReasonPrompt(
+  auditLog: AuditLogManager,
+  options: {
+    guildId: string;
+    title: string;
+    severity?: LoggingSeverity;
+    fields: { name: string; value: string }[];
+    staffUserId: string;
+    logMessage: Message;
+  },
+): Promise<Message | null> {
+  const notify = await prefersModReasonPing(options.staffUserId);
+  return auditLog.postRawToCategory(
+    options.guildId,
+    "reasons",
+    buildReasonsThreadPrompt({
+      title: options.title,
+      severity: options.severity,
+      fields: options.fields,
+      staffUserId: options.staffUserId,
+      logChannelId: options.logMessage.channelId,
+      logMessageId: options.logMessage.id,
+      logJumpUrl: options.logMessage.url,
+      notify,
+    }),
+  );
+}
+
+/**
+ * Posts a staff action log as a classic category embed.
+ * When a human executor owes a reason, also posts a prompt in the Reasons thread.
  */
 export async function postStaffActionLog(
   auditLog: AuditLogManager,
@@ -227,43 +342,7 @@ export async function postStaffActionLog(
   const severity = options.severity ?? "info";
   const hasExecutor = !!options.executorId;
   const reasonMissing = isMissingModReason(options.reason);
-  const wantsPing =
-    hasExecutor &&
-    !options.skipReasonPrompt &&
-    !options.executorIsBot &&
-    reasonMissing &&
-    (await prefersModReasonPing(options.executorId));
-
-  if (wantsPing && options.executorId) {
-    if (options.sourceChannelId) {
-      const ignored = await auditLog.shouldIgnoreChannel(
-        options.guildId,
-        options.sourceChannelId,
-      );
-      if (ignored) {
-        return null;
-      }
-    }
-
-    const message = await auditLog.postRawToCategory(
-      options.guildId,
-      options.category,
-      buildMissingReasonModLogV2({
-        title: options.title,
-        severity,
-        fields: options.fields.map((f) => ({
-          name: f.name,
-          value: f.value,
-        })),
-        staffUserId: options.executorId,
-        includeClaimButton: false,
-      }),
-    );
-    if (message && options.auditEntryId) {
-      auditLogSeen.consume(options.guildId, options.auditEntryId);
-    }
-    return message;
-  }
+  const needsPrompt = owesReasonPrompt(options);
 
   const fields = [...options.fields];
   if (options.reason && !reasonMissing) {
@@ -273,13 +352,7 @@ export async function postStaffActionLog(
         value: options.reason.slice(0, 1024),
       });
     }
-  } else if (
-    reasonMissing &&
-    hasExecutor &&
-    !options.executorIsBot &&
-    !options.skipReasonPrompt
-  ) {
-    // Opted out of ping (or equivalent) - still record that no reason was given.
+  } else if (needsPrompt) {
     if (!fields.some((f) => f.name === "Reason")) {
       fields.push({
         name: "Reason",
@@ -288,7 +361,7 @@ export async function postStaffActionLog(
     }
   }
 
-  return auditLog.postLog({
+  const message = await auditLog.postLog({
     guildId: options.guildId,
     category: options.category,
     title: options.title,
@@ -308,9 +381,26 @@ export async function postStaffActionLog(
     sourceChannelId: options.sourceChannelId,
     auditEntryId: options.auditEntryId,
   });
+
+  if (message && needsPrompt && options.executorId) {
+    await postMissingReasonPrompt(auditLog, {
+      guildId: options.guildId,
+      title: options.title,
+      severity,
+      fields: options.fields.map((f) => ({ name: f.name, value: f.value })),
+      staffUserId: options.executorId,
+      logMessage: message,
+    });
+  }
+
+  return message;
 }
 
-/** Build a V2 payload for fan-out helpers (e.g. VRChat Group thread). */
+/**
+ * @deprecated Prefer postStaffActionLog / postMissingReasonPrompt.
+ * Returns a Reasons-thread-ready V2 payload only when the actor owes a reason
+ * and prefers pings (legacy VRChat fan-out path).
+ */
 export async function buildStaffActionV2OrNull(options: {
   title: string;
   severity?: LoggingSeverity;
@@ -337,7 +427,7 @@ export async function buildStaffActionV2OrNull(options: {
   });
 }
 
-/** @deprecated Prefer postStaffActionLog / buildMissingReasonModLogV2 */
+/** @deprecated Prefer postStaffActionLog / buildReasonsThreadPrompt */
 export function reasonPromptPostOptions(
   executorId: string | null | undefined,
   reason: string | null | undefined,

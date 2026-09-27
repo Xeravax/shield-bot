@@ -9,7 +9,7 @@ import { getGroupAuditLogs } from "../../utility/vrchat/groups.js";
 import { VRChatError } from "../../utility/errors.js";
 import { loggers } from "../../utility/logger.js";
 import { parseLoggingThreadIds } from "../logging/loggingTypes.js";
-import { buildStaffActionV2OrNull } from "../logging/reasonPrompt.js";
+import { postMissingReasonPrompt } from "../logging/reasonPrompt.js";
 import {
   formatVrchatProfileLine,
 } from "../logging/userDisplay.js";
@@ -426,33 +426,42 @@ export class GroupAuditLogManager {
     const needsReason =
       !!actorDiscordId && this.shouldPromptActorReason(entry.eventType);
 
-    const v2 = needsReason
-      ? await buildStaffActionV2OrNull({
-          title: eventTitle(entry.eventType),
-          severity:
-            entry.eventType === GroupAuditLogEventType.Group_Member_Ban ||
-            entry.eventType === GroupAuditLogEventType.Group_Member_Kick
-              ? "danger"
-              : "warn",
-          fields,
-          executorId: actorDiscordId,
-          reason: null,
-        })
-      : null;
-
-    if (v2) {
-      await auditLogManager.fanOutVrchatGroupLog(guildId, v2);
-      return;
+    if (needsReason && !fields.some((f) => f.name === "Reason")) {
+      fields.push({
+        name: "Reason",
+        value: "*No reason provided*",
+        inline: false,
+      });
     }
 
+    const title = eventTitle(entry.eventType);
+    const severity =
+      entry.eventType === GroupAuditLogEventType.Group_Member_Ban ||
+      entry.eventType === GroupAuditLogEventType.Group_Member_Kick
+        ? ("danger" as const)
+        : ("warn" as const);
+
     const embed = new EmbedBuilder()
-      .setTitle(eventTitle(entry.eventType))
+      .setTitle(title)
       .setColor(eventColor(entry.eventType))
       .addFields(fields)
       .setTimestamp(new Date(entry.created_at))
       .setFooter({ text: "S.H.I.E.L.D. Bot - VRChat Group Audit" });
 
-    await auditLogManager.fanOutVrchatGroupLog(guildId, { embeds: [embed] });
+    const logMessage = await auditLogManager.postRawToCategory(guildId, "vrchatGroup", {
+      embeds: [embed],
+    });
+
+    if (logMessage && needsReason && actorDiscordId) {
+      await postMissingReasonPrompt(auditLogManager, {
+        guildId,
+        title,
+        severity,
+        fields: fields.map((f) => ({ name: f.name, value: f.value })),
+        staffUserId: actorDiscordId,
+        logMessage,
+      });
+    }
   }
 }
 

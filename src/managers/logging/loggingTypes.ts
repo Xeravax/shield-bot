@@ -18,6 +18,7 @@ export const LOGGING_THREAD_KEYS = [
   "whitelist",
   "vrchatGroup",
   "dashboard",
+  "reasons",
 ] as const;
 
 export type LoggingThreadKey = (typeof LOGGING_THREAD_KEYS)[number];
@@ -39,6 +40,7 @@ export const LOGGING_THREAD_NAMES: Record<LoggingThreadKey, string> = {
   whitelist: "Whitelist",
   vrchatGroup: "VRChat Group",
   dashboard: "Dashboard Log",
+  reasons: "Reasons",
 };
 
 export type LoggingSeverity = "info" | "warn" | "danger" | "success" | "mod";
@@ -66,9 +68,18 @@ export const CLAIM_MODAL_PREFIX = "logging:claim-modal:";
 /** Claim an audit log embed when Discord did not resolve an executor. */
 export const UNRESOLVED_CLAIM_BUTTON_ID = "logging:claim-unresolved";
 export const UNRESOLVED_CLAIM_MODAL_PREFIX = "logging:claim-unresolved-modal:";
-/** Provide a missing reason for a non-case audit embed (roles, voice mute, gateway kick/ban, VRChat, etc.). */
+/**
+ * Legacy: provide a missing reason by editing the same category-log message
+ * (in-channel V2 prompts posted before the Reasons thread).
+ */
 export const PROVIDE_REASON_MSG_BUTTON_ID = "logging:provide-reason-msg";
 export const PROVIDE_REASON_MSG_MODAL_PREFIX = "logging:provide-reason-msg-modal:";
+/**
+ * Reasons-thread prompt: button encodes the original log message;
+ * modal also encodes the prompt message (4 snowflakes, under Discord's 100-char cap).
+ */
+export const PROVIDE_REASON_PROMPT_BUTTON_PREFIX = "logging:prm:";
+export const PROVIDE_REASON_PROMPT_MODAL_PREFIX = "logging:prm-m:";
 
 export function claimButtonCustomId(caseId: number): string {
   return `${CLAIM_BUTTON_PREFIX}${caseId}`;
@@ -98,6 +109,22 @@ export function provideReasonMsgModalCustomId(
   messageId: string,
 ): string {
   return `${PROVIDE_REASON_MSG_MODAL_PREFIX}${channelId}:${messageId}`;
+}
+
+export function provideReasonPromptButtonCustomId(
+  logChannelId: string,
+  logMessageId: string,
+): string {
+  return `${PROVIDE_REASON_PROMPT_BUTTON_PREFIX}${logChannelId}:${logMessageId}`;
+}
+
+export function provideReasonPromptModalCustomId(
+  logChannelId: string,
+  logMessageId: string,
+  promptChannelId: string,
+  promptMessageId: string,
+): string {
+  return `${PROVIDE_REASON_PROMPT_MODAL_PREFIX}${logChannelId}:${logMessageId}:${promptChannelId}:${promptMessageId}`;
 }
 
 export function parseLoggingThreadIds(
