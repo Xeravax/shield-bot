@@ -108,6 +108,10 @@ function shouldSkip(interaction: ArgsOf<"interactionCreate">[0]): boolean {
   if (interaction.isAutocomplete()) {
     return true;
   }
+  // Promotion approve/deny/thread updates the message moderators already see.
+  if (interaction.isButton() && interaction.customId.startsWith("patrol-promo:")) {
+    return true;
+  }
   return false;
 }
 
