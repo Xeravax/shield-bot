@@ -18,6 +18,11 @@ import {
   claimComponentsIfUnresolved,
   unknownExecutorField,
 } from "../../../managers/logging/auditExecutorFields.js";
+import {
+  analyzeMessageUpdate,
+  snapshotFromArchive,
+  snapshotFromLiveMessage,
+} from "../../../managers/logging/messageUpdateDiff.js";
 
 const INVITE_REGEX =
   /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg|discord(?:app)?\.com\/invite)\/[a-zA-Z0-9-]+/i;
@@ -107,100 +112,81 @@ export class LoggingMessageEvents {
       if (!newMessage.guildId) {
         return;
       }
-      if (newMessage.partial) {
-        await newMessage.fetch().catch(() => undefined);
-      }
-      if (!newMessage.author || newMessage.author.bot) {
+      const message = newMessage.partial
+        ? await newMessage.fetch().catch(() => null)
+        : newMessage;
+      if (!message || message.partial || !message.guildId || !message.author || message.author.bot) {
         return;
       }
-      if (await auditLogManager.shouldIgnoreChannel(newMessage.guildId, newMessage.channelId)) {
+      if (await auditLogManager.shouldIgnoreChannel(message.guildId, message.channelId)) {
         return;
       }
 
       const authorRoleIds =
-        newMessage.member?.roles.cache.keys() ??
+        message.member?.roles.cache.keys() ??
         (
-          await newMessage.guild?.members
-            .fetch(newMessage.author.id)
+          await message.guild?.members
+            .fetch(message.author.id)
             .catch(() => null)
         )?.roles.cache.keys();
       if (
         await auditLogManager.shouldIgnoreAuthor(
-          newMessage.guildId,
-          newMessage.author.id,
+          message.guildId,
+          message.author.id,
           authorRoleIds,
         )
       ) {
         return;
       }
 
-      const before =
-        (await messageArchiveManager.getByMessageId(newMessage.id))?.content ??
-        oldMessage.content ??
-        null;
-      const after = newMessage.content ?? null;
+      const archived = oldMessage.partial
+        ? await messageArchiveManager.getByMessageId(message.id)
+        : null;
+      const previous = oldMessage.partial
+        ? archived
+          ? snapshotFromArchive(archived)
+          : null
+        : snapshotFromLiveMessage(oldMessage);
+      const analysis = analyzeMessageUpdate({
+        previous,
+        next: snapshotFromLiveMessage(message),
+        editedAt: message.editedAt,
+      });
 
-      if (before === after) {
-        // Still refresh cache for attachment/embed changes
-        if (newMessage instanceof Message || "content" in newMessage) {
-          await messageArchiveManager.upsertFromMessage(newMessage as Message);
-        }
-        if (
-          oldMessage.attachments?.size === newMessage.attachments?.size &&
-          oldMessage.embeds?.length === newMessage.embeds?.length
-        ) {
-          return;
-        }
-      } else if (newMessage instanceof Message || "content" in newMessage) {
-        await messageArchiveManager.upsertFromMessage(newMessage as Message);
+      if (analysis.shouldLog || archived || !oldMessage.partial) {
+        await messageArchiveManager.upsertFromMessage(message);
       }
-
-      const fields = [
-        {
-          name: "Author",
-          value: await auditLogManager.formatUser(
-            newMessage.author.id,
-            newMessage.author.username,
-          ),
-          inline: true,
-        },
-        {
-          name: "Channel",
-          value: auditLogManager.formatChannel(newMessage.channelId),
-          inline: true,
-        },
-        {
-          name: "Before",
-          value: auditLogManager.truncate(before),
-        },
-        {
-          name: "After",
-          value: auditLogManager.truncate(after),
-        },
-        {
-          name: "Jump",
-          value: `[Go to message](${newMessage.url})`,
-        },
-      ];
-
-      if ((newMessage.attachments?.size ?? 0) > 0) {
-        fields.push({
-          name: "Attachments",
-          value: [...(newMessage.attachments?.values() ?? [])]
-            .map((a) => `[${a.name}](${a.url})`)
-            .join("\n")
-            .slice(0, 1024),
-        });
+      if (!analysis.shouldLog) {
+        return;
       }
 
       await auditLogManager.postLog({
-        guildId: newMessage.guildId,
+        guildId: message.guildId,
         category: "messages",
-        title: "Message Edited",
-        severity: "warn",
-        fields,
-        footer: `Message ID ${newMessage.id}`,
-        sourceChannelId: newMessage.channelId,
+        title: analysis.title,
+        severity: analysis.severity,
+        fields: [
+          {
+            name: "Author",
+            value: await auditLogManager.formatUser(
+              message.author.id,
+              message.author.username,
+            ),
+            inline: true,
+          },
+          {
+            name: "Channel",
+            value: auditLogManager.formatChannel(message.channelId),
+            inline: true,
+          },
+          ...analysis.fields,
+          {
+            name: "Jump",
+            value: `[Go to message](${message.url})`,
+          },
+        ],
+        footer: `Message ID ${message.id}`,
+        sourceChannelId: message.channelId,
       });
     } catch (error) {
       loggers.bot.debug("messageUpdate logging failed", {
