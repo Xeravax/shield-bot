@@ -17,6 +17,7 @@ export const LOGGING_THREAD_KEYS = [
   "patrol",
   "whitelist",
   "vrchatGroup",
+  "vrchatUser",
   "dashboard",
   "reasons",
 ] as const;
@@ -39,6 +40,7 @@ export const LOGGING_THREAD_NAMES: Record<LoggingThreadKey, string> = {
   patrol: "Patrol Hours",
   whitelist: "Whitelist",
   vrchatGroup: "VRChat Group",
+  vrchatUser: "VRChat User Logs",
   dashboard: "Dashboard Log",
   reasons: "Reasons",
 };

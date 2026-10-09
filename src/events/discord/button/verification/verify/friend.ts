@@ -14,6 +14,11 @@ import {
 import { prisma } from "../../../../../main.js";
 import { VerificationInteractionManager } from "../../../../../managers/verification/verificationInteractionManager.js";
 import { loggers } from "../../../../../utility/logger.js";
+import { vrchatUserLogManager } from "../../../../../managers/vrchat/vrchatUserLogManager.js";
+import {
+  cachedVrchatName,
+  readVrchatProfile,
+} from "../../../../../utility/vrchat/userProfileDiff.js";
 
 @Discord()
 export class VRChatFriendVerifyButtonHandler {
@@ -107,24 +112,25 @@ export class VRChatFriendVerifyButtonHandler {
       let vrchatUsername = vrcAccount.vrchatUsername;
       try {
         const userInfo = await getUserById(vrcUserId);
-        const userTyped = userInfo as { displayName?: string; username?: string } | null;
-        vrchatUsername = userTyped?.displayName || userTyped?.username || null;
+        vrchatUsername =
+          cachedVrchatName(readVrchatProfile(userInfo).values) ||
+          vrcAccount.vrchatUsername;
 
-        // Update username if it's different or if it's been more than a week
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-        if (
-          vrchatUsername !== vrcAccount.vrchatUsername ||
+        const nameChanged =
+          !!vrchatUsername && vrchatUsername !== vrcAccount.vrchatUsername;
+        const stale =
           !vrcAccount.usernameUpdatedAt ||
-          vrcAccount.usernameUpdatedAt < oneWeekAgo
-        ) {
-          await prisma.vRChatAccount.update({
-            where: { id: vrcAccount.id },
-            data: {
-              vrchatUsername,
-              usernameUpdatedAt: new Date(),
-            },
+          vrcAccount.usernameUpdatedAt < oneWeekAgo;
+
+        if (userInfo && (nameChanged || stale)) {
+          await vrchatUserLogManager.observeProfile(vrcUserId, userInfo);
+        }
+        if (vrchatUsername && (nameChanged || stale)) {
+          await prisma.vRChatAccount.updateMany({
+            where: { vrcUserId, vrchatUsername },
+            data: { usernameUpdatedAt: new Date() },
           });
         }
       } catch (e) {

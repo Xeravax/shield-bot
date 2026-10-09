@@ -1,15 +1,9 @@
-import { prisma } from "../../../../main.js";
-import { WhitelistManager } from "../../../../managers/whitelist/whitelistManager.js";
 import { loggers } from "../../../../utility/logger.js";
-
-const whitelistManager = new WhitelistManager();
+import { vrchatUserLogManager } from "../../../../managers/vrchat/vrchatUserLogManager.js";
 
 interface FriendUpdateContent {
   userId?: string;
-  user?: {
-    displayName?: string;
-    username?: string;
-  };
+  user?: unknown;
 }
 
 export async function handleFriendUpdate(content: unknown) {
@@ -17,7 +11,6 @@ export async function handleFriendUpdate(content: unknown) {
     const typedContent = content as FriendUpdateContent;
     const { userId, user } = typedContent;
 
-    // Log the received content for debugging
     loggers.bot.debug("[Friend Update] ", { userId, user });
 
     if (!userId || !user) {
@@ -25,57 +18,7 @@ export async function handleFriendUpdate(content: unknown) {
       return;
     }
 
-    // Update username cache in verification system
-    const currentUsername = user.displayName || user.username;
-    if (currentUsername) {
-      try {
-        // Find VRChat account in verification system
-        const vrcAccount = await prisma.vRChatAccount.findFirst({
-          where: { vrcUserId: userId },
-          include: { user: true },
-        });
-
-        if (vrcAccount) {
-          // Check if username actually changed
-          const usernameChanged = vrcAccount.vrchatUsername !== currentUsername;
-
-          // Update the username cache
-          await prisma.vRChatAccount.update({
-            where: { id: vrcAccount.id },
-            data: {
-              vrchatUsername: currentUsername,
-              usernameUpdatedAt: new Date(),
-            },
-          });
-
-          loggers.vrchat.debug(
-            `Updated username for ${userId}: ${currentUsername}`,
-          );
-
-          // If username changed, update whitelist repository
-          if (usernameChanged) {
-            try {
-              const oldUsername = vrcAccount.vrchatUsername || 'unknown';
-              const msg = `Username updated: ${oldUsername} → ${currentUsername}`;
-              whitelistManager.queueBatchedUpdate(userId, msg);
-              loggers.vrchat.info(
-                `Queued whitelist repository update due to username change for ${userId}`,
-              );
-            } catch (repoError) {
-              loggers.vrchat.warn(
-                `Failed to queue whitelist repository update for ${userId}`,
-                repoError,
-              );
-            }
-          }
-        }
-      } catch (error) {
-        loggers.vrchat.error(
-          `Error updating username cache for ${userId}`,
-          error,
-        );
-      }
-    }
+    await vrchatUserLogManager.observeProfile(userId, user);
   } catch (error) {
     loggers.vrchat.error("Error processing friend update", error);
   }

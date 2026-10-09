@@ -2,6 +2,8 @@ import { prisma } from "../../main.js";
 import { getUserById } from "./user.js";
 import { forceUpdateUsernameCache } from "./usernameCache.js";
 import { loggers } from "../logger.js";
+import { vrchatUserLogManager } from "../../managers/vrchat/vrchatUserLogManager.js";
+import { cachedVrchatName, readVrchatProfile } from "./userProfileDiff.js";
 
 /**
  * Get VRChat username, preferring cached version but updating if needed
@@ -30,17 +32,13 @@ export async function getVRChatUsername(
 
     // Cache is stale or doesn't exist, fetch from API
     const userInfo = await getUserById(vrcUserId);
-    const userTyped = userInfo as { displayName?: string; username?: string } | null;
-    const username = userTyped?.displayName || userTyped?.username;
+    const username = cachedVrchatName(readVrchatProfile(userInfo).values);
 
     if (username && vrcAccount) {
-      // Update cache
-      await prisma.vRChatAccount.update({
-        where: { id: vrcAccount.id },
-        data: {
-          vrchatUsername: username,
-          usernameUpdatedAt: new Date(),
-        },
+      await vrchatUserLogManager.observeProfile(vrcUserId, userInfo);
+      await prisma.vRChatAccount.updateMany({
+        where: { vrcUserId, vrchatUsername: username },
+        data: { usernameUpdatedAt: new Date() },
       });
     }
 

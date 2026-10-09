@@ -1,10 +1,12 @@
 import { prisma } from "../../main.js";
 import { getUserById } from "./user.js";
 import { loggers } from "../logger.js";
+import { vrchatUserLogManager } from "../../managers/vrchat/vrchatUserLogManager.js";
+import { cachedVrchatName, readVrchatProfile } from "./userProfileDiff.js";
 
 /**
- * Update VRChat username cache for a user if needed
- * Updates if the username is different or if it hasn't been updated in a week
+ * Refresh the VRChat username cache when it is older than a week.
+ * The stored username is rewritten only when the name itself changed.
  */
 export async function updateUsernameCache(vrcUserId: string): Promise<void> {
   try {
@@ -31,8 +33,7 @@ export async function updateUsernameCache(vrcUserId: string): Promise<void> {
 
     // Fetch current username from VRChat API
     const userInfo = await getUserById(vrcUserId);
-    const userTyped = userInfo as { displayName?: string; username?: string } | null;
-    const currentUsername = userTyped?.displayName || userTyped?.username;
+    const currentUsername = cachedVrchatName(readVrchatProfile(userInfo).values);
 
     if (!currentUsername) {
       loggers.vrchat.warn(
@@ -41,20 +42,11 @@ export async function updateUsernameCache(vrcUserId: string): Promise<void> {
       return;
     }
 
-    // Update if username changed or if it's been more than a week
-    if (currentUsername !== vrcAccount.vrchatUsername || shouldUpdate) {
-      await prisma.vRChatAccount.update({
-        where: { id: vrcAccount.id },
-        data: {
-          vrchatUsername: currentUsername,
-          usernameUpdatedAt: new Date(),
-        },
-      });
-
-      loggers.vrchat.debug(
-        `Updated username for ${vrcUserId}: ${currentUsername}`,
-      );
-    }
+    await vrchatUserLogManager.observeProfile(vrcUserId, userInfo);
+    await prisma.vRChatAccount.updateMany({
+      where: { vrcUserId, vrchatUsername: currentUsername },
+      data: { usernameUpdatedAt: new Date() },
+    });
   } catch (error) {
     loggers.vrchat.warn(
       `Failed to update username for ${vrcUserId}`,
@@ -79,20 +71,14 @@ export async function forceUpdateUsernameCache(
     }
 
     const userInfo = await getUserById(vrcUserId);
-    const currentUsername = userInfo?.displayName || userInfo?.username;
+    const currentUsername = cachedVrchatName(readVrchatProfile(userInfo).values);
 
     if (currentUsername) {
-      await prisma.vRChatAccount.update({
-        where: { id: vrcAccount.id },
-        data: {
-          vrchatUsername: currentUsername,
-          usernameUpdatedAt: new Date(),
-        },
+      await vrchatUserLogManager.observeProfile(vrcUserId, userInfo);
+      await prisma.vRChatAccount.updateMany({
+        where: { vrcUserId, vrchatUsername: currentUsername },
+        data: { usernameUpdatedAt: new Date() },
       });
-
-      loggers.vrchat.debug(
-        `Force updated username for ${vrcUserId}: ${currentUsername}`,
-      );
     }
   } catch (error) {
     loggers.vrchat.warn(

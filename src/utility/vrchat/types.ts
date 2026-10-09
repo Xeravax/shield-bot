@@ -7,6 +7,8 @@ export interface VRChatUser {
   id: string;
   displayName?: string;
   username?: string;
+  pronouns?: string;
+  status?: string;
   userIcon?: string;
   profilePicOverride?: string;
   currentAvatarImageUrl?: string;

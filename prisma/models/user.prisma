@@ -36,3 +36,16 @@ model VRChatAccount {
   @@index([userId], map: "VRChatAccount_userId_fkey")
   @@index([vrcUserId], map: "VRChatAccount_vrcUserId_idx")
 }
+
+/// Last VRChat profile seen for a friend, used to log real field changes.
+model VRChatObservedProfile {
+  vrcUserId         String   @id @db.VarChar(64)
+  displayName       String?  @db.VarChar(191)
+  username          String?  @db.VarChar(191)
+  pronouns          String?  @db.VarChar(64)
+  status            String?  @db.VarChar(32)
+  statusDescription String?  @db.Text
+  updatedAt         DateTime @updatedAt
+
+  @@map("vrchat_observed_profiles")
+}

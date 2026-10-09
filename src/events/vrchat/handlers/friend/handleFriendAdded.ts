@@ -6,10 +6,12 @@ import { EmbedBuilder, Colors, ButtonBuilder, ButtonStyle, ActionRowBuilder } fr
 import { sendWhitelistLog, getUserWhitelistRoles } from '../../../../utility/vrchat/whitelistLogger.js';
 import { VerificationInteractionManager } from '../../../../managers/verification/verificationInteractionManager.js';
 import { loggers } from '../../../../utility/logger.js';
+import { vrchatUserLogManager } from '../../../../managers/vrchat/vrchatUserLogManager.js';
 
 interface FriendAddContent {
   userId?: string;
   id?: string;
+  user?: unknown;
 }
 
 export async function handleFriendAdd(content: unknown) {
@@ -19,6 +21,11 @@ export async function handleFriendAdd(content: unknown) {
     if (!vrcUserId) {
         loggers.vrchat.warn('No VRChat user ID found in event', { content });
         return;
+    }
+    try {
+        await vrchatUserLogManager.logFriendship(vrcUserId, "added", typedContent.user);
+    } catch (error) {
+        loggers.vrchat.warn(`Failed to log friend add for ${vrcUserId}`, error);
     }
     // Find the VRChatAccount in the database (pending verification)
     const vrcAccount = await prisma.vRChatAccount.findFirst({
