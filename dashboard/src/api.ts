@@ -352,6 +352,10 @@ export interface PostersListResponse {
   version: number;
   updatedAt: string;
   jsonUrl: string;
+  /** Slots in use (poster.json slotCount). Older bots omit it. */
+  slotCount?: number;
+  /** Upload range: slots 0..maxSlots-1 have a baked URL in the world. Older bots omit it. */
+  maxSlots?: number;
   posters: PosterSlot[];
 }
 

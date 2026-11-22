@@ -47,6 +47,8 @@ export function AdminPanel({ token, preview = false }: Props) {
   const [posters, setPosters] = useState<PosterSlot[]>([]);
   const [postersVersion, setPostersVersion] = useState(0);
   const [postersJsonUrl, setPostersJsonUrl] = useState("");
+  // Upload range from the bot (numbered FRAME_{slot}.jpg); 7 = the original fixed slots.
+  const [postersMaxSlots, setPostersMaxSlots] = useState(7);
   const [postersLoading, setPostersLoading] = useState(false);
   const [editSlot, setEditSlot] = useState(0);
   const [editTitle, setEditTitle] = useState("");
@@ -78,6 +80,7 @@ export function AdminPanel({ token, preview = false }: Props) {
         setPosters(data.posters);
         setPostersVersion(data.version);
         setPostersJsonUrl(data.jsonUrl);
+        setPostersMaxSlots(data.maxSlots ?? Math.max(7, data.posters.length));
         if (data.posters[0]) {
           setEditSlot(data.posters[0].slot);
           setEditTitle(data.posters[0].title);
@@ -202,6 +205,11 @@ export function AdminPanel({ token, preview = false }: Props) {
       setEditTitle(row.title);
       setEditId(row.id);
       setEditGroupId(row.groupId ?? "");
+    } else {
+      // New slot: start from an empty form (a title is required on upload).
+      setEditTitle("");
+      setEditId("");
+      setEditGroupId("");
     }
     setEditFile(null);
   }
@@ -211,6 +219,7 @@ export function AdminPanel({ token, preview = false }: Props) {
     setPosters(data.posters);
     setPostersVersion(data.version);
     setPostersJsonUrl(data.jsonUrl);
+    setPostersMaxSlots(data.maxSlots ?? Math.max(7, data.posters.length));
   }
 
   async function submitPosterUpload() {
@@ -641,10 +650,11 @@ export function AdminPanel({ token, preview = false }: Props) {
               <div>
                 <h2>Community Board posters</h2>
                 <p>
-                  JSON is metadata only (version, slot, enabled, title, groupId).
-                  Images overwrite fixed{" "}
-                  <code>FRAME_*.jpg</code> on GitHub Pages — the world ignores
-                  image URLs in JSON. New slots need a world re-upload.
+                  JSON is metadata only (version, slotCount, slot, enabled, title,
+                  groupId). Each slot&apos;s image is{" "}
+                  <code>FRAME_&#123;slot&#125;.jpg</code> on GitHub Pages; the world
+                  has slots 0–{postersMaxSlots - 1} built in and only downloads
+                  the slots in use, so new slots work without a re-upload.
                 </p>
               </div>
             </div>
@@ -747,9 +757,11 @@ export function AdminPanel({ token, preview = false }: Props) {
                       value={editSlot}
                       onChange={(e) => selectPosterSlot(Number(e.target.value))}
                     >
-                      {posters.map((p) => (
-                        <option key={p.slot} value={p.slot}>
-                          {p.slot}
+                      {Array.from({ length: postersMaxSlots }, (_, slot) => (
+                        <option key={slot} value={slot}>
+                          {posters.some((p) => p.slot === slot)
+                            ? slot
+                            : `${slot} (new)`}
                         </option>
                       ))}
                     </select>

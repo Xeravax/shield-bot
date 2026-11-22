@@ -147,6 +147,10 @@ export class PosterManager {
     version: number;
     updatedAt: string;
     jsonUrl: string;
+    /** Slots in use (poster.json slotCount). */
+    slotCount: number;
+    /** Highest slot index + 1 the world bakes URLs for (upload range). */
+    maxSlots: number;
     posters: Array<{
       slot: number;
       id: string;
@@ -164,6 +168,8 @@ export class PosterManager {
       version: manifest.version,
       updatedAt: manifest.updatedAt,
       jsonUrl: posterJsonPublicUrl(owner, repo),
+      slotCount: manifest.slotCount,
+      maxSlots: POSTERS_MAX_SLOTS,
       posters: manifest.posters.map((p) => ({
         slot: p.slot,
         id: p.id,
