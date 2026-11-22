@@ -24,6 +24,10 @@ import {
   initializeGroupAuditLogPollSchedule,
   stopGroupAuditLogPollSchedule,
 } from "./vrchat/groupAuditLogPoll.js";
+import {
+  initializeWhitelistMaintenanceSchedule,
+  stopWhitelistMaintenanceSchedule,
+} from "./whitelist/whitelistMaintenance.js";
 import * as cron from "node-cron";
 
 let patrolTopJob: cron.ScheduledTask | null = null;
@@ -35,6 +39,7 @@ let serverStatsJob: cron.ScheduledTask | null = null;
 let messageArchiveRetentionJob: cron.ScheduledTask | null = null;
 let tempBanExpiryJob: cron.ScheduledTask | null = null;
 let groupAuditLogPollJob: cron.ScheduledTask | null = null;
+let whitelistMaintenanceJob: cron.ScheduledTask | null = null;
 
 export function initializeSchedules(client: Client) {
   loggers.schedules.info("Initializing scheduled tasks...");
@@ -65,6 +70,9 @@ export function initializeSchedules(client: Client) {
 
   // VRChat group audit log poll (every 2 minutes)
   groupAuditLogPollJob = initializeGroupAuditLogPollSchedule(client);
+
+  // Whitelist: expire roles and refresh stale VRChat display names (every 10 minutes)
+  whitelistMaintenanceJob = initializeWhitelistMaintenanceSchedule(client);
 
   loggers.schedules.info("All scheduled tasks initialized.");
 }
@@ -102,6 +110,9 @@ export function stopSchedules() {
 
   stopGroupAuditLogPollSchedule(groupAuditLogPollJob);
   groupAuditLogPollJob = null;
+
+  stopWhitelistMaintenanceSchedule(whitelistMaintenanceJob);
+  whitelistMaintenanceJob = null;
 
   loggers.schedules.info("All scheduled tasks stopped.");
 }

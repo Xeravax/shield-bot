@@ -17,10 +17,12 @@ export class WhitelistManager {
   private affectedGuildIds: Set<string> = new Set();
   private updateTimer: NodeJS.Timeout | null = null;
   private readonly BATCH_DELAY_MS = 5000; // Wait 5 seconds after last change before updating
-  private lastPublishedContent: string | null = null;
-  private _lastUpdateTimestamp: number | null = null;
-  public get lastUpdateTimestamp(): number | null {
-    return this._lastUpdateTimestamp;
+  // Tracked per guild: each guild publishes its own whitelist, so one guild's content or
+  // publish time must not decide whether another guild's update is skipped.
+  private lastPublishedContent: Map<string, string> = new Map();
+  private lastUpdateTimestamps: Map<string, number> = new Map();
+  public getLastUpdateTimestamp(guildId: string): number | null {
+    return this.lastUpdateTimestamps.get(guildId) ?? null;
   }
 
   // Module instances
@@ -165,6 +167,10 @@ export class WhitelistManager {
     return this.generation.generateWhitelistContent(guildId);
   }
 
+  async generateEncodedWhitelistV2(guildId: string): Promise<{ encoded: string; contentHash: string }> {
+    return this.generation.generateEncodedWhitelistV2(guildId);
+  }
+
   async generateEncodedWhitelist(guildId: string): Promise<string> {
     return this.generation.generateEncodedWhitelist(guildId);
   }
@@ -193,7 +199,8 @@ export class WhitelistManager {
     const currentContent = await this.generation.generateWhitelistContent(settingsGuildId);
 
     // Skip update if content hasn't changed (unless forced)
-    if (!force && this.lastPublishedContent !== null && currentContent === this.lastPublishedContent) {
+    const previousContent = this.lastPublishedContent.get(settingsGuildId);
+    if (!force && previousContent !== undefined && currentContent === previousContent) {
       loggers.bot.debug('Content unchanged, skipping GitHub update');
       return { updated: false, reason: 'Content unchanged' };
     }
@@ -211,8 +218,8 @@ export class WhitelistManager {
 
     // Store the published content for future comparisons
     if (result.updated) {
-      this.lastPublishedContent = currentContent;
-      this._lastUpdateTimestamp = Date.now();
+      this.lastPublishedContent.set(settingsGuildId, currentContent);
+      this.lastUpdateTimestamps.set(settingsGuildId, Date.now());
       // Purge Cloudflare cache for affected guilds' whitelist URLs
       const zoneId = process.env.CLOUDFLARE_ZONE_ID ?? "";
       const apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
@@ -279,6 +286,7 @@ export class WhitelistManager {
           for (const gid of targetGuildIds) {
             const urls = [
               `https://api.vrcshield.com/api/vrchat/${gid}/whitelist/encoded`,
+              `https://api.vrcshield.com/api/vrchat/${gid}/whitelist/v2/encoded`,
               `https://api.vrcshield.com/api/vrchat/${gid}/whitelist/raw`,
               `https://api.vrcshield.com/api/vrchat/whitelist/encoded`
             ];
@@ -293,6 +301,83 @@ export class WhitelistManager {
       }
     }
     return result;
+  }
+
+  /**
+   * Store a VRChat account's current display name and, if it changed, republish every guild
+   * whitelist the account is on. Worlds match players by display name, so a stale name locks
+   * the member out and leaves their old name free for someone else to claim.
+   * Returns true when the name changed.
+   */
+  async applyVrchatDisplayName(vrcUserId: string, displayName: string, source: string): Promise<boolean> {
+    const accounts = await prisma.vRChatAccount.findMany({
+      where: { vrcUserId },
+      select: {
+        id: true,
+        vrchatUsername: true,
+        accountType: true,
+        user: { select: { discordId: true } },
+      },
+    });
+
+    let changed = false;
+    for (const account of accounts) {
+      const previous = account.vrchatUsername;
+      await prisma.vRChatAccount.update({
+        where: { id: account.id },
+        data: { vrchatUsername: displayName, usernameUpdatedAt: new Date() },
+      });
+      if (previous === displayName) {continue;}
+      changed = true;
+
+      // Only verified accounts are published; pending verifications are not on any whitelist.
+      if (account.accountType === "MAIN" || account.accountType === "ALT") {
+        loggers.vrchat.info(
+          `VRChat display name changed (${source}) for ${vrcUserId}: ${previous ?? "unknown"} → ${displayName}`,
+        );
+        // Keyed by Discord ID with no guild: the batch looks up every guild this user is whitelisted in.
+        this.queueBatchedUpdate(
+          account.user.discordId,
+          `Username updated: ${previous ?? "unknown"} → ${displayName}`,
+        );
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * Delete role assignments whose expiresAt has passed and republish the affected guilds.
+   * Generation already ignores expired assignments, but without a publish the hosted file and
+   * the Cloudflare-cached API response keep serving them.
+   * Returns the number of assignments removed.
+   */
+  async expireRolesAndPublish(): Promise<number> {
+    const expired = await prisma.whitelistRoleAssignment.findMany({
+      where: { expiresAt: { lte: new Date() } },
+      select: {
+        id: true,
+        whitelist: { select: { guildId: true, user: { select: { discordId: true } } } },
+      },
+    });
+    if (expired.length === 0) {return 0;}
+
+    await prisma.whitelistRoleAssignment.deleteMany({
+      where: { id: { in: expired.map((assignment) => assignment.id) } },
+    });
+
+    const queued = new Set<string>();
+    for (const assignment of expired) {
+      const { guildId, user } = assignment.whitelist;
+      const key = `${guildId}:${user.discordId}`;
+      if (queued.has(key)) {continue;}
+      queued.add(key);
+      this.queueBatchedUpdate(user.discordId, "Expired whitelist roles removed", guildId);
+    }
+
+    loggers.bot.info(
+      `Removed ${expired.length} expired whitelist role assignment(s) for ${queued.size} user/guild pair(s)`,
+    );
+    return expired.length;
   }
 
   /**

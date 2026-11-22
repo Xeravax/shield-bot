@@ -183,7 +183,7 @@ export class WhitelistCommands {
             // Queue a single batched update after processing all members
             if (accessUpdated > 0) {
               const msg = `Role mapping removed for ${discordRole.name}`;
-              whitelistManager.queueBatchedUpdate('bulk-role-removal', msg);
+              whitelistManager.queueBatchedUpdate('bulk-role-removal', msg, guildId);
             }
           }
         } else {
@@ -324,7 +324,7 @@ export class WhitelistCommands {
         // Queue a single batched update after processing all members
         if (membersWithRole.size > 0) {
           const msg = `Role mapping updated for ${discordRole.name}: ${permissionList.join(", ")}`;
-          whitelistManager.queueBatchedUpdate('bulk-role-setup', msg);
+          whitelistManager.queueBatchedUpdate('bulk-role-setup', msg, interaction.guildId ?? undefined);
         }
       }
     } catch (error: unknown) {
@@ -1184,7 +1184,7 @@ export class WhitelistCommands {
         await interaction.editReply({ embeds: [embed] });
 
         // Cleanup expired roles as part of validation
-        const cleanedCount = await whitelistManager.cleanupExpiredRoles();
+        const cleanedCount = await whitelistManager.expireRolesAndPublish();
         if (cleanedCount > 0) {
           loggers.bot.info(`Cleaned up ${cleanedCount} expired role assignments during validation`);
         }
@@ -1193,7 +1193,7 @@ export class WhitelistCommands {
         if (accessGranted > 0 || accessRevoked > 0 || cleanedCount > 0) {
           try {
             const msg = `Bulk validation: ${accessGranted} granted, ${accessRevoked} revoked, ${cleanedCount} expired cleaned`;
-            whitelistManager.queueBatchedUpdate('bulk-validation', msg);
+            whitelistManager.queueBatchedUpdate('bulk-validation', msg, guild.id);
             loggers.bot.info(
               `Queued GitHub repository update after bulk validation`,
             );

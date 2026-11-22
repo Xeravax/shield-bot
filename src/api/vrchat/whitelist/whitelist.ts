@@ -1,9 +1,7 @@
 import { Get, Router } from "@discordx/koa";
 import { Context } from "koa";
-import { WhitelistManager } from "../../../managers/whitelist/whitelistManager.js";
+import { whitelistManager } from "../../../managers/whitelist/whitelistManager.js";
 import crypto from "crypto";
-
-const whitelistManager = new WhitelistManager();
 
 @Router()
 export class WhitelistAPI {
@@ -14,9 +12,8 @@ export class WhitelistAPI {
       const guildId = ctx.params.guildId;
       const encodedWhitelist = await whitelistManager.generateEncodedWhitelist(guildId);
       const etag = crypto.createHash("sha256").update(encodedWhitelist).digest("hex");
-      const lastModified = whitelistManager.lastUpdateTimestamp
-        ? new Date(whitelistManager.lastUpdateTimestamp).toUTCString()
-        : undefined;
+      const lastUpdate = whitelistManager.getLastUpdateTimestamp(guildId);
+      const lastModified = lastUpdate ? new Date(lastUpdate).toUTCString() : undefined;
 
       if (
         ctx.headers["if-none-match"] === etag ||
@@ -41,6 +38,32 @@ export class WhitelistAPI {
     }
   }
 
+  // Get encoded v2 (JSON) whitelist - guild-specific. Same envelope as /encoded; the body is
+  // {"v":2,"generatedAt":<unix seconds>,"users":{"Name":["perm",...]}}.
+  @Get("/api/vrchat/:guildId/whitelist/v2/encoded")
+  async getEncodedWhitelistV2(ctx: Context) {
+    try {
+      const guildId = ctx.params.guildId;
+      const { encoded, contentHash } = await whitelistManager.generateEncodedWhitelistV2(guildId);
+      if (ctx.headers["if-none-match"] === contentHash) {
+        ctx.status = 304;
+        return;
+      }
+      ctx.set("Cache-Control", "public, max-age=86400");
+      ctx.set("ETag", contentHash);
+      ctx.body = {
+        success: true,
+        data: encoded,
+      };
+    } catch (error: unknown) {
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error occurred",
+      };
+    }
+  }
+
   // Get raw whitelist content - guild-specific
   @Get("/api/vrchat/:guildId/whitelist/raw")
   async getRawWhitelist(ctx: Context) {
@@ -48,9 +71,8 @@ export class WhitelistAPI {
       const guildId = ctx.params.guildId;
       const content = await whitelistManager.generateWhitelistContent(guildId);
       const etag = crypto.createHash("sha256").update(content).digest("hex");
-      const lastModified = whitelistManager.lastUpdateTimestamp
-        ? new Date(whitelistManager.lastUpdateTimestamp).toUTCString()
-        : undefined;
+      const lastUpdate = whitelistManager.getLastUpdateTimestamp(guildId);
+      const lastModified = lastUpdate ? new Date(lastUpdate).toUTCString() : undefined;
 
       if (
         ctx.headers["if-none-match"] === etag ||

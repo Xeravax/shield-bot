@@ -3,6 +3,7 @@ import { prisma } from "../../main.js";
 import { loggers } from "../../utility/logger.js";
 import { decrypt } from "../../utility/encryption.js";
 import { getEnv } from "../../config/env.js";
+import crypto from "crypto";
 
 /**
  * Whitelist content generation and encoding
@@ -195,6 +196,48 @@ export class WhitelistGeneration {
         return `${userEntry.vrchatUsername || ""},${roles}`; // Use comma separator between username and roles
       })
       .join("\n");
+  }
+
+  /**
+   * Build the v2 JSON user map: display name -> sorted, de-duplicated permissions.
+   * JSON avoids the "name,roles" format breaking on commas in display names.
+   */
+  async generateWhitelistUsersJson(guildId: string): Promise<Record<string, string[]>> {
+    const users = await this.getWhitelistUsers(guildId);
+    const map: Record<string, Set<string>> = {};
+    for (const user of users) {
+      const entry = user as { roles?: string[]; vrchatUsername?: string };
+      const name = (entry.vrchatUsername || "").trim();
+      if (!name) {continue;}
+      const set = map[name] ?? (map[name] = new Set<string>());
+      for (const role of entry.roles || []) {
+        const r = role.trim().toLowerCase();
+        if (r) {set.add(r);}
+      }
+    }
+    const result: Record<string, string[]> = {};
+    for (const name of Object.keys(map).sort()) {
+      result[name] = Array.from(map[name]).sort();
+    }
+    return result;
+  }
+
+  /**
+   * Encoded v2 whitelist: {"v":2,"generatedAt":<unix seconds>,"users":{...}} wrapped in the same
+   * XOR + checksum + Base64 envelope as v1. contentHash covers only the users, so the changing
+   * generatedAt does not change the ETag.
+   */
+  async generateEncodedWhitelistV2(
+    guildId: string,
+    now: Date = new Date(),
+  ): Promise<{ encoded: string; contentHash: string }> {
+    const users = await this.generateWhitelistUsersJson(guildId);
+    const usersJson = JSON.stringify(users);
+    const json = `{"v":2,"generatedAt":${Math.floor(now.getTime() / 1000)},"users":${usersJson}}`;
+    return {
+      encoded: await this.xorEncode(json, guildId),
+      contentHash: crypto.createHash("sha256").update(usersJson).digest("hex"),
+    };
   }
 
   /**

@@ -1,11 +1,9 @@
 import { Discord, On, ArgsOf } from "discordx";
 import { Role } from "discord.js";
-import { WhitelistManager } from "../../../managers/whitelist/whitelistManager.js";
+import { whitelistManager } from "../../../managers/whitelist/whitelistManager.js";
 import { prisma } from "../../../main.js";
 import { sendWhitelistLog } from "../../../utility/vrchat/whitelistLogger.js";
 import { loggers } from "../../../utility/logger.js";
-
-const whitelistManager = new WhitelistManager();
 
 @Discord()
 export class WhitelistRoleSync {
