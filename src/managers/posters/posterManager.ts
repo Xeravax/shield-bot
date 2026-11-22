@@ -11,6 +11,8 @@ import {
   buildPosterManifest,
   DEFAULT_STATION_FRAME_POSTERS,
   defaultImageFileForSlot,
+  JOTM_IMAGE_FILE,
+  JOTM_IMAGE_SIZE,
   posterImagePublicUrl,
   posterJsonPublicUrl,
   POSTERS_MAX_SLOTS,
@@ -192,6 +194,34 @@ export class PosterManager {
         error instanceof Error ? error.message : "Invalid title.",
       );
     }
+  }
+
+  /**
+   * Replace the Janitor of the Month picture (FRAME_JOTM.jpg). Framed like the posters, at
+   * JOTM_IMAGE_SIZE, and committed in place so the world's baked URL picks it up on next join.
+   * poster.json is not touched.
+   */
+  async setJotmPicture(options: {
+    guildId: string;
+    image: Buffer;
+    mimeType?: string | null;
+    updatedBy: string;
+  }): Promise<{ imageUrl: string; commitSha?: string }> {
+    const gid = assertGuildId(options.guildId);
+    const jpeg = await createFramedPosterJpeg(options.image, options.mimeType, JOTM_IMAGE_SIZE);
+
+    return withPublishLock(async () => {
+      const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
+        guildId: gid,
+        imageFile: JOTM_IMAGE_FILE,
+        jpegBytes: jpeg,
+        commitMessage: `chore(posters): update ${JOTM_IMAGE_FILE} (by ${options.updatedBy})`,
+      });
+      const { owner, repo } = await this.resolveRepo(gid);
+      const imageUrl = posterImagePublicUrl(owner, repo, JOTM_IMAGE_FILE);
+      loggers.bot.info(`JOTM picture published for guild ${gid} (commit ${publish.commitSha})`);
+      return { imageUrl, commitSha: publish.commitSha };
+    });
   }
 
   async setPoster(options: {

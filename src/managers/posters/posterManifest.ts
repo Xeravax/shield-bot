@@ -8,6 +8,14 @@
  * - Overwrite FRAME_*.jpg in place + bump version when art changes.
  */
 
+/**
+ * Janitor of the Month picture: one fixed file next to the posters, baked into the world as
+ * ModularItemPickup.pictureUrl. Overwritten in place by /poster jotm-picture; not in poster.json.
+ */
+export const JOTM_IMAGE_FILE = "FRAME_JOTM.jpg";
+/** The board shows a ~0.8 m square; 1024 px is sharp without wasting VRAM. */
+export const JOTM_IMAGE_SIZE = 1024;
+
 /** Baked world slots are 0–6 (seven FRAME_*.jpg files). */
 export const POSTERS_MAX_SLOTS = 7;
 /** Keep titles short for VRChat Interact prompts. */

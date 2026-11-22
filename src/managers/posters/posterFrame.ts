@@ -42,7 +42,7 @@ export function assertAllowedPosterUpload(
 }
 
 /**
- * Produce a 2048x2048 full-bleed framed JPEG matching FRAME_* / blurred-frame settings:
+ * Produce a square (default 2048x2048) full-bleed framed JPEG matching FRAME_* / blurred-frame settings:
  * - 1:1 canvas
  * - background: cover-scaled to 200% + blur 20
  * - main: contain-fit at 100% (letterbox blur bars)
@@ -50,10 +50,10 @@ export function assertAllowedPosterUpload(
 export async function createFramedPosterJpeg(
   input: Buffer,
   mimeType?: string | null,
+  size: number = POSTER_OUTPUT_SIZE,
 ): Promise<Buffer> {
   assertAllowedPosterUpload(input, mimeType);
 
-  const size = POSTER_OUTPUT_SIZE;
   const bgSize = Math.round(size * BACKGROUND_SCALE);
 
   try {

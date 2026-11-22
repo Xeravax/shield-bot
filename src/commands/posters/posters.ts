@@ -114,6 +114,61 @@ export class PosterCommands {
     }
   }
 
+  @Slash({
+    name: "jotm-picture",
+    description: "Upload the Janitor of the Month picture shown on the JOTM board",
+  })
+  @Guard(
+    PermissionNodeGuardAny("posters.command.set", "dashboard.roles.staff"),
+  )
+  async jotmPicture(
+    @SlashOption({
+      name: "image",
+      description: "Picture (PNG, JPEG, or WebP). Framed to a 1024x1024 square.",
+      required: true,
+      type: ApplicationCommandOptionType.Attachment,
+    })
+    image: Attachment,
+    interaction: CommandInteraction,
+  ): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.guildId) {
+      await interaction.editReply({
+        content: "❌ This command can only be used in a server.",
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(image.url);
+      if (!response.ok) {
+        await interaction.editReply({
+          content: `❌ Failed to download attachment (${response.status}).`,
+        });
+        return;
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const result = await posterManager.setJotmPicture({
+        guildId: interaction.guildId,
+        image: buffer,
+        mimeType: image.contentType,
+        updatedBy: interaction.user.id,
+      });
+      await interaction.editReply({
+        content: [
+          "✅ Janitor of the Month picture updated.",
+          `Image: ${result.imageUrl}`,
+          result.commitSha ? `Commit: \`${result.commitSha.slice(0, 7)}\`` : "",
+          "Players see it the next time they join (GitHub Pages can take a few minutes).",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+    } catch (error: unknown) {
+      await this.replyError(interaction, "updating the JOTM picture", error);
+    }
+  }
+
   @Slash({ name: "disable", description: "Disable a poster slot (keeps JPEG)" })
   @Guard(
     PermissionNodeGuardAny("posters.command.disable", "dashboard.roles.staff"),

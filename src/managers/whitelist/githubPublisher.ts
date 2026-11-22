@@ -607,7 +607,8 @@ export class GitHubPublisher {
   async updateRepositoryWithPosterFiles(
     options: {
       guildId?: string;
-      posterJson: string;
+      /** station/poster.json contents. Omit to publish only an image (e.g. the JOTM picture). */
+      posterJson?: string;
       /** Official filename under station/posters/ (e.g. FRAME_COBALT.jpg). */
       imageFile?: string;
       jpegBytes?: Buffer;
@@ -686,13 +687,14 @@ export class GitHubPublisher {
       | { path: string; content: string; encoding: "utf-8" }
       | { path: string; content: string; encoding: "base64" };
 
-    const fileData: FileEntry[] = [
-      {
+    const fileData: FileEntry[] = [];
+    if (options.posterJson !== undefined) {
+      fileData.push({
         path: "station/poster.json",
         content: options.posterJson,
         encoding: "utf-8",
-      },
-    ];
+      });
+    }
 
     if (options.jpegBytes && options.imageFile) {
       fileData.push({
@@ -700,6 +702,10 @@ export class GitHubPublisher {
         content: options.jpegBytes.toString("base64"),
         encoding: "base64",
       });
+    }
+
+    if (fileData.length === 0) {
+      throw new Error("Nothing to publish: neither poster.json nor an image was given");
     }
 
     if (options.ensureNoJekyll !== false) {
@@ -804,7 +810,8 @@ export class GitHubPublisher {
 
     const zoneId = process.env.CLOUDFLARE_ZONE_ID ?? "";
     const apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
-    if (zoneId && apiToken && options.guildId) {
+    // Only poster.json goes through the API/Cloudflare; images are served by GitHub Pages.
+    if (zoneId && apiToken && options.guildId && options.posterJson !== undefined) {
       try {
         const apiBaseUrl = getEnv().PUBLIC_API_BASE_URL.replace(/\/$/, "");
         await purgeCloudflareCache(zoneId, apiToken, [
