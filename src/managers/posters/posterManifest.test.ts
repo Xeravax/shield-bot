@@ -11,32 +11,37 @@ import {
 } from "./posterManifest.js";
 
 describe("buildPosterManifest", () => {
-  it("emits world-consumed fields and pads baked slots", () => {
-    const manifest = buildPosterManifest(
-      3,
-      "2026-09-19T14:00:00.000Z",
-      [
-        {
-          slot: 0,
-          slug: "cobalt",
-          title: "Cobalt",
-          enabled: true,
-          imageFile: "FRAME_COBALT.jpg",
-        },
-      ],
-      3,
-    );
+  it("emits world-consumed fields with numbered files", () => {
+    const manifest = buildPosterManifest(3, "2026-09-19T14:00:00.000Z", [
+      { slot: 0, slug: "cobalt", title: "Cobalt", enabled: true, imageFile: "FRAME_0.jpg" },
+    ]);
 
     expect(manifest.version).toBe(3);
-    expect(manifest.posters[0]).toMatchObject({
-      slot: 0,
-      enabled: true,
-      title: "Cobalt",
-      file: "FRAME_COBALT.jpg",
-    });
+    expect(manifest.slotCount).toBe(1);
+    expect(manifest.posters).toHaveLength(1);
+    expect(manifest.posters[0]).toMatchObject({ slot: 0, enabled: true, title: "Cobalt", file: "FRAME_0.jpg" });
     expect(manifest.posters[0]).not.toHaveProperty("imageUrl");
-    expect(manifest.posters[1].file).toBe("FRAME_HOPPU.jpg");
-    expect(manifest.posters[2].file).toBe("FRAME_KUS.jpg");
+  });
+
+  it("sets slotCount to the highest slot with an image and pads gaps as disabled", () => {
+    const manifest = buildPosterManifest(1, "2026-01-01T00:00:00.000Z", [
+      { slot: 0, slug: "a", title: "A", enabled: true, imageFile: "FRAME_0.jpg" },
+      { slot: 4, slug: "e", title: "E", enabled: true, imageFile: "FRAME_4.jpg" },
+      { slot: 9, slug: "j", title: "J", enabled: true, imageFile: "" }, // no image yet
+    ]);
+
+    expect(manifest.slotCount).toBe(5);
+    expect(manifest.posters.map((p) => p.slot)).toEqual([0, 1, 2, 3, 4]);
+    expect(manifest.posters.map((p) => p.enabled)).toEqual([true, false, false, false, true]);
+    expect(manifest.posters[2].file).toBe("FRAME_2.jpg");
+  });
+
+  it("never counts slots beyond the baked maximum", () => {
+    const manifest = buildPosterManifest(1, "2026-01-01T00:00:00.000Z", [
+      { slot: POSTERS_MAX_SLOTS, slug: "x", title: "X", enabled: true, imageFile: "FRAME_99.jpg" },
+    ]);
+    expect(manifest.slotCount).toBe(0);
+    expect(manifest.posters).toEqual([]);
   });
 
   it("keeps disabled slots in the array", () => {
@@ -46,16 +51,16 @@ describe("buildPosterManifest", () => {
         slug: "a",
         title: "A",
         enabled: false,
-        imageFile: "FRAME_COBALT.jpg",
+        imageFile: "FRAME_0.jpg",
       },
       {
         slot: 1,
         slug: "b",
         title: "B",
         enabled: true,
-        imageFile: "FRAME_HOPPU.jpg",
+        imageFile: "FRAME_1.jpg",
       },
-    ], 2);
+    ]);
 
     expect(manifest.posters[0].enabled).toBe(false);
     expect(manifest.posters[1].enabled).toBe(true);
@@ -87,9 +92,19 @@ describe("slugifyPosterId", () => {
   });
 });
 
+describe("slot files", () => {
+  it("numbers every slot and keeps the legacy names for slots 0-6", async () => {
+    const { posterSlotImageFile, legacyImageFileForSlot } = await import("./posterManifest.js");
+    expect(POSTERS_MAX_SLOTS).toBe(20);
+    expect(posterSlotImageFile(0)).toBe("FRAME_0.jpg");
+    expect(posterSlotImageFile(19)).toBe("FRAME_19.jpg");
+    expect(legacyImageFileForSlot(5)).toBe("FRAME_PRIDEVR.jpg");
+    expect(legacyImageFileForSlot(7)).toBeUndefined();
+  });
+});
+
 describe("DEFAULT_STATION_FRAME_POSTERS", () => {
-  it("maps the seven baked FRAME_*.jpg files to slots 0-6", () => {
-    expect(POSTERS_MAX_SLOTS).toBe(7);
+  it("lists the seven legacy named files for slots 0-6", () => {
     expect(DEFAULT_STATION_FRAME_POSTERS).toHaveLength(7);
     expect(DEFAULT_STATION_FRAME_POSTERS.map((p) => p.imageFile)).toEqual([
       "FRAME_COBALT.jpg",

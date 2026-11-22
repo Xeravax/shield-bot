@@ -115,6 +115,45 @@ export class PosterCommands {
   }
 
   @Slash({
+    name: "migrate-files",
+    description: "One-time: copy poster images to numbered FRAME_{slot}.jpg files",
+  })
+  @Guard(
+    PermissionNodeGuardAny("posters.command.set", "dashboard.roles.staff"),
+  )
+  async migrateFiles(interaction: CommandInteraction): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.guildId) {
+      await interaction.editReply({
+        content: "❌ This command can only be used in a server.",
+      });
+      return;
+    }
+
+    try {
+      const result = await posterManager.migrateFilesToNumbered(
+        interaction.guildId,
+        interaction.user.id,
+      );
+      if (result.copied.length === 0) {
+        await interaction.editReply({
+          content: `✅ Nothing to migrate: every slot already uses FRAME_{slot}.jpg (slotCount ${result.manifest.slotCount}).`,
+        });
+        return;
+      }
+      await interaction.editReply({
+        content: [
+          `✅ Copied ${result.copied.length} poster(s) to numbered files (v${result.manifest.version}, slotCount ${result.manifest.slotCount}).`,
+          ...result.copied.map((c) => `• slot ${c.slot}: \`${c.from}\` → \`${c.to}\``),
+          "The named files are kept for world uploads that still use them.",
+        ].join("\n"),
+      });
+    } catch (error: unknown) {
+      await this.replyError(interaction, "migrating poster files", error);
+    }
+  }
+
+  @Slash({
     name: "jotm-picture",
     description: "Upload the Janitor of the Month picture shown on the JOTM board",
   })

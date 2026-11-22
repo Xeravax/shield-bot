@@ -10,11 +10,13 @@ import {
   assertValidPosterGroupId,
   buildPosterManifest,
   DEFAULT_STATION_FRAME_POSTERS,
-  defaultImageFileForSlot,
   JOTM_IMAGE_FILE,
   JOTM_IMAGE_SIZE,
   posterImagePublicUrl,
+  legacyImageFileForSlot,
   posterJsonPublicUrl,
+  posterSlotImageFile,
+  POSTERS_LEGACY_DUAL_WRITE,
   POSTERS_MAX_SLOTS,
   slugifyPosterId,
   type PosterManifest,
@@ -81,23 +83,19 @@ export class PosterManager {
       update: {},
     });
 
-    const defaultsBySlot = new Map<
-      number,
-      (typeof DEFAULT_STATION_FRAME_POSTERS)[number]
-    >(DEFAULT_STATION_FRAME_POSTERS.map((p) => [p.slot, p]));
-
-    for (let slot = 0; slot < POSTERS_MAX_SLOTS; slot++) {
-      const defaults = defaultsBySlot.get(slot);
+    // Only the original seven slots are seeded (their named files already exist on GitHub).
+    // Higher slots are created on first upload, so poster.json's slotCount stays as small as
+    // the posters actually in use.
+    for (const defaults of DEFAULT_STATION_FRAME_POSTERS) {
       await prisma.communityPoster.upsert({
-        where: { guildId_slot: { guildId: gid, slot } },
+        where: { guildId_slot: { guildId: gid, slot: defaults.slot } },
         create: {
           guildId: gid,
-          slot,
-          slug: defaults?.slug ?? `slot-${slot}`,
-          title: defaults?.title ?? `Slot ${slot}`,
-          imageFile: defaults?.imageFile ?? "",
-          // Existing FRAME_*.jpg files are already on GitHub — enable by default.
-          enabled: Boolean(defaults),
+          slot: defaults.slot,
+          slug: defaults.slug,
+          title: defaults.title,
+          imageFile: defaults.imageFile,
+          enabled: true,
         },
         update: {},
       });
@@ -270,8 +268,9 @@ export class PosterManager {
 
       const groupIdUpdate = parseOptionalGroupId(options.groupId);
 
-      // Always overwrite the fixed baked FRAME_*.jpg path for this slot.
-      const imageFile = defaultImageFileForSlot(options.slot, slug);
+      // Always the numbered file the world bakes for this slot.
+      const imageFile = posterSlotImageFile(options.slot);
+      const legacyFile = POSTERS_LEGACY_DUAL_WRITE ? legacyImageFileForSlot(options.slot) : undefined;
 
       await prisma.communityPoster.upsert({
         where: { guildId_slot: { guildId: gid, slot: options.slot } },
@@ -310,6 +309,8 @@ export class PosterManager {
         posterJson,
         imageFile,
         jpegBytes: jpeg,
+        // Old world uploads still bake the named file for slots 0–6.
+        extraImageFiles: legacyFile ? [legacyFile] : undefined,
         commitMessage:
           options.commitMessage ??
           `chore(posters): set ${imageFile} (slot ${options.slot}) v${state.version}`,
@@ -385,9 +386,7 @@ export class PosterManager {
         nextSlug !== existing.slug ||
         nextGroupId !== existing.groupId;
 
-      const file =
-        existing.imageFile ||
-        defaultImageFileForSlot(options.slot, existing.slug);
+      const file = posterSlotImageFile(options.slot);
       const { owner, repo } = await this.resolveRepo(gid);
       const imageUrl = posterImagePublicUrl(owner, repo, file);
 
@@ -464,6 +463,65 @@ export class PosterManager {
         commitSha: publish.commitSha,
         jsonUrl: posterJsonPublicUrl(owner, repo),
       };
+    });
+  }
+
+  /**
+   * One-time move to numbered files: copy every slot's current image (e.g. FRAME_COBALT.jpg)
+   * to FRAME_{slot}.jpg in one commit (blob re-use, no upload), then point the DB at the
+   * numbered names and publish poster.json. The named files stay for old world uploads.
+   */
+  async migrateFilesToNumbered(
+    guildId: string,
+    updatedBy: string,
+  ): Promise<{
+    copied: Array<{ slot: number; from: string; to: string }>;
+    manifest: PosterManifest;
+    commitSha?: string;
+  }> {
+    const gid = assertGuildId(guildId);
+
+    return withPublishLock(async () => {
+      await this.ensureSeeded(gid);
+      const posters = await prisma.communityPoster.findMany({
+        where: { guildId: gid },
+        orderBy: { slot: "asc" },
+      });
+      const copied = posters
+        .filter((p) => p.imageFile && p.imageFile !== posterSlotImageFile(p.slot))
+        .map((p) => ({ slot: p.slot, from: p.imageFile, to: posterSlotImageFile(p.slot) }));
+
+      if (copied.length === 0) {
+        return { copied, manifest: await this.getManifest(gid) };
+      }
+
+      // Files first: if GitHub fails, the DB still points at files that exist.
+      await this.githubPublisher.updateRepositoryWithPosterFiles({
+        guildId: gid,
+        copies: copied.map(({ from, to }) => ({ from, to })),
+        commitMessage: `chore(posters): copy ${copied.length} poster(s) to numbered FRAME_{slot}.jpg`,
+      });
+
+      for (const c of copied) {
+        await prisma.communityPoster.update({
+          where: { guildId_slot: { guildId: gid, slot: c.slot } },
+          data: { imageFile: c.to, updatedBy },
+        });
+      }
+      const state = await prisma.communityPosterState.update({
+        where: { guildId: gid },
+        data: { version: { increment: 1 } },
+      });
+
+      const manifest = await this.getManifest(gid);
+      const publish = await this.githubPublisher.updateRepositoryWithPosterFiles({
+        guildId: gid,
+        posterJson: `${JSON.stringify(manifest, null, 2)}\n`,
+        commitMessage: `chore(posters): numbered poster files v${state.version}`,
+      });
+
+      loggers.bot.info(`Migrated ${copied.length} poster file(s) to numbered names for guild ${gid}`);
+      return { copied, manifest, commitSha: publish.commitSha };
     });
   }
 

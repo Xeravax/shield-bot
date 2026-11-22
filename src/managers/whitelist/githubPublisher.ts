@@ -609,9 +609,13 @@ export class GitHubPublisher {
       guildId?: string;
       /** station/poster.json contents. Omit to publish only an image (e.g. the JOTM picture). */
       posterJson?: string;
-      /** Official filename under station/posters/ (e.g. FRAME_COBALT.jpg). */
+      /** Filename under station/posters/ (e.g. FRAME_3.jpg). */
       imageFile?: string;
       jpegBytes?: Buffer;
+      /** Extra filenames that receive the same JPEG (legacy named files for old world uploads). */
+      extraImageFiles?: string[];
+      /** Copy existing files inside station/posters/ (re-uses the blob; nothing is re-uploaded). */
+      copies?: Array<{ from: string; to: string }>;
       ensureNoJekyll?: boolean;
       commitMessage?: string;
     },
@@ -697,14 +701,30 @@ export class GitHubPublisher {
     }
 
     if (options.jpegBytes && options.imageFile) {
-      fileData.push({
-        path: `station/posters/${options.imageFile}`,
-        content: options.jpegBytes.toString("base64"),
-        encoding: "base64",
-      });
+      const base64 = options.jpegBytes.toString("base64");
+      for (const name of [options.imageFile, ...(options.extraImageFiles ?? [])]) {
+        fileData.push({
+          path: `station/posters/${name}`,
+          content: base64,
+          encoding: "base64",
+        });
+      }
     }
 
-    if (fileData.length === 0) {
+    // Copies point the new path at the existing blob: one tree entry, no upload.
+    const copyEntries: Array<{ path: string; sha: string }> = [];
+    for (const copy of options.copies ?? []) {
+      const source = await ghOptional(
+        `/repos/${owner}/${repo}/contents/station/posters/${encodeURIComponent(copy.from)}?ref=${encodeURIComponent(branch)}`,
+      );
+      const sha = (source as { sha?: string } | null)?.sha;
+      if (!sha) {
+        throw new Error(`Cannot copy station/posters/${copy.from}: not found in ${owner}/${repo}@${branch}`);
+      }
+      copyEntries.push({ path: `station/posters/${copy.to}`, sha });
+    }
+
+    if (fileData.length === 0 && copyEntries.length === 0) {
       throw new Error("Nothing to publish: neither poster.json nor an image was given");
     }
 
@@ -743,7 +763,7 @@ export class GitHubPublisher {
       method: "POST",
       body: JSON.stringify({
         base_tree: baseTreeSha,
-        tree: blobShas.map(({ path, sha }) => ({
+        tree: [...blobShas, ...copyEntries].map(({ path, sha }) => ({
           path,
           mode: "100644",
           type: "blob",

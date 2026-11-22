@@ -2,8 +2,9 @@
  * Station Community Board posters — VRChat constraints:
  *
  * - JSON is METADATA ONLY. The world ignores image URLs in JSON.
- * - Images are FIXED baked VRCUrls (FRAME_*.jpg on GitHub Pages).
- * - Udon cannot build VRCUrl from strings; new slots need a world re-upload.
+ * - Images are FIXED baked VRCUrls: FRAME_0.jpg … FRAME_{POSTERS_MAX_SLOTS-1}.jpg on GitHub Pages.
+ *   The world bakes all of them; poster.json's slotCount says how many it should download.
+ * - Udon cannot build VRCUrl from strings, so the slot limit is the number of baked URLs.
  * - api.vrcshield.com is for JSON only — never serve images from it.
  * - Overwrite FRAME_*.jpg in place + bump version when art changes.
  */
@@ -16,8 +17,14 @@ export const JOTM_IMAGE_FILE = "FRAME_JOTM.jpg";
 /** The board shows a ~0.8 m square; 1024 px is sharp without wasting VRAM. */
 export const JOTM_IMAGE_SIZE = 1024;
 
-/** Baked world slots are 0–6 (seven FRAME_*.jpg files). */
-export const POSTERS_MAX_SLOTS = 7;
+/** Baked world slots: FRAME_0.jpg … FRAME_19.jpg (20 VRCUrls in the world). */
+export const POSTERS_MAX_SLOTS = 20;
+/**
+ * Worlds uploaded before the numbered scheme bake the named files below for slots 0–6.
+ * While true, uploads to those slots also overwrite the named file so old uploads keep
+ * working. Set to false once every world uses the numbered URLs.
+ */
+export const POSTERS_LEGACY_DUAL_WRITE = true;
 /** Keep titles short for VRChat Interact prompts. */
 export const POSTERS_TITLE_MAX_LENGTH = 40;
 export const POSTERS_STATION_PREFIX = "station";
@@ -25,9 +32,9 @@ export const POSTERS_JSON_PATH = `${POSTERS_STATION_PREFIX}/poster.json`;
 export const POSTERS_IMAGE_DIR = `${POSTERS_STATION_PREFIX}/posters`;
 
 /**
- * Fixed allowlisted image paths already baked into the Station world.
+ * LEGACY named files baked into older Station uploads (slots 0–6), and the default
+ * titles/slugs for those slots. New files are always FRAME_{slot}.jpg (posterSlotImageFile).
  * Host: https://izuna-chan.github.io/Station_Whitelists/station/posters/
- * Bot must overwrite these exact filenames — never invent per-request URLs.
  */
 export const DEFAULT_STATION_FRAME_POSTERS = [
   {
@@ -92,12 +99,15 @@ export interface PosterSlotInput {
 export interface PosterManifest {
   version: number;
   updatedAt: string;
+  /** Slots 0..slotCount-1 exist (highest slot with an uploaded image + 1). The world only
+   *  downloads FRAME_{slot}.jpg for enabled slots below this. */
+  slotCount: number;
   posters: Array<{
     slot: number;
     enabled: boolean;
     title: string;
     id: string;
-    /** Fixed FRAME_*.jpg filename (world uses baked VRCUrl, not this string). */
+    /** FRAME_{slot}.jpg (the world uses its baked VRCUrl for the slot, not this string). */
     file: string;
     /** Present when Interact should open a VRChat group page. */
     groupId?: string;
@@ -106,7 +116,8 @@ export interface PosterManifest {
 
 /**
  * Build posters.json / station/poster.json.
- * Always includes every baked slot 0..6 in order.
+ * slotCount = highest slot that has an uploaded image + 1; posters lists every slot below it in
+ * order (gaps padded as disabled) so the world knows exactly which FRAME_{slot}.jpg to fetch.
  */
 export function buildPosterManifest(
   version: number,
@@ -117,21 +128,26 @@ export function buildPosterManifest(
   const bySlot = new Map(slots.map((s) => [s.slot, s]));
   const posters: PosterManifest["posters"] = [];
 
-  for (let slot = 0; slot < maxSlots; slot++) {
+  let slotCount = 0;
+  for (const s of slots) {
+    if (s.slot >= 0 && s.slot < maxSlots && s.imageFile) {
+      slotCount = Math.max(slotCount, s.slot + 1);
+    }
+  }
+
+  for (let slot = 0; slot < slotCount; slot++) {
     const existing = bySlot.get(slot);
     const defaults = DEFAULT_STATION_FRAME_POSTERS.find((p) => p.slot === slot);
     const groupId = normalizePosterGroupId(existing?.groupId);
     const entry: PosterManifest["posters"][number] = {
       slot,
-      enabled: existing?.enabled ?? false,
+      // A slot without an uploaded image cannot be shown.
+      enabled: Boolean(existing?.enabled && existing.imageFile),
       title: clampPosterTitle(
         existing?.title ?? defaults?.title ?? `Slot ${slot}`,
       ),
       id: existing?.slug ?? defaults?.slug ?? `slot-${slot}`,
-      file:
-        defaults?.imageFile ||
-        existing?.imageFile ||
-        frameFileFromSlug(`slot-${slot}`),
+      file: posterSlotImageFile(slot),
     };
     if (groupId) {
       entry.groupId = groupId;
@@ -143,6 +159,7 @@ export function buildPosterManifest(
     version,
     updatedAt:
       typeof updatedAt === "string" ? updatedAt : updatedAt.toISOString(),
+    slotCount,
     posters,
   };
 }
@@ -242,11 +259,12 @@ export function slugifyPosterId(input: string): string {
   return slug || "poster";
 }
 
-/** Always the baked FRAME_*.jpg for slots 0–6. */
-export function defaultImageFileForSlot(slot: number, slug: string): string {
-  const defaults = DEFAULT_STATION_FRAME_POSTERS.find((p) => p.slot === slot);
-  if (defaults) {
-    return defaults.imageFile;
-  }
-  return frameFileFromSlug(slug);
+/** The numbered file the world bakes for a slot: FRAME_{slot}.jpg. */
+export function posterSlotImageFile(slot: number): string {
+  return `FRAME_${slot}.jpg`;
+}
+
+/** Named file older Station uploads bake for slots 0–6, or undefined. */
+export function legacyImageFileForSlot(slot: number): string | undefined {
+  return DEFAULT_STATION_FRAME_POSTERS.find((p) => p.slot === slot)?.imageFile;
 }
