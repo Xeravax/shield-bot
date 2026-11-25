@@ -23,9 +23,8 @@ import { HostPanel } from "./components/HostPanel";
 import { HoursPanel } from "./components/HoursPanel";
 import { PipPresence } from "./components/PipPresence";
 import { PreviewNotice } from "./components/PreviewNotice";
-import { TrainerPanel } from "./components/TrainerPanel";
 
-type Tab = "home" | "library" | "admin" | "host" | "trainer";
+type Tab = "home" | "library" | "admin" | "host";
 
 const MIN_BOOT_MS = 3000;
 
@@ -52,11 +51,6 @@ const TAB_COPY: Record<
     title: "Hosting desk",
     subtitle: "Submit events for the roster in your timezone.",
     stamp: "Hosting desk",
-  },
-  trainer: {
-    title: "Trainer assignments",
-    subtitle: "Handbooks for the desks you cover.",
-    stamp: "Training",
   },
 };
 
@@ -181,11 +175,6 @@ export default function App() {
       id: "host",
       label: "Host",
       show: Boolean(tabUser?.host),
-    },
-    {
-      id: "trainer",
-      label: "Trainer",
-      show: Boolean(tabUser && tabUser.trainerTypes.length > 0),
     },
   ];
 
@@ -352,11 +341,6 @@ export default function App() {
                     }}
                   />
                 )}
-                {activeTab === "trainer" &&
-                  tabUser &&
-                  tabUser.trainerTypes.length > 0 && (
-                    <TrainerPanel user={tabUser} />
-                  )}
               </main>
             </div>
           </div>

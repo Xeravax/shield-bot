@@ -553,10 +553,6 @@ textarea {
   --case-accent: #22707b;
 }
 
-.case-file.case-trainer {
-  --case-accent: #4a7a3a;
-}
-
 /* Index tabs along the top edge of the folder */
 .case-tabs {
   flex: 0 0 auto;
@@ -663,10 +659,6 @@ textarea {
 
 .case-tab-host {
   --tab-sticker: #3fa5b3;
-}
-
-.case-tab-trainer {
-  --tab-sticker: #6fa85a;
 }
 
 .tab-label {
@@ -1255,16 +1247,6 @@ textarea {
   overflow: visible;
 }
 
-.trainer-note {
-  margin: 0 0 0.75rem;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.trainer-dossier {
-  padding-bottom: 1rem;
-}
-
 /* Dossier blocks (replace frosted card shell) */
 .surface,
 .dossier {
@@ -1842,10 +1824,9 @@ textarea {
   background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
-/* Admin / Host / Trainer folder shells */
+/* Admin / Host folder shells */
 .admin-grid,
-.host-grid,
-.trainer-grid {
+.host-grid {
   display: grid;
   gap: 1rem;
 }
@@ -1916,22 +1897,19 @@ textarea {
 }
 
 .folder-rail-pulse,
-.folder-rail-schedule,
-.folder-rail-emt {
+.folder-rail-schedule {
   background: linear-gradient(90deg, #e8d29a, #c9a24e);
   border-color: rgba(255, 230, 170, 0.35);
 }
 
 .folder-rail-lookup,
-.folder-rail-queue,
-.folder-rail-tru {
+.folder-rail-queue {
   background: linear-gradient(90deg, #9ad8e0, #6ec8d4);
   border-color: rgba(200, 240, 245, 0.3);
 }
 
 .folder-rail-cases,
-.folder-rail-board,
-.folder-rail-cadet {
+.folder-rail-board {
   background: linear-gradient(90deg, #b8dfa9, #9dcc8f);
   border-color: rgba(210, 240, 200, 0.3);
 }
@@ -2084,10 +2062,6 @@ textarea {
 
 .force-toggle input {
   margin-top: 0.2rem;
-}
-
-.trainer-grid {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .grid-2 {
@@ -2673,25 +2647,20 @@ textarea {
 
   .folder-rail-pulse,
   .folder-rail-schedule,
-  .folder-rail-emt,
   .folder-rail-lookup,
   .folder-rail-queue,
-  .folder-rail-tru,
   .folder-rail-cases,
-  .folder-rail-board,
-  .folder-rail-cadet {
+  .folder-rail-board {
     background: linear-gradient(180deg, #e8d29a, #c9a24e);
   }
 
   .folder-rail-lookup,
-  .folder-rail-queue,
-  .folder-rail-tru {
+  .folder-rail-queue {
     background: linear-gradient(180deg, #9ad8e0, #6ec8d4);
   }
 
   .folder-rail-cases,
-  .folder-rail-board,
-  .folder-rail-cadet {
+  .folder-rail-board {
     background: linear-gradient(180deg, #b8dfa9, #9dcc8f);
   }
 
