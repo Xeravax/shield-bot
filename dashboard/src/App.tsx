@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchMe, SITE_LINKS, type DashboardUser } from "./api";
 import {
   getAccessToken,
@@ -15,35 +15,58 @@ import { MOCK_USER } from "./mockData";
 import { AdminPanel } from "./components/AdminPanel";
 import { BootSplash, type BootSplashPhase } from "./components/BootSplash";
 import { CalendarPanel } from "./components/CalendarPanel";
-import { HandbookSection } from "./components/HandbookSection";
+import {
+  HandbookLibrary,
+  HandbookSection,
+} from "./components/HandbookSection";
 import { HostPanel } from "./components/HostPanel";
 import { HoursPanel } from "./components/HoursPanel";
 import { PipPresence } from "./components/PipPresence";
 import { PreviewNotice } from "./components/PreviewNotice";
 import { TrainerPanel } from "./components/TrainerPanel";
 
-type Tab = "home" | "admin" | "host" | "trainer";
+type Tab = "home" | "library" | "admin" | "host" | "trainer";
 
 const MIN_BOOT_MS = 3000;
 
-const TAB_COPY: Record<Tab, { title: string; subtitle: string }> = {
+const TAB_COPY: Record<
+  Tab,
+  { title: string; subtitle: string; stamp: string }
+> = {
   home: {
     title: "Duty briefing",
     subtitle: "Patrol hours, the published roster, and essential handbooks.",
+    stamp: "Confidential",
+  },
+  library: {
+    title: "Handbook library",
+    subtitle: "Every guide your roles unlock, filed in one place.",
+    stamp: "Reference copy",
   },
   admin: {
     title: "Staff briefing",
     subtitle: "Server pulse, member lookup, and recent cases.",
+    stamp: "Staff only",
   },
   host: {
     title: "Hosting desk",
     subtitle: "Submit events for the roster in your timezone.",
+    stamp: "Hosting desk",
   },
   trainer: {
     title: "Trainer assignments",
     subtitle: "Handbooks for the desks you cover.",
+    stamp: "Training",
   },
 };
+
+/** Decorative case-file number: SH-YYMM-<last 4 of the Discord id>. */
+function fileNumber(userId: string): string {
+  const now = new Date();
+  const yy = String(now.getUTCFullYear()).slice(-2);
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `SH-${yy}${mm}-${userId.slice(-4).padStart(4, "0")}`;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -61,6 +84,7 @@ export default function App() {
   const [layoutMode, setLayoutMode] = useState<ActivityLayoutMode>(
     LayoutMode.FOCUSED,
   );
+  const tabListRef = useRef<HTMLDivElement>(null);
 
   const loadUser = useCallback(async (token: string) => {
     const me = await fetchMe(token);
@@ -147,6 +171,7 @@ export default function App() {
 
   const tabs: Array<{ id: Tab; label: string; show: boolean }> = [
     { id: "home", label: "Overview", show: true },
+    { id: "library", label: "Handbooks", show: true },
     {
       id: "admin",
       label: "Admin",
@@ -177,128 +202,163 @@ export default function App() {
     const to = order.indexOf(next);
     setFlipDir(to >= from ? "fwd" : "back");
     setTab(next);
+    // On narrow screens the tab strip scrolls sideways; keep the chosen tab visible.
+    tabListRef.current
+      ?.querySelector<HTMLElement>(`.case-tab-${next}`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   }
 
   return (
     <div className="app">
       <div className={`case-file case-${activeTab}`} data-tab={activeTab}>
         <nav className="case-tabs" aria-label="Case file sections">
-          {visibleTabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className={`case-tab case-tab-${t.id}${activeTab === t.id ? " active" : ""}`}
-              onClick={() => selectTab(t.id)}
-            >
-              <span className="tab-label">{t.label}</span>
-            </button>
-          ))}
+          <div className="case-tabs-list" ref={tabListRef}>
+            {visibleTabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`case-tab case-tab-${t.id}${activeTab === t.id ? " active" : ""}`}
+                aria-current={activeTab === t.id ? "page" : undefined}
+                onClick={() => selectTab(t.id)}
+              >
+                <span className="tab-label">{t.label}</span>
+              </button>
+            ))}
+          </div>
           <div className="case-tabs-links">
             <button
               type="button"
               className="site-link-btn"
               onClick={() => void openExternalLink(SITE_LINKS.guides)}
               title="guides.vrcshield.com"
+              aria-label="Guides (guides.vrcshield.com)"
             >
-              📖 Guides
+              <span aria-hidden="true">📖</span>
+              <span className="site-link-label">Guides</span>
             </button>
             <button
               type="button"
               className="site-link-btn"
               onClick={() => void openExternalLink(SITE_LINKS.main)}
               title="vrcshield.com"
+              aria-label="SHIELD website (vrcshield.com)"
             >
-              🛡️ SHIELD
+              <span aria-hidden="true">🛡️</span>
+              <span className="site-link-label">SHIELD</span>
             </button>
           </div>
         </nav>
 
-        <div className="case-sheet">
-          <header className="case-header">
-            <div className="case-identity">
-              {displayUser.avatarUrl ? (
-                <img
-                  src={displayUser.avatarUrl}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="avatar-fallback">{initials}</div>
-              )}
-              <div className="ribbon-meta">
-                <strong>{displayUser.displayName}</strong>
-                <span>@{displayUser.username}</span>
-              </div>
-            </div>
+        <div className="case-folder">
+          <span className="case-clip" aria-hidden="true" />
+          <div className="case-sheet">
+            <header className="case-header">
+              <img className="case-seal" src="/logo.png" alt="SHIELD logo" />
 
-            <div className="case-brand">
-              <img src="/logo.png" alt="SHIELD logo" />
-              <p className="masthead-kicker">S.H.I.E.L.D.</p>
-              <h1>{copy.title}</h1>
-              <p className="case-dek">{copy.subtitle}</p>
-            </div>
-
-            <div className="header-spacer" />
-          </header>
-
-          <div className="workspace">
-            {isAppPreview && (
-              <PreviewNotice
-                className="app-level"
-                message="Sample data — could not load your profile"
-              />
-            )}
-
-            {error && (
-              <PreviewNotice className="app-level error" message={error} />
-            )}
-
-            <main
-              key={activeTab}
-              className={`app-main flip-${flipDir}`}
-            >
-              {activeTab === "home" && (
-                <div className="panel home-grid">
-                  <HoursPanel
-                    token={token}
-                    user={displayUser}
-                    preview={isAppPreview}
-                  />
-                  {displayUser.shieldMember ? (
-                    <>
-                      <CalendarPanel
-                        token={token}
-                        user={displayUser}
-                        preview={isAppPreview}
-                      />
-                      <HandbookSection user={displayUser} />
-                    </>
-                  ) : (
-                    <HandbookSection user={displayUser} />
-                  )}
+              <div className="case-brand">
+                <p className="masthead-kicker">
+                  S.H.I.E.L.D. · Sheriff&rsquo;s Department
+                </p>
+                <div className="case-title-row">
+                  <h1>{copy.title}</h1>
+                  <span className="case-stamp" aria-hidden="true">
+                    {copy.stamp}
+                  </span>
                 </div>
-              )}
-              {activeTab === "admin" && tabUser?.staff && (
-                <AdminPanel token={token} preview={false} />
-              )}
-              {activeTab === "host" && tabUser?.host && (
-                <HostPanel
-                  token={token}
-                  user={tabUser}
-                  preview={false}
-                  onTimezoneSaved={(timezone) => {
-                    if (user) {
-                      setUser({ ...user, timezone, timezoneStored: true });
-                    }
-                  }}
+                <p className="case-dek">{copy.subtitle}</p>
+              </div>
+
+              <dl className="case-meta">
+                <div className="case-meta-row">
+                  <dt>File no.</dt>
+                  <dd className="case-file-no">{fileNumber(displayUser.id)}</dd>
+                </div>
+                <div className="case-meta-row case-officer">
+                  <dt>Officer</dt>
+                  <dd>
+                    {displayUser.avatarUrl ? (
+                      <img
+                        src={displayUser.avatarUrl}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="avatar-fallback">{initials}</span>
+                    )}
+                    <span className="ribbon-meta">
+                      <strong>{displayUser.displayName}</strong>
+                      <span>@{displayUser.username}</span>
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+            </header>
+
+            <div className="workspace">
+              {isAppPreview && (
+                <PreviewNotice
+                  className="app-level"
+                  message="Sample data — could not load your profile"
                 />
               )}
-              {activeTab === "trainer" &&
-                tabUser &&
-                tabUser.trainerTypes.length > 0 && (
-                  <TrainerPanel user={tabUser} />
+
+              {error && (
+                <PreviewNotice className="app-level error" message={error} />
+              )}
+
+              <main
+                key={activeTab}
+                className={`app-main flip-${flipDir}`}
+              >
+                {activeTab === "home" && (
+                  <div className="panel home-grid">
+                    <HoursPanel
+                      token={token}
+                      user={displayUser}
+                      preview={isAppPreview}
+                    />
+                    {displayUser.shieldMember ? (
+                      <>
+                        <CalendarPanel
+                          token={token}
+                          user={displayUser}
+                          preview={isAppPreview}
+                        />
+                        <HandbookSection
+                          user={displayUser}
+                          onOpenLibrary={() => selectTab("library")}
+                        />
+                      </>
+                    ) : (
+                      <HandbookSection user={displayUser} />
+                    )}
+                  </div>
                 )}
-            </main>
+                {activeTab === "library" && (
+                  <HandbookLibrary user={displayUser} />
+                )}
+                {activeTab === "admin" && tabUser?.staff && (
+                  <AdminPanel token={token} preview={false} />
+                )}
+                {activeTab === "host" && tabUser?.host && (
+                  <HostPanel
+                    token={token}
+                    user={tabUser}
+                    preview={false}
+                    onTimezoneSaved={(timezone) => {
+                      if (user) {
+                        setUser({ ...user, timezone, timezoneStored: true });
+                      }
+                    }}
+                  />
+                )}
+                {activeTab === "trainer" &&
+                  tabUser &&
+                  tabUser.trainerTypes.length > 0 && (
+                    <TrainerPanel user={tabUser} />
+                  )}
+              </main>
+            </div>
           </div>
         </div>
       </div>

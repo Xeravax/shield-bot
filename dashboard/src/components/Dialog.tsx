@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   title: string;
@@ -15,8 +16,14 @@ export function Dialog({
   actions,
   tone = "default",
 }: Props) {
-  return (
-    <div className="dialog-backdrop" role="presentation" onClick={onClose}>
+  // Portal to <body> so `position: fixed` covers the viewport even though the
+  // case file uses transforms/perspective (which would trap fixed children).
+  return createPortal(
+    <div
+      className="dialog-backdrop paper-theme"
+      role="presentation"
+      onClick={onClose}
+    >
       <div
         className={`dialog-card${tone === "danger" ? " danger" : ""}`}
         role="dialog"
@@ -34,6 +41,7 @@ export function Dialog({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

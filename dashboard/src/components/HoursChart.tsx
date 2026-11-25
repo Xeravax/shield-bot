@@ -44,12 +44,12 @@ export function HoursChart({ months }: Props) {
       >
         <defs>
           <linearGradient id="hoursArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#dfbd6b" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#dfbd6b" stopOpacity="0.02" />
+            <stop offset="0%" className="chart-stop" stopOpacity="0.35" />
+            <stop offset="100%" className="chart-stop" stopOpacity="0.02" />
           </linearGradient>
           <linearGradient id="hoursLine" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#c9a24e" />
-            <stop offset="100%" stopColor="#dfbd6b" />
+            <stop offset="0%" className="chart-stop-start" />
+            <stop offset="100%" className="chart-stop" />
           </linearGradient>
         </defs>
 
