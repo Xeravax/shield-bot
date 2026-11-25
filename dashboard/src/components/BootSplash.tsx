@@ -1,76 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useState } from "react";
+import { readBootIntro } from "../bootIntro";
+import { CardSplash } from "./BootSplashCard";
+import { SealSplash } from "./BootSplashSeal";
 
 export type BootSplashPhase = "loading" | "finishing";
 
-interface Props {
+export interface BootSplashProps {
   phase: BootSplashPhase;
   onDone: () => void;
 }
 
-/** Briefing-folder boot gate: idle closed while loading, then cover opens. */
-export function BootSplash({ phase, onDone }: Props) {
-  const doneRef = useRef(false);
-
-  useEffect(() => {
-    if (phase !== "finishing") {
-      return;
-    }
-    const fallback = window.setTimeout(() => {
-      if (!doneRef.current) {
-        doneRef.current = true;
-        onDone();
-      }
-    }, 1400);
-    return () => window.clearTimeout(fallback);
-  }, [phase, onDone]);
-
-  function handleOpenEnd() {
-    if (phase !== "finishing" || doneRef.current) {
-      return;
-    }
-    doneRef.current = true;
-    onDone();
-  }
-
-  return (
-    <div
-      className="boot-splash"
-      role="status"
-      aria-live="polite"
-      aria-busy={phase === "loading"}
-    >
-      <div className={`boot-folder ${phase}`}>
-        <div className="folder-shadow" aria-hidden="true" />
-
-        <div
-          className="folder-stage"
-          onAnimationEnd={(e) => {
-            if (
-              phase === "finishing" &&
-              e.animationName === "folder-reveal-done"
-            ) {
-              handleOpenEnd();
-            }
-          }}
-        >
-          <div className="folder-back" aria-hidden="true" />
-
-          <div className="folder-paper">
-            <img src="/logo.png" alt="" />
-            <p className="boot-kicker">S.H.I.E.L.D.</p>
-            <p className="boot-caption">
-              {phase === "loading" ? "Opening dossier…" : "Briefing ready"}
-            </p>
-          </div>
-
-          <div className="folder-pocket" aria-hidden="true">
-            <span className="folder-tab">BRIEFING</span>
-            <span className="folder-label">DUTY FILE</span>
-          </div>
-
-          <div className="folder-cover" aria-hidden="true" />
-        </div>
-      </div>
-    </div>
-  );
+/** Boot gate: plays the intro picked in Settings (stored on this device). */
+export function BootSplash(props: BootSplashProps) {
+  // Read once on mount, so the intro can't switch mid-animation.
+  const [intro] = useState(readBootIntro);
+  return intro === "card" ? <CardSplash {...props} /> : <SealSplash {...props} />;
 }

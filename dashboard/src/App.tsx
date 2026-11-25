@@ -23,6 +23,7 @@ import { HostPanel } from "./components/HostPanel";
 import { HoursPanel } from "./components/HoursPanel";
 import { PipPresence } from "./components/PipPresence";
 import { PreviewNotice } from "./components/PreviewNotice";
+import { SettingsDialog } from "./components/SettingsDialog";
 
 type Tab = "home" | "library" | "admin" | "host";
 
@@ -74,6 +75,7 @@ export default function App() {
   const [flipDir, setFlipDir] = useState<"fwd" | "back">("fwd");
   const [splashPhase, setSplashPhase] = useState<BootSplashPhase>("loading");
   const [showApp, setShowApp] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [layoutMode, setLayoutMode] = useState<ActivityLayoutMode>(
     LayoutMode.FOCUSED,
@@ -235,8 +237,22 @@ export default function App() {
               <span aria-hidden="true">🛡️</span>
               <span className="site-link-label">SHIELD</span>
             </button>
+            <button
+              type="button"
+              className="site-link-btn"
+              onClick={() => setSettingsOpen(true)}
+              title="Settings"
+              aria-label="Settings"
+            >
+              <span aria-hidden="true">⚙️</span>
+              <span className="site-link-label">Settings</span>
+            </button>
           </div>
         </nav>
+
+        {settingsOpen && (
+          <SettingsDialog onClose={() => setSettingsOpen(false)} />
+        )}
 
         <div className="case-folder">
           <span className="case-clip" aria-hidden="true" />
