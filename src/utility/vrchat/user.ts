@@ -268,7 +268,7 @@ export async function getPublicProfile(
   }
 
   if (!response.ok) {
-    let extraMessage = "";
+    let extraMessage: string;
     try {
       const body = (await response.json()) as {
         error?: { message?: string };

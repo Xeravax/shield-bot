@@ -213,7 +213,7 @@ export function HostPanel({
     }
     const ids = new Set<number>();
     for (const event of displayPublished) {
-      if (editingId != null && event.id === editingId) {
+      if (editingId !== null && event.id === editingId) {
         continue;
       }
       if (
@@ -321,7 +321,7 @@ export function HostPanel({
         return;
       }
       applyValidation(validation.results, false);
-      if (editingId != null) {
+      if (editingId !== null) {
         const result = await updateHostEvent(token, editingId, eventBody());
         setRules(result.validation.results);
         setMessage(`Updated draft #${result.eventId}.`);
@@ -350,7 +350,7 @@ export function HostPanel({
     setMessage(null);
     try {
       let id = eventId ?? editingId;
-      if (id == null) {
+      if (id === null || id === undefined) {
         const validation = await validateHostEvent(token, eventBody());
         if (validation.blocking) {
           applyValidation(validation.results, true);
@@ -358,7 +358,7 @@ export function HostPanel({
         }
         const created = await createHostEvent(token, eventBody());
         id = created.eventId;
-      } else if (eventId == null) {
+      } else if (eventId === null || eventId === undefined) {
         const validation = await validateHostEvent(token, eventBody());
         if (validation.blocking) {
           applyValidation(validation.results, true);
@@ -586,7 +586,7 @@ export function HostPanel({
             <div className="dossier-head">
               <div>
                 <h2>
-                  {editingId != null ? "Edit roster entry" : "Submit for roster"}
+                  {editingId !== null ? "Edit roster entry" : "Submit for roster"}
                 </h2>
                 <p>
                   Pick a start date &amp; time in{" "}
@@ -762,7 +762,7 @@ export function HostPanel({
                 disabled={preview || busy || !title.trim()}
                 onClick={() => void saveDraft()}
               >
-                {editingId != null ? "Save draft" : "Create draft"}
+                {editingId !== null ? "Save draft" : "Create draft"}
               </button>
               <button
                 type="button"
@@ -772,7 +772,7 @@ export function HostPanel({
               >
                 Submit for review
               </button>
-              {editingId != null && (
+              {editingId !== null && (
                 <>
                   <button
                     type="button"

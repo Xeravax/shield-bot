@@ -191,9 +191,17 @@ export function addDays(date: Date, delta: number): Date {
 
 export function eventStatusClass(status: string): string {
   const s = status.toUpperCase();
-  if (s === "PENDING") return "pending";
-  if (s === "DRAFT") return "draft";
-  if (s === "DENIED") return "denied";
-  if (s === "APPROVED") return "approved";
+  if (s === "PENDING") {
+    return "pending";
+  }
+  if (s === "DRAFT") {
+    return "draft";
+  }
+  if (s === "DENIED") {
+    return "denied";
+  }
+  if (s === "APPROVED") {
+    return "approved";
+  }
   return "published";
 }

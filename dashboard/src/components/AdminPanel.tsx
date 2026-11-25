@@ -626,7 +626,7 @@ export function AdminPanel({ token, preview = false }: Props) {
                           <button
                             type="button"
                             className="btn secondary"
-                            onClick={() => void openExternalLink(c.staffLogUrl!)}
+                            onClick={() => void openExternalLink(c.staffLogUrl ?? "")}
                           >
                             Staff log
                           </button>

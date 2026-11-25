@@ -301,8 +301,12 @@ export function fetchAdminHours(
   month?: number,
 ) {
   const params = new URLSearchParams();
-  if (year) params.set("year", String(year));
-  if (month) params.set("month", String(month));
+  if (year) {
+    params.set("year", String(year));
+  }
+  if (month) {
+    params.set("month", String(month));
+  }
   const q = params.toString();
   return apiFetch<{
     userId: string;
