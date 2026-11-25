@@ -45,12 +45,18 @@ export class WhitelistAPI {
     try {
       const guildId = ctx.params.guildId;
       const { encoded, contentHash } = await whitelistManager.generateEncodedWhitelistV2(guildId);
-      if (ctx.headers["if-none-match"] === contentHash) {
+      const lastUpdate = whitelistManager.getLastUpdateTimestamp(guildId);
+      const lastModified = lastUpdate ? new Date(lastUpdate).toUTCString() : undefined;
+      if (
+        ctx.headers["if-none-match"] === contentHash ||
+        (lastModified && ctx.headers["if-modified-since"] === lastModified)
+      ) {
         ctx.status = 304;
         return;
       }
       ctx.set("Cache-Control", "public, max-age=86400");
       ctx.set("ETag", contentHash);
+      if (lastModified) {ctx.set("Last-Modified", lastModified);}
       ctx.body = {
         success: true,
         data: encoded,
@@ -62,6 +68,44 @@ export class WhitelistAPI {
         error: error instanceof Error ? error.message : "Unknown error occurred",
       };
     }
+  }
+
+  // Get raw v2 (plain JSON) whitelist - guild-specific. Same envelope as /raw; data is the
+  // unencoded {"v":2,"generatedAt":...,"users":{...}} document that /v2/encoded wraps.
+  @Get("/api/vrchat/:guildId/whitelist/v2/raw")
+  async getRawWhitelistV2(ctx: Context) {
+    try {
+      const guildId = ctx.params.guildId;
+      const { content, contentHash } = await whitelistManager.generateWhitelistContentV2(guildId);
+      const lastUpdate = whitelistManager.getLastUpdateTimestamp(guildId);
+      const lastModified = lastUpdate ? new Date(lastUpdate).toUTCString() : undefined;
+      if (
+        ctx.headers["if-none-match"] === contentHash ||
+        (lastModified && ctx.headers["if-modified-since"] === lastModified)
+      ) {
+        ctx.status = 304;
+        return;
+      }
+      ctx.set("Cache-Control", "public, max-age=86400");
+      ctx.set("ETag", contentHash);
+      if (lastModified) {ctx.set("Last-Modified", lastModified);}
+      ctx.body = {
+        success: true,
+        data: content,
+      };
+    } catch (error: unknown) {
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error occurred",
+      };
+    }
+  }
+
+  // Get whitelist statistics (v2 marker) - same data as /stats
+  @Get("/api/vrchat/:guildId/whitelist/v2/stats")
+  async getStatisticsV2(ctx: Context) {
+    return this.getStatistics(ctx);
   }
 
   // Get raw whitelist content - guild-specific

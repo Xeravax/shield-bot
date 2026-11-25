@@ -231,11 +231,25 @@ export class WhitelistGeneration {
     guildId: string,
     now: Date = new Date(),
   ): Promise<{ encoded: string; contentHash: string }> {
+    const { content, contentHash } = await this.generateWhitelistContentV2(guildId, now);
+    return {
+      encoded: await this.xorEncode(content, guildId),
+      contentHash,
+    };
+  }
+
+  /**
+   * Raw (unencoded) v2 whitelist: the plain JSON document that /v2/encoded wraps.
+   * contentHash covers only the users, so the changing generatedAt does not change it.
+   */
+  async generateWhitelistContentV2(
+    guildId: string,
+    now: Date = new Date(),
+  ): Promise<{ content: string; contentHash: string }> {
     const users = await this.generateWhitelistUsersJson(guildId);
     const usersJson = JSON.stringify(users);
-    const json = `{"v":2,"generatedAt":${Math.floor(now.getTime() / 1000)},"users":${usersJson}}`;
     return {
-      encoded: await this.xorEncode(json, guildId),
+      content: `{"v":2,"generatedAt":${Math.floor(now.getTime() / 1000)},"users":${usersJson}}`,
       contentHash: crypto.createHash("sha256").update(usersJson).digest("hex"),
     };
   }

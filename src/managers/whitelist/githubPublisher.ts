@@ -4,6 +4,13 @@ import { getEnv } from "../../config/env.js";
 import { loggers } from "../../utility/logger.js";
 import { purgeCloudflareCache } from "../../utility/cloudflare/purgeCache.js";
 
+/** "whitelist.txt" -> "whitelist.v2.txt"; a path without an extension gets ".v2" appended. */
+function toV2Path(path: string): string {
+  const slash = path.lastIndexOf("/");
+  const dot = path.lastIndexOf(".");
+  return dot > slash + 1 ? `${path.slice(0, dot)}.v2${path.slice(dot)}` : `${path}.v2`;
+}
+
 /**
  * GitHub publishing operations for whitelist
  */
@@ -18,7 +25,15 @@ export class GitHubPublisher {
     branch: string;
     encodedFilePath: string;
     decodedFilePath: string;
+    encodedV2FilePath: string;
+    decodedV2FilePath: string;
   }> {
+    // v2 paths: env override, else the v1 path with ".v2" before the extension.
+    const v2Paths = (encoded: string, decoded: string) => ({
+      encodedV2FilePath: process.env.GITHUB_REPO_ENCODED_V2_FILE_PATH || toV2Path(encoded),
+      decodedV2FilePath: process.env.GITHUB_REPO_DECODED_V2_FILE_PATH || toV2Path(decoded),
+    });
+
     // Try to get settings from database if guildId is provided
     if (guildId) {
       const settings = await prisma.guildSettings.findUnique({
@@ -51,6 +66,10 @@ export class GitHubPublisher {
           branch: settings.whitelistGitHubBranch || "main",
           encodedFilePath: settings.whitelistGitHubEncodedPath || "whitelist.encoded.txt",
           decodedFilePath: settings.whitelistGitHubDecodedPath || "whitelist.txt",
+          ...v2Paths(
+            settings.whitelistGitHubEncodedPath || "whitelist.encoded.txt",
+            settings.whitelistGitHubDecodedPath || "whitelist.txt",
+          ),
         };
       }
     }
@@ -82,6 +101,7 @@ export class GitHubPublisher {
       branch,
       encodedFilePath,
       decodedFilePath,
+      ...v2Paths(encodedFilePath, decodedFilePath),
     };
   }
 
@@ -95,14 +115,23 @@ export class GitHubPublisher {
     decodedData: string,
     commitMessage?: string,
     guildId?: string,
+    v2?: { encodedData: string; decodedData: string },
   ): Promise<{
     updated: boolean;
     commitSha?: string;
     paths?: string[];
     branch?: string;
   }> {
-    const { token, owner, repo, branch, encodedFilePath, decodedFilePath } =
-      await this.getGitHubSettings(guildId);
+    const {
+      token,
+      owner,
+      repo,
+      branch,
+      encodedFilePath,
+      decodedFilePath,
+      encodedV2FilePath,
+      decodedV2FilePath,
+    } = await this.getGitHubSettings(guildId);
 
     const apiBase = `https://api.github.com`;
 
@@ -139,41 +168,40 @@ export class GitHubPublisher {
     const baseTreeSha = (latestCommit as { tree?: { sha?: string } })?.tree?.sha;
     if (!baseTreeSha) {throw new Error("Failed to resolve base tree sha");}
 
-    // Step 3: Create blobs for both files
-    const [encodedBlob, decodedBlob] = await Promise.all([
-      gh(`/repos/${owner}/${repo}/git/blobs`, {
-        method: "POST",
-        body: JSON.stringify({ content: encodedData, encoding: "utf-8" }),
+    // Step 3: Create blobs for every file (v1 encoded/decoded, plus v2 when provided)
+    const files: Array<{ path: string; content: string }> = [
+      { path: encodedFilePath, content: encodedData },
+      { path: decodedFilePath, content: decodedData },
+    ];
+    if (v2) {
+      files.push(
+        { path: encodedV2FilePath, content: v2.encodedData },
+        { path: decodedV2FilePath, content: v2.decodedData },
+      );
+    }
+    const blobs = await Promise.all(
+      files.map(async (file) => {
+        const blob = await gh(`/repos/${owner}/${repo}/git/blobs`, {
+          method: "POST",
+          body: JSON.stringify({ content: file.content, encoding: "utf-8" }),
+        });
+        const sha = (blob as { sha?: string })?.sha;
+        if (!sha) {throw new Error(`Failed to create blob for ${file.path}`);}
+        return { path: file.path, sha };
       }),
-      gh(`/repos/${owner}/${repo}/git/blobs`, {
-        method: "POST",
-        body: JSON.stringify({ content: decodedData, encoding: "utf-8" }),
-      }),
-    ]);
-    const encodedBlobSha = (encodedBlob as { sha?: string })?.sha;
-    const decodedBlobSha = (decodedBlob as { sha?: string })?.sha;
-    if (!encodedBlobSha || !decodedBlobSha)
-      {throw new Error("Failed to create blobs for whitelist files");}
+    );
 
-    // Step 4: Create a new tree with both updated files
+    // Step 4: Create a new tree with all updated files
     const newTree = await gh(`/repos/${owner}/${repo}/git/trees`, {
       method: "POST",
       body: JSON.stringify({
         base_tree: baseTreeSha,
-        tree: [
-          {
-            path: encodedFilePath,
-            mode: "100644",
-            type: "blob",
-            sha: encodedBlobSha,
-          },
-          {
-            path: decodedFilePath,
-            mode: "100644",
-            type: "blob",
-            sha: decodedBlobSha,
-          },
-        ],
+        tree: blobs.map(({ path, sha }) => ({
+          path,
+          mode: "100644",
+          type: "blob",
+          sha,
+        })),
       }),
     });
     const newTreeSha = (newTree as { sha?: string })?.sha;
@@ -235,7 +263,7 @@ export class GitHubPublisher {
     return {
       updated: true,
       commitSha: newCommitSha,
-      paths: [encodedFilePath, decodedFilePath],
+      paths: files.map((f) => f.path),
       branch,
     };
   }

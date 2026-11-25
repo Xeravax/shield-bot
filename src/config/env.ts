@@ -64,6 +64,9 @@ const envSchema = z.object({
   GITHUB_REPO_BRANCH: z.string().default("main"),
   GITHUB_REPO_ENCODED_FILE_PATH: z.string().default("whitelist.encoded.txt"),
   GITHUB_REPO_DECODED_FILE_PATH: z.string().default("whitelist.txt"),
+  // v2 GitHub fallback files; when unset, derived from the v1 paths (whitelist.v2.txt, ...)
+  GITHUB_REPO_ENCODED_V2_FILE_PATH: z.string().optional(),
+  GITHUB_REPO_DECODED_V2_FILE_PATH: z.string().optional(),
 
   // Git Signing Configuration (Optional)
   GIT_SIGN_COMMITS: z

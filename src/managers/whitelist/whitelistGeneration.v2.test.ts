@@ -56,4 +56,17 @@ describe("WhitelistGeneration v2", () => {
     expect(a.encoded).not.toBe(b.encoded);
     expect(a.contentHash).toBe(b.contentHash);
   });
+
+  it("raw v2 is the plain JSON that the encoded version wraps", async () => {
+    const gen = new WhitelistGeneration();
+    vi.spyOn(gen, "getWhitelistUsers").mockResolvedValue([{ vrchatUsername: "Bob", roles: ["staff"] }]);
+    const now = new Date(1_000_000_000_000);
+
+    const raw = await gen.generateWhitelistContentV2("g1", now);
+    const enc = await gen.generateEncodedWhitelistV2("g1", now);
+
+    expect(JSON.parse(raw.content)).toEqual({ v: 2, generatedAt: 1_000_000_000, users: { Bob: ["staff"] } });
+    expect(decode(enc.encoded, "TEST_KEY").startsWith(raw.content + "|")).toBe(true);
+    expect(raw.contentHash).toBe(enc.contentHash);
+  });
 });

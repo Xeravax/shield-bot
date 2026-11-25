@@ -20,8 +20,7 @@ export class WhitelistManager {
   // Tracked per guild: each guild publishes its own whitelist, so one guild's content or
   // publish time must not decide whether another guild's update is skipped.
   private lastPublishedContent: Map<string, string> = new Map();
-  private lastUpdateTimestamps: Map<string, number> = new Map();
-  public getLastUpdateTimestamp(guildId: string): number | null {
+  private lastUpdateTimestamps: Map<string, number> = new Map();  public getLastUpdateTimestamp(guildId: string): number | null {
     return this.lastUpdateTimestamps.get(guildId) ?? null;
   }
 
@@ -171,6 +170,10 @@ export class WhitelistManager {
     return this.generation.generateEncodedWhitelistV2(guildId);
   }
 
+  async generateWhitelistContentV2(guildId: string): Promise<{ content: string; contentHash: string }> {
+    return this.generation.generateWhitelistContentV2(guildId);
+  }
+
   async generateEncodedWhitelist(guildId: string): Promise<string> {
     return this.generation.generateEncodedWhitelist(guildId);
   }
@@ -205,22 +208,25 @@ export class WhitelistManager {
       return { updated: false, reason: 'Content unchanged' };
     }
 
-    const [encodedData, decodedData] = await Promise.all([
+    const [encodedData, decodedData, v2Raw, v2Encoded] = await Promise.all([
       this.generation.generateEncodedWhitelist(settingsGuildId),
       this.generation.generateWhitelistContent(settingsGuildId),
+      this.generation.generateWhitelistContentV2(settingsGuildId),
+      this.generation.generateEncodedWhitelistV2(settingsGuildId),
     ]);
+    // v1 and v2 files go out in one commit so the GitHub fallback never serves mixed versions.
     const result = await this.githubPublisher.updateRepositoryWithWhitelist(
       encodedData,
       decodedData,
       commitMessage,
       settingsGuildId,
+      { encodedData: v2Encoded.encoded, decodedData: v2Raw.content },
     );
 
     // Store the published content for future comparisons
     if (result.updated) {
       this.lastPublishedContent.set(settingsGuildId, currentContent);
-      this.lastUpdateTimestamps.set(settingsGuildId, Date.now());
-      // Purge Cloudflare cache for affected guilds' whitelist URLs
+      this.lastUpdateTimestamps.set(settingsGuildId, Date.now());      // Purge Cloudflare cache for affected guilds' whitelist URLs
       const zoneId = process.env.CLOUDFLARE_ZONE_ID ?? "";
       const apiToken = process.env.CLOUDFLARE_API_TOKEN ?? "";
       
@@ -287,6 +293,7 @@ export class WhitelistManager {
             const urls = [
               `https://api.vrcshield.com/api/vrchat/${gid}/whitelist/encoded`,
               `https://api.vrcshield.com/api/vrchat/${gid}/whitelist/v2/encoded`,
+              `https://api.vrcshield.com/api/vrchat/${gid}/whitelist/v2/raw`,
               `https://api.vrcshield.com/api/vrchat/${gid}/whitelist/raw`,
               `https://api.vrcshield.com/api/vrchat/whitelist/encoded`
             ];
