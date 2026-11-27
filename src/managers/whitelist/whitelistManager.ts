@@ -310,6 +310,65 @@ export class WhitelistManager {
     return result;
   }
 
+  private resettingGuilds: Set<string> = new Set();
+
+  /**
+   * Clear a guild's published whitelist (GitHub files + API endpoints) and then regenerate it
+   * from the database. The database is not modified: the generator is forced to output an empty
+   * list while cleared, so both the API and the GitHub publish serve nothing until it is lifted.
+   * The cleared state is always lifted (and the real list republished), even if a step fails.
+   */
+  async resetAndRegenerate(
+    guildId: string,
+    holdMs: number = 0,
+    triggeredBy?: string,
+  ): Promise<{
+    clear: { updated: boolean; commitSha?: string; error?: string };
+    regenerate: { updated: boolean; commitSha?: string; error?: string };
+    userCount: number;
+  }> {
+    if (this.resettingGuilds.has(guildId)) {
+      throw new Error("A whitelist reset is already running for this guild");
+    }
+    this.resettingGuilds.add(guildId);
+    const by = triggeredBy ? ` by ${triggeredBy}` : "";
+
+    const clear: { updated: boolean; commitSha?: string; error?: string } = { updated: false };
+    const regenerate: { updated: boolean; commitSha?: string; error?: string } = { updated: false };
+
+    try {
+      this.generation.setCleared(guildId, true);
+      loggers.bot.warn(`Whitelist for guild ${guildId} cleared${by} (database untouched)`);
+      try {
+        const r = await this.publishWhitelist(guildId, `reset: clear whitelist${by}`, true);
+        clear.updated = r.updated;
+        clear.commitSha = r.commitSha;
+      } catch (err) {
+        clear.error = err instanceof Error ? err.message : String(err);
+        loggers.bot.warn(`Whitelist reset: clearing GitHub failed for guild ${guildId}`, err);
+      }
+
+      if (holdMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, holdMs));
+      }
+    } finally {
+      this.generation.setCleared(guildId, false);
+      try {
+        const r = await this.publishWhitelist(guildId, `reset: regenerate whitelist${by}`, true);
+        regenerate.updated = r.updated;
+        regenerate.commitSha = r.commitSha;
+      } catch (err) {
+        regenerate.error = err instanceof Error ? err.message : String(err);
+        loggers.bot.error(`Whitelist reset: regenerating GitHub failed for guild ${guildId}`, err);
+      }
+      this.resettingGuilds.delete(guildId);
+      loggers.bot.info(`Whitelist for guild ${guildId} regenerated${by}`);
+    }
+
+    const userCount = Object.keys(await this.generation.generateWhitelistUsersJson(guildId)).length;
+    return { clear, regenerate, userCount };
+  }
+
   /**
    * Store a VRChat account's current display name and, if it changed, republish every guild
    * whitelist the account is on. Worlds match players by display name, so a stale name locks

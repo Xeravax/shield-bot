@@ -9,11 +9,31 @@ import crypto from "crypto";
  * Whitelist content generation and encoding
  */
 export class WhitelistGeneration {
+  // Guilds whose generated whitelist is temporarily forced empty (see WhitelistManager.resetAndRegenerate).
+  // In-memory only: the database is never touched, and a restart clears it.
+  private clearedGuilds: Set<string> = new Set();
+
+  setCleared(guildId: string, cleared: boolean): void {
+    if (cleared) {
+      this.clearedGuilds.add(guildId);
+    } else {
+      this.clearedGuilds.delete(guildId);
+    }
+  }
+
+  isCleared(guildId: string): boolean {
+    return this.clearedGuilds.has(guildId);
+  }
+
   /**
    * Get all users in the whitelist, filtered by guild
    * Optimized to reduce N+1 queries by batching username updates
    */
   async getWhitelistUsers(guildId: string): Promise<unknown[]> {
+    if (this.clearedGuilds.has(guildId)) {
+      return [];
+    }
+
     // Use select to only fetch needed fields, and filter entries by guildId
     const entries = await prisma.whitelistEntry.findMany({
       where: {

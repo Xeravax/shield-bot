@@ -83,3 +83,4 @@
 - `/eval <code>` - Evaluate JavaScript code for debugging
 - `/dev servers` - List all servers (name, owner, member count)
 - `/dev leave-guild <guild_id>` - Make the bot leave a guild by ID
+- `/dev whitelist-reset <confirm> [guild_id] [hold_seconds]` - Clear the whitelist on GitHub and the API, then regenerate it from the database (database is not wiped)
